@@ -10,6 +10,7 @@ import { WINDOW_GLOW, jeep, motorbike, train } from "./vehicles.js";
 import { M, Roads } from "./roads.js";
 import { Scenery } from "./scenery.js";
 import { Traffic } from "./traffic.js";
+import { Sanctum } from "./sanctum.js";
 import { Audio } from "./audio.js";
 import { CITIES, GAURIKUND, INDIA, LANKA, SHRINES, toWorld } from "./geo.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
@@ -48,7 +49,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 5000);
 app.camera = camera;
 
-let world, route, sky, landmarks, line, traveller, ride, lights, weather, petals, roads, scenery, traffic;
+let world, route, sky, landmarks, line, traveller, ride, lights, weather, petals, roads, scenery, traffic, sanctum;
 const audio = new Audio();
 
 async function init() {
@@ -107,6 +108,12 @@ async function init() {
 	app.transport = clamp(store.get("transport", 0), 0, TRANSPORT.length - 1);
 	if (params.has("go")) app.transport = Math.max(0, TRANSPORT.findIndex((t) => t.toLowerCase() === params.get("go")));
 	scenery.prebuild(params.has("s") ? parseFloat(params.get("s")) || 0 : 0);
+	// inside each temple: the shrine's own rituals, step by step
+	sanctum = new Sanctum({ renderer, container: document.body, audio, low: LOW, onExit: () => {
+		renderer.setSize(innerWidth, innerHeight, false);
+		$("continue").focus();
+	} });
+	app.sanctum = sanctum;
 	buildUI();
 	app.ready = true;
 	$("start").disabled = false;
@@ -211,6 +218,11 @@ function arrive(i) {
 	rig.userYaw = 0;
 	rig.userPitch = 0;
 	refreshMarks();
+}
+function enterTemple() {
+	if (app.state !== "darshan" || sanctum.active) return;
+	sanctum.enter(SHRINES[app.at].key);
+	sanctum.resize(innerWidth, innerHeight);
 }
 function closeDarshan() {
 	$("darshan").classList.remove("show");
@@ -365,6 +377,11 @@ function loop(now) {
 	last = now;
 	app.t += dt;
 	app.frames++;
+	if (sanctum && sanctum.active) {
+		sanctum.update(dt, app.t);
+		sanctum.render();
+		return;
+	}
 	if (app.state === "travel" && app.playing) {
 		const c = route.chapters[app.leg];
 		const ease = 0.22 + 0.78 * smoothstep(0, 10, Math.min(c.s1 - app.s, app.s - c.s0));
@@ -595,6 +612,7 @@ function buildUI() {
 	// buttons
 	$("start").addEventListener("click", begin);
 	$("continue").addEventListener("click", next);
+	$("enter").addEventListener("click", enterTemple);
 	$("btn-play").addEventListener("click", togglePlay);
 	$("btn-speed").addEventListener("click", () => setSpeed((app.speed + 1) % SPEEDS.length));
 	$("btn-time").addEventListener("click", () => cycleTime());
@@ -888,6 +906,7 @@ function installInput() {
 		else if (k === "t" || k === "T") cycleTime();
 		else if (k === "w" || k === "W") cycleWeather();
 		else if (k === "v" || k === "V") cycleTransport();
+		else if ((k === "e" || k === "E") && app.state === "darshan") enterTemple();
 		else if (k === "m" || k === "M") toggleSound();
 		else if (k === "h" || k === "H") document.body.classList.toggle("hide-hud");
 		else if (k === "c" || k === "C") resetView();
@@ -903,6 +922,7 @@ function installInput() {
 	});
 	addEventListener("resize", () => {
 		renderer.setSize(innerWidth, innerHeight, false);
+		if (sanctum && sanctum.active) sanctum.resize(innerWidth, innerHeight);
 		camera.aspect = innerWidth / innerHeight;
 		camera.updateProjectionMatrix();
 	});
@@ -913,7 +933,7 @@ function resetView() {
 	rig.zoom = 1;
 }
 
-Object.assign(app, { begin, next, jump, restart, setSpeed, cycleTime, cycleWeather, cycleTransport, rig });
+Object.assign(app, { begin, next, jump, restart, setSpeed, cycleTime, cycleWeather, cycleTransport, enterTemple, rig });
 init().catch((e) => {
 	console.error(e);
 	$("loader-msg").textContent = "Sorry, this needs WebGL. " + (e && e.message ? e.message : "");

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spiritual Traveller · Inside the temple</title>
+<meta name="theme-color" content="#0a1430">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&family=Tiro+Devanagari+Hindi&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/sanctum.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<style>
+	.chooser { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; z-index: 10; }
+	.chooser[hidden] { display: none; }
+	.chooser .dialog-card { max-width: 420px; }
+	.chooser h1 { font-family: var(--display); font-weight: 600; font-size: 34px; margin: 6px 0 14px; }
+	.chooser ul { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+	.chooser li button { width: 100%; text-align: left; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; }
+	.chooser li button:hover { border-color: var(--gold); }
+	.chooser b { font-family: var(--display); font-size: 21px; display: block; }
+	.chooser small { color: var(--muted); }
+</style>
+</head>
+<body>
+<!-- Standalone page for the temple interiors: sanctum.html?shrine=kedarnath (or bhimashankar, tirupati, badrinath).
+     ?step=N opens at a ritual, ?q=low uses the low preset, ?manual=1 stops the clock for scripted tests. -->
+<canvas id="scene" aria-label="Inside the temple"></canvas>
+<div class="chooser" id="chooser" hidden>
+	<div class="dialog-card panel">
+		<div class="kicker">Inside the temple</div>
+		<h1>Choose a shrine</h1>
+		<ul id="list"></ul>
+		<button class="ghost" id="sound" type="button">Temple sounds: off</button>
+	</div>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { Sanctum } from "./js/sanctum.js";
+import { Audio } from "./js/audio.js";
+import { SHRINES } from "./js/geo.js";
+
+const params = new URLSearchParams(location.search);
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: params.get("q") !== "low" });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const audio = new Audio();
+const chooser = document.getElementById("chooser");
+const sanctum = new Sanctum({ renderer, container: document.body, audio, low: params.get("q") === "low", onExit: () => (chooser.hidden = false) });
+window.sanctum = sanctum;
+
+const list = document.getElementById("list");
+for (const s of SHRINES) {
+	const li = document.createElement("li");
+	const b = document.createElement("button");
+	b.type = "button";
+	b.innerHTML = "<b></b><small></small>";
+	b.querySelector("b").textContent = s.name;
+	b.querySelector("small").textContent = s.deity;
+	b.addEventListener("click", () => open(s.key));
+	li.appendChild(b);
+	list.appendChild(li);
+}
+const sound = document.getElementById("sound");
+sound.addEventListener("click", () => (sound.textContent = `Temple sounds: ${audio.toggle() ? "on" : "off"}`));
+addEventListener("keydown", (e) => { if ((e.key === "m" || e.key === "M") && sanctum.active) audio.toggle(); });
+
+function open(key) {
+	chooser.hidden = true;
+	sanctum.enter(key);
+	sanctum.resize(innerWidth, innerHeight);
+}
+const key = params.get("shrine");
+if (key && SHRINES.some((s) => s.key === key)) {
+	open(key);
+	if (params.get("step")) sanctum.go(+params.get("step") - 1);
+} else chooser.hidden = false;
+
+addEventListener("resize", () => {
+	renderer.setSize(innerWidth, innerHeight, false);
+	sanctum.resize(innerWidth, innerHeight);
+});
+// For scripted screenshots: advance the clock by hand.
+window.advance = (secs, dt = 1 / 30) => {
+	for (let t = 0; t < secs; t += dt) sanctum.update(dt, (window.__t = (window.__t || 0) + dt));
+	sanctum.render();
+};
+let last = performance.now();
+function loop(now) {
+	const dt = Math.min(0.1, (now - last) / 1000);
+	last = now;
+	if (sanctum.active) {
+		sanctum.update(dt, now / 1000);
+		sanctum.render();
+	} else renderer.clear();
+	requestAnimationFrame(loop);
+}
+if (params.get("manual") !== "1") requestAnimationFrame(loop);
+else if (sanctum.active) window.advance(0.1);
+</script>
+</body>
+</html>

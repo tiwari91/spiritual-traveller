@@ -31,6 +31,17 @@ The order starts with the shrine nearest Pune, takes Tirumala while still in the
 - **Kedarnath**: a coursed grey granite temple with a curved shikhara, a mandapa roofed in stepped stone slabs with snow on every ledge, a carved gable over a brass-framed door hung with bells and marigolds, a seated Nandi and the Bhim Shila boulder behind, under a ring of snow peaks at dawn.
 - **Badrinath**: the painted Singhdwar in red, blue, green and yellow with cusped arches, banded side towers and gilded onion domes, the gilded roof behind, steps down to the steaming Tapt Kund, a flag-hung footbridge over the Alaknanda and the bazaar's tin-roofed houses, with Neelkanth and the Nar and Narayan ranges above.
 
+## Inside the temples
+
+At each darshan, **Enter the temple** (or E) goes inside the lamp-lit sanctum, where the traveller performs that shrine's own rituals with a pujari, one step at a time (Space or → for the next, ← back, Esc to return outside):
+
+- **Bhimashankar**: leave sandals and staff, ring the bell, go down into the sunken sanctum to the Jyotirlinga under its silver naga hood, abhishek with water, bilva leaves, aarti, take the aarti, vibhuti and prasad, pradakshina (turning back at the spout), and a bow.
+- **Kedarnath**: Nandi and the Pandava figures in the mandapa, the bell, darshan of the natural three-sided rock, water and then ghee rubbed on by hand, embracing the rock with the forehead, bilva, aarti, vibhuti and prasad, pradakshina, and a bow.
+- **Tirumala**: the queue through the golden Bangaru Vakili, a few seconds' darshan of Sri Venkateswara (no touching), theertham in the cupped palm and the shathari on the head, the hundi, the vimana pradakshina, and the laddu.
+- **Badrinath**: a dip in Tapt Kund, the bell, darshan of Badri Vishal seated in padmasana with Nara-Narayana, Kubera, Garuda and Narada, tulsi offered at the feet, the aarti "Pavan mand sugandh sheetal", chandan and prasad, pradakshina, and a bow.
+
+`sanctum.html?shrine=kedarnath&step=4` opens an interior directly.
+
 Each darshan card gives the deity, altitude, best season, how pilgrims usually get there (the Kedarnath trek and helicopters, the Alipiri and Srivari Mettu footpaths, and so on), a short note, and the greeting: Om Namah Shivaya at the two Jyotirlingas, Om Namo Venkatesaya at Tirumala and Om Namo Narayanaya at Badrinath.
 
 ## Controls
@@ -47,6 +58,7 @@ Each darshan card gives the deity, altitude, best season, how pilgrims usually g
 | Time of day / weather | T / W | sun and cloud chips |
 | Mixed, train, bike or car | V | bike chip |
 | Temple sounds (drone and bells) | M | speaker button |
+| Enter the temple (at darshan) | E | Enter the temple |
 | Hide the panels | H | |
 
 Time of day follows the journey (dawn at Pune, a monsoon morning at Bhimashankar, golden evening at Tirumala, night across the plains, dawn at Kedarnath) unless you pick one. Weather follows each shrine's season: monsoon rain and cloud at Bhimashankar, light snow at Kedarnath, clear skies elsewhere.
