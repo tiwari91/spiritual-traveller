@@ -10,7 +10,7 @@ import { WINDOW_GLOW } from "./vehicles.js";
 import { Journey } from "./boarding.js";
 import { M, Roads } from "./roads.js";
 import { Scenery } from "./scenery.js";
-import { Traffic } from "./traffic.js";
+import { Traffic, roadSurface, surfaceAt } from "./traffic.js";
 import { Sanctum } from "./sanctum.js";
 import { Music } from "./music.js";
 import { Aarti } from "./aarti.js";
@@ -609,11 +609,12 @@ const travPos = new THREE.Vector3(), tp = {}, rp = {};
 function roadPoint(s, lane) {
 	s = clamp(s, 0, route.length - 0.01);
 	const r = roads.road(s, lane, rp);
-	if (r) return r;
+	// on the tarmac itself, not the bare ground under it, so wheels and feet are not sunk into the road (traffic.js)
+	if (r) return (r.y = roadSurface(roads, s, lane)), r;
 	const p = route.at(s, tp);
 	p.x += -p.dz * lane * M;
 	p.z += p.dx * lane * M;
-	p.y = world.height(p.x, p.z);
+	p.y = surfaceAt(roads, p.x, p.z); // on a road laid for another stretch of the route (the way back down), its tarmac
 	return p;
 }
 function setOn(obj, p, scale, yaw = Math.atan2(p.dx, p.dz)) {

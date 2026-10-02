@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spiritual Traveller · Vehicles</title>
+<meta name="theme-color" content="#0a1430">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<style>
+	html, body { margin: 0; height: 100%; background: #1d1a17; color: #eee6d8; font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+	canvas { display: block; width: 100%; height: 100%; }
+	.bar { position: fixed; left: 16px; right: 16px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; pointer-events: none; }
+	.bar > * { pointer-events: auto; }
+	.bar button { background: rgba(0, 0, 0, 0.45); color: inherit; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 10px; padding: 5px 9px; font: inherit; cursor: pointer; }
+	.bar button[aria-pressed="true"] { border-color: #e5b05a; }
+	.bar.hide { display: none; }
+</style>
+</head>
+<body>
+<!-- Lineup of every road vehicle: the traveller's rides from js/vehicles.js and the traffic from js/traffic.js.
+     ?v=NAME frames one (bike, taxi, jeep, auto, truck, bus, tractor, car, car2, car3); ?yaw= and ?pitch= turn
+     the view; ?night=1 lights the lamps; ?open=1 opens the doors; ?ui=0 hides the bar. -->
+<canvas id="scene" aria-label="The road vehicles of the pilgrimage, lined up"></canvas>
+<div class="bar" id="bar"></div>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { autorickshaw, jeep, motorbike, taxi, WINDOW_GLOW } from "./js/vehicles.js";
+import { MAKERS } from "./js/traffic.js";
+import { VCOL } from "./js/batch.js";
+import { rand } from "./js/util.js";
+
+const params = new URLSearchParams(location.search);
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 400);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+
+const night = params.get("night") === "1";
+scene.background = new THREE.Color(night ? 0x0a1020 : 0xbcd0e2);
+scene.fog = new THREE.Fog(scene.background, 60, 160);
+const hemi = new THREE.HemisphereLight(night ? 0x3a4a6a : 0xdfeaf6, night ? 0x10100c : 0x5a5040, night ? 0.25 : 1.1);
+const sun = new THREE.DirectionalLight(night ? 0x8090c0 : 0xfff0d8, night ? 0.25 : 2.6);
+sun.position.set(14, 22, 18);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 20, bottom: -20, near: 1, far: 80 });
+sun.shadow.bias = -0.0003;
+sun.shadow.normalBias = 0.02;
+scene.add(hemi, sun);
+// a road to stand them on
+const road = new THREE.Mesh(new THREE.PlaneGeometry(120, 30), new THREE.MeshStandardMaterial({ color: 0x3a3a3c, roughness: 0.92 }));
+road.rotation.x = -Math.PI / 2;
+road.receiveShadow = true;
+scene.add(road);
+const line = new THREE.Mesh(new THREE.PlaneGeometry(120, 0.12), new THREE.MeshStandardMaterial({ color: 0xe8e2c8 }));
+line.rotation.x = -Math.PI / 2;
+line.position.set(0, 0.002, -4);
+scene.add(line);
+
+// the lineup, left to right
+const rides = { bike: motorbike(), taxi: taxi(), jeep: jeep(), auto: autorickshaw() };
+rides.bike.park(0.16, 0);
+const R = rand(311);
+const traffic = {};
+for (const [name, type] of [["truck", "truck"], ["bus", "bus"], ["tractor", "tractor"], ["car", "car"], ["car2", "car"], ["car3", "car"], ["auto2", "auto"], ["truck2", "truck"], ["bus2", "bus"]]) {
+	const m = MAKERS[type](R).build(VCOL);
+	traffic[name] = { group: m, len: { truck: 7.6, bus: 11, tractor: 6.5, car: 4.2, auto: 2.7 }[type] };
+}
+const all = Object.assign({}, rides, traffic);
+let x = -30;
+const spots = {};
+for (const [name, v] of Object.entries(all)) {
+	const g = v.group;
+	const box = new THREE.Box3().setFromObject(g);
+	const w = box.max.x - box.min.x;
+	x += w / 2 + 2.2;
+	g.position.set(x, 0, 0);
+	g.rotation.y = 0;
+	scene.add(g);
+	spots[name] = { x, size: Math.max(box.max.z - box.min.z, box.max.y - box.min.y * 1.5, 1.6) };
+	x += w / 2 + 2.2;
+}
+if (params.get("open") === "1") for (const v of Object.values(rides)) for (const d of Object.values(v.doors || {})) d.open(1);
+for (const m of WINDOW_GLOW) m.emissiveIntensity = night ? 2.2 : 0;
+
+// framing one vehicle
+function frame(name, yaw = 0.7, pitch = 0.22, k = 1) {
+	const s = spots[name];
+	if (!s) return;
+	const d = s.size * 1.9 * k;
+	controls.target.set(s.x, s.size * 0.18 + 0.3, 0);
+	camera.position.set(s.x + Math.sin(yaw) * Math.cos(pitch) * d, controls.target.y + Math.sin(pitch) * d, Math.cos(yaw) * Math.cos(pitch) * d);
+	controls.update();
+}
+window.frame = frame;
+window.rides = rides;
+const bar = document.getElementById("bar");
+if (params.get("ui") === "0") bar.classList.add("hide");
+for (const name of Object.keys(all)) {
+	const b = document.createElement("button");
+	b.textContent = name;
+	b.onclick = () => frame(name);
+	bar.append(b);
+}
+if (params.has("v")) frame(params.get("v"), parseFloat(params.get("yaw") ?? 0.7), parseFloat(params.get("pitch") ?? 0.22), parseFloat(params.get("k") ?? 1));
+else {
+	controls.target.set(0, 1, 0);
+	camera.position.set(0, 14, 52);
+	controls.update();
+}
+addEventListener("resize", () => {
+	renderer.setSize(innerWidth, innerHeight, false);
+	camera.aspect = innerWidth / innerHeight;
+	camera.updateProjectionMatrix();
+});
+renderer.setAnimationLoop(() => {
+	controls.update();
+	renderer.render(scene, camera);
+});
+// triangles and draw groups in each, for keeping the traffic cheap
+window.stats = Object.fromEntries(Object.entries(all).map(([name, v]) => {
+	let tris = 0, groups = 0;
+	v.group.traverse((o) => {
+		if (!o.isMesh) return;
+		tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+		groups += Array.isArray(o.material) ? o.geometry.groups.length : 1;
+	});
+	return [name, { tris, groups }];
+}));
+window.ready = true;
+</script>
+</body>
+</html>

@@ -7,17 +7,10 @@ import * as THREE from "three";
 import { body, crowdOpts, mergeFigure, pose } from "./pilgrim.js";
 import { rand } from "./util.js";
 import { Batch } from "./batch.js";
+import { BOX, CYL, DISC, Kit, LAMPS, Outline, QUAD, SPH, archFlare, arc, at, carDressing, carSkin, lathe, longSlab, loft, planWidth, prep, rbox, section, stations, wheel } from "./carkit.js";
 
 const mat = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.6 }, o));
-const CHROME = mat(0xd8dde2, { metalness: 0.9, roughness: 0.2 });
-const TYRE = mat(0x1c1c1e, { roughness: 0.9 });
-const BLACK = mat(0x1a1a1c, { roughness: 0.55 });
-const GLASS = new THREE.MeshStandardMaterial({ color: 0x9fb4c4, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide });
-const DARKGLASS = mat(0x1d2a38, { metalness: 0.6, roughness: 0.15 });
 const LIGHT = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xffe2a0, emissiveIntensity: 1.2 });
-const TAIL = new THREE.MeshStandardMaterial({ color: 0xb01010, emissive: 0x800000, emissiveIntensity: 0.8 });
-const SEAT = mat(0x3a3430, { roughness: 0.85 });
-const PLATE = mat(0xf2c230, { roughness: 0.5 }); // commercial plates are yellow
 
 function part(geo, m, x, y, z, parent) {
 	const o = new THREE.Mesh(geo, m);
@@ -28,21 +21,13 @@ function part(geo, m, x, y, z, parent) {
 	return o;
 }
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-const cyl = (r0, r1, h, n = 14) => new THREE.CylinderGeometry(r0, r1, h, n);
-// A wheel turning about x; spun by setting rotation.x.
-function wheel(parent, x, y, z, r, w, rim = CHROME) {
+// A road wheel turning about x, as its own mesh in a group; spun by setting rotation.x.
+function roadWheel(parent, x, y, z, r, w, side, style, rim) {
 	const g = new THREE.Group();
 	g.position.set(x, y, z);
-	const t = part(new THREE.TorusGeometry(r * 0.78, r * 0.22, 10, 24), TYRE, 0, 0, 0, g);
-	t.rotation.y = Math.PI / 2;
-	t.scale.z = w / (r * 0.44);
-	const hub = part(cyl(r * 0.58, r * 0.58, w * 0.7), rim, 0, 0, 0, g);
-	hub.rotation.z = Math.PI / 2;
-	// spokes so the spin reads
-	for (let i = 0; i < 4; i++) {
-		const s = part(box(w * 0.75, r * 1.12, r * 0.08), mat(0x2a2a2a), 0, 0, 0, g);
-		s.rotation.x = (i / 4) * Math.PI;
-	}
+	const k = new Kit();
+	wheel(k, 0, 0, 0, r, w, side, style, rim, 24);
+	g.add(k.build());
 	parent.add(g);
 	return g;
 }
@@ -69,49 +54,141 @@ function hinged(parent, x, z0, z1, side, angle = 1.15) {
 		pivot.rotation.y = -side * angle * k; // the rear edge swings out
 	} };
 }
+// The lamps of every road vehicle light up after dark with the carriage windows (main.js sets them from
+// the hour). VEHICLE_GLOW is the same list, for anything that wants only the road vehicles' lamps.
+export const VEHICLE_GLOW = LAMPS;
 
 // ---------- the motorbike ----------
-// A Royal Enfield-style 350: the rider sits at about 0.8 m. The frame leans on its side stand (on the left,
-// +x) when parked; the staff rides strapped along the carrier.
+// A Royal Enfield Classic 350 in maroon: spoked wheels under deep mudguards, the teardrop tank with its
+// badge and gold lines, the sprung saddle, the finned single and its long chrome silencer, the headlamp in
+// its casquette with the two pilot lamps. The rider sits at about 0.8 m. The frame leans on its side stand
+// (on the left, +x) when parked; the staff rides strapped along the carrier.
+function spokedWheel(parent, z, r, w) {
+	const g = new THREE.Group();
+	g.position.set(0, r, z);
+	const k = new Kit();
+	const tyre = lathe([[r * 0.76, -w * 0.4], [r * 0.86, -w * 0.5], [r * 0.97, -w * 0.4], [r, 0], [r * 0.97, w * 0.4], [r * 0.86, w * 0.5], [r * 0.76, w * 0.4], [r * 0.74, 0], [r * 0.76, -w * 0.4]], 28);
+	k.add(tyre, at(0, 0, 0, 0, 0, -Math.PI / 2), 0x1e1e20, "matte");
+	// the chrome rim, the hub drum and two sets of spokes crossing to it
+	k.add(prep(new THREE.TorusGeometry(r * 0.75, 0.012, 6, 36)), at(0, 0, 0, 0, Math.PI / 2, 0), 0xdadde0, "chrome");
+	k.cyl(0, 0, 0, 0.13, w * 1.1, 0x9a9ea2, "chrome", "x", 16);
+	k.cyl(0, 0, 0, 0.16, 0.035, 0x2a2a2c, "matte", "x", 16);
+	for (let i = 0; i < 20; i++) {
+		const a = (i / 20) * Math.PI * 2, s = i % 2 ? 1 : -1;
+		const x0 = s * 0.04, h0 = 0.055, h1 = r * 0.74;
+		const a1 = a + s * 0.28;
+		const p0 = new THREE.Vector3(x0, Math.cos(a) * h0, Math.sin(a) * h0), p1 = new THREE.Vector3(0, Math.cos(a1) * h1, Math.sin(a1) * h1);
+		const d = p1.clone().sub(p0);
+		const m = new THREE.Matrix4().compose(p0.clone().add(p1).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().normalize()), new THREE.Vector3(0.004, d.length(), 0.004));
+		k.add(BOX, m, 0xc8ccd0, "chrome");
+	}
+	g.add(k.build());
+	parent.add(g);
+	return g;
+}
 export function motorbike() {
 	const g = new THREE.Group();
 	const frame = new THREE.Group(); // leans about the line where the tyres touch the ground
 	g.add(frame);
-	const paint = mat(0x5a0f14, { metalness: 0.4, roughness: 0.35 });
-	const wheels = [wheel(frame, 0, 0.33, 0.7, 0.33, 0.1), wheel(frame, 0, 0.33, -0.68, 0.33, 0.12)];
-	for (const z of [0.7, -0.68]) {
-		const guard = part(new THREE.TorusGeometry(0.36, 0.05, 6, 16, Math.PI * 0.9), paint, 0, 0.33, z, frame);
-		guard.rotation.y = Math.PI / 2;
-		guard.rotation.x = Math.PI * 0.05;
+	const maroon = 0x5a0f14, gold = 0xc9a24a, black = 0x151517, steel = 0xb8bcc0;
+	const wheels = [spokedWheel(frame, 0.7, 0.33, 0.09), spokedWheel(frame, -0.68, 0.33, 0.11)];
+	const k = new Kit();
+	// deep mudguards, front and rear, on chrome stays
+	const guard = (z, r, w, a0, a1) => {
+		const s = new THREE.Shape();
+		s.absarc(0, 0, r + 0.012, a0, a1, false);
+		s.absarc(0, 0, r, a1, a0, true);
+		const e = new THREE.ExtrudeGeometry(s, { depth: w, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2, curveSegments: 18 });
+		e.rotateY(-Math.PI / 2);
+		k.add(prep(e), at(w / 2, 0.33, z), maroon, "paint");
+		for (const sx of [-1, 1]) k.cyl(sx * (w / 2 + 0.012), 0.33 + r * 0.6, z + (z > 0 ? -0.1 : 0.12), 0.012, r * 0.9, 0xdadde0, "chrome", "y", 6);
+	};
+	guard(0.7, 0.37, 0.12, 0.35, 2.75);
+	guard(-0.68, 0.37, 0.14, 0.15, 2.0);
+	// the frame: down tube, top tube under the tank, the seat rails down to the rear axle
+	const tube = (a, b, d = 0.032, c = black) => {
+		const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), D = B.clone().sub(A);
+		k.add(CYL(10), new THREE.Matrix4().compose(A.clone().add(B).multiplyScalar(0.5), new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), D.clone().normalize()), new THREE.Vector3(d, D.length(), d)), c, "matte");
+	};
+	tube([0, 0.86, 0.5], [0, 0.32, 0.26], 0.04);
+	tube([0, 0.86, 0.5], [0, 0.74, -0.25], 0.035);
+	for (const sx of [-1, 1]) {
+		tube([sx * 0.09, 0.74, -0.22], [sx * 0.09, 0.4, -0.68], 0.025);
+		tube([sx * 0.09, 0.74, -0.22], [sx * 0.1, 0.78, -0.72], 0.022);
+		tube([sx * 0.09, 0.33, -0.68], [sx * 0.07, 0.3, -0.08], 0.03); // swing arm
+		tube([sx * 0.1, 0.36, -0.66], [sx * 0.1, 0.75, -0.55], 0.04, 0xd8dade); // rear shock in chrome
 	}
-	part(box(0.12, 0.3, 0.9), BLACK, 0, 0.5, -0.02, frame).rotation.x = -0.15; // frame and engine block
-	part(box(0.22, 0.24, 0.3), CHROME, 0, 0.42, 0.12, frame);
-	const tank = part(new THREE.CapsuleGeometry(0.13, 0.32, 6, 12), paint, 0, 0.8, 0.22, frame);
-	tank.rotation.x = Math.PI / 2 + 0.1;
-	tank.scale.x = 0.95;
-	part(box(0.26, 0.08, 0.5), mat(0x2a1d16, { roughness: 0.8 }), 0, 0.8, -0.3, frame); // seat
-	part(box(0.3, 0.04, 0.34), CHROME, 0, 0.78, -0.72, frame); // luggage carrier
-	part(box(0.3, 0.14, 0.22), mat(0xc96a1e), 0, 0.87, -0.78, frame); // a cloth bundle
-	const fork = part(cyl(0.025, 0.025, 0.7, 8), CHROME, 0, 0.62, 0.62, frame);
-	fork.rotation.x = -0.4;
-	part(cyl(0.018, 0.018, 0.7, 8), CHROME, 0, 1.0, 0.5, frame).rotation.z = Math.PI / 2; // handlebar
-	part(cyl(0.09, 0.07, 0.1, 16), CHROME, 0, 0.86, 0.66, frame).rotation.x = Math.PI / 2;
-	part(new THREE.CircleGeometry(0.075, 16), LIGHT, 0, 0.86, 0.715, frame);
-	part(cyl(0.04, 0.05, 0.9, 10), CHROME, -0.14, 0.3, -0.25, frame).rotation.x = Math.PI / 2 - 0.08; // exhaust, on the right
-	part(box(0.1, 0.05, 0.03), TAIL, 0, 0.62, -1.0, frame);
-	for (const x of [-0.17, 0.17]) part(box(0.12, 0.03, 0.05), BLACK, x, 0.3, 0.12, frame); // foot pegs
+	// the engine: crankcase, the finned cylinder leaning forward, the rocker box, the round side covers
+	k.rbox(0, 0.38, 0.0, 0.22, 0.24, 0.36, 0.07, 0x9a9ea4, "chrome");
+	for (let i = 0; i < 8; i++) k.add(rbox(0.2 - i * 0.004, 0.012, 0.17 - i * 0.003, 0.02), at(0, 0.53 + i * 0.026, 0.12 + i * 0.006, -0.18, 0, 0), 0x6a6e72, "matte");
+	k.rbox(0, 0.76, 0.16, 0.16, 0.06, 0.14, 0.03, 0xd8dade, "chrome", -0.18);
+	k.add(CYL(20), at(-0.12, 0.38, 0.02, 0, 0, Math.PI / 2, 0.22, 0.03, 0.22), 0xc8ccd0, "chrome"); // the timing cover, right
+	k.add(CYL(20), at(0.12, 0.36, -0.08, 0, 0, Math.PI / 2, 0.26, 0.03, 0.26), 0x8a8e92, "chrome"); // the primary cover, left
+	k.rbox(0, 0.42, -0.25, 0.18, 0.18, 0.2, 0.05, 0x2a2a2c, "matte"); // gearbox
+	// the exhaust: the header pipe down from the port and the long peashooter silencer along the right
+	tube([-0.02, 0.62, 0.24], [-0.1, 0.32, 0.3], 0.04, 0xe0e2e4);
+	tube([-0.1, 0.32, 0.3], [-0.14, 0.26, -0.1], 0.04, 0xe0e2e4);
+	k.add(lathe([[0.001, -0.42], [0.03, -0.42], [0.042, -0.3], [0.042, 0.25], [0.025, 0.42], [0.001, 0.42]], 16), at(-0.15, 0.28, -0.5, Math.PI / 2 - 0.08, 0, 0), 0xe4e6e8, "chrome");
+	// the teardrop tank with its knee pads, the badge and the gold coachlines
+	k.add(SPH(20), at(0, 0.84, 0.25, -0.1, 0, 0, 0.27, 0.22, 0.56), maroon, "paint");
+	for (const sx of [-1, 1]) {
+		k.add(SPH(12), at(sx * 0.115, 0.82, 0.12, -0.1, 0, 0, 0.04, 0.1, 0.16), black, "matte");
+		k.add(DISC(16), at(sx * 0.133, 0.86, 0.3, 0, (sx * Math.PI) / 2, 0, 0.07), 0xe6c86a, "chrome");
+		k.add(BOX, at(sx * 0.126, 0.9, 0.26, -0.1, 0, 0, 0.004, 0.006, 0.4), gold, "paint");
+	}
+	k.cyl(0, 0.96, 0.3, 0.07, 0.03, 0xdadde0, "chrome", "y", 14); // the filler cap
+	// the sprung saddle and the pillion behind, and the side boxes under them
+	k.rbox(0, 0.83, -0.24, 0.26, 0.07, 0.32, 0.03, 0x3a2418, "matte");
+	k.rbox(0, 0.84, -0.54, 0.24, 0.06, 0.22, 0.03, 0x3a2418, "matte");
+	for (const sx of [-1, 1]) {
+		k.cyl(sx * 0.07, 0.77, -0.36, 0.035, 0.08, 0xdadde0, "chrome", "y", 8);
+		k.rbox(sx * 0.11, 0.6, -0.26, 0.05, 0.16, 0.24, 0.025, maroon, "paint");
+		k.add(BOX, at(sx * 0.136, 0.6, -0.26, 0, 0, 0, 0.004, 0.006, 0.2), gold, "paint");
+	}
+	// the luggage carrier and a cloth bundle tied on
+	k.rbox(0, 0.79, -0.76, 0.3, 0.025, 0.32, 0.01, 0xd8dade, "chrome");
+	k.rbox(0, 0.88, -0.8, 0.3, 0.15, 0.22, 0.05, 0xc96a1e, "matte");
+	// the forks, the headlamp in its casquette with the two pilot lamps, the bars, grips, levers and mirrors
+	for (const sx of [-1, 1]) {
+		tube([sx * 0.075, 0.38, 0.72], [sx * 0.075, 0.86, 0.56], 0.034, 0xd8dade);
+		tube([sx * 0.075, 0.7, 0.62], [sx * 0.075, 0.9, 0.55], 0.05, maroon);
+	}
+	k.add(lathe([[0.001, -0.1], [0.09, -0.08], [0.1, 0.0], [0.095, 0.05], [0.001, 0.06]], 20), at(0, 0.88, 0.66, Math.PI / 2, 0, 0), 0xd8dade, "chrome");
+	k.lamp(0, 0.88, 0.72, 0.15, 0.15, "head", false, 0xf4f2ea, true);
+	for (const sx of [-1, 1]) {
+		k.cyl(sx * 0.15, 0.86, 0.66, 0.05, 0.05, 0xd8dade, "chrome", "z", 12);
+		k.lamp(sx * 0.15, 0.86, 0.69, 0.035, 0.035, "head", false, 0xf4f2ea, true);
+	}
+	k.cyl(0, 0.96, 0.6, 0.08, 0.04, 0x1a1a1a, "matte", "y", 16); // the speedometer
+	k.add(DISC(16), at(0, 0.982, 0.6, -Math.PI / 2, 0, 0, 0.07), 0xf2f0e6, "matte");
+	k.cyl(0, 1.0, 0.5, 0.022, 0.7, 0xdadde0, "chrome", "x", 8); // the handlebar
+	for (const sx of [-1, 1]) {
+		k.cyl(sx * 0.31, 1.0, 0.5, 0.034, 0.11, black, "matte", "x", 10); // grips
+		k.add(BOX, at(sx * 0.24, 1.0, 0.56, 0, sx * 0.4, 0, 0.012, 0.012, 0.16), 0xc8ccd0, "chrome"); // levers
+		tube([sx * 0.22, 1.0, 0.5], [sx * 0.28, 1.2, 0.48], 0.012, 0xdadde0);
+		k.cyl(sx * 0.28, 1.22, 0.48, 0.09, 0.02, 0xdadde0, "chrome", "z", 16); // the round mirrors
+		k.add(DISC(16), at(sx * 0.28, 1.22, 0.468, 0, Math.PI, 0, 0.08), 0xc8d4dc, "chrome");
+	}
+	// tail lamp, plates, foot pegs and the brake pedal
+	k.rbox(0, 0.62, -1.0, 0.1, 0.06, 0.05, 0.015, 0x1a1a1a, "matte");
+	k.lamp(0, 0.62, -1.03, 0.08, 0.045, "tail", true);
+	k.plate("mh", 0, 0.52, -1.02, 0.24, 0.06, true);
+	for (const x of [-0.17, 0.17]) k.rbox(x, 0.3, 0.12, 0.12, 0.03, 0.05, 0.01, black, "matte");
+	frame.add(k.build());
 	// the side stand: a leg hinged under the left foot peg, swung down to the ground or folded up behind
 	const stand = new THREE.Group();
 	stand.position.set(0.12, 0.3, 0.02);
 	frame.add(stand);
-	part(cyl(0.014, 0.012, 0.34, 6), BLACK, 0, -0.17, 0, stand);
-	part(box(0.05, 0.015, 0.06), BLACK, 0, -0.34, 0, stand);
+	const sk = new Kit();
+	sk.cyl(0, -0.17, 0, 0.026, 0.34, black, "matte", "y", 8);
+	sk.rbox(0, -0.34, 0, 0.05, 0.015, 0.06, 0.005, black, "matte");
+	stand.add(sk.build());
 	// the staff, strapped along the right of the carrier, and its two straps
 	const staff = new THREE.Group();
 	staff.position.set(-0.13, 0.86, -0.6);
 	staff.rotation.x = -0.12;
 	frame.add(staff);
-	const rod = part(cyl(0.02, 0.022, 1.75, 8), mat(0x6b4a2a, { roughness: 0.7 }), 0, 0, 0.12, staff);
+	const rod = part(new THREE.CylinderGeometry(0.02, 0.022, 1.75, 8), mat(0x6b4a2a, { roughness: 0.7 }), 0, 0, 0.12, staff);
 	rod.rotation.x = Math.PI / 2;
 	for (const z of [-0.12, 0.2]) part(box(0.05, 0.05, 0.03), mat(0x2a1d16), 0, 0, z, staff);
 	staff.visible = false;
@@ -128,93 +205,98 @@ export function motorbike() {
 }
 
 // ---------- cars ----------
-// A car body in metres: lower body to the waist, pillars, a roof, glass all round and doors that open;
-// the cabin is open inside, with seats, so the traveller can be seen sitting there.
-function carBody(o) {
-	const { L, W, H, waist, sill, bonnet, screen, wb, r, paint, trim } = o;
+// A car the traveller rides in: the lofted body of carkit.js, opened up over the cabin, with four doors that
+// open, see-through tinted glass, seats, the dashboard and the steering wheel on the right, so the traveller
+// can be seen sitting inside. S is the body (as carkit.js has it), o the cabin and the doors.
+function rideCar(S, o, look) {
 	const g = new THREE.Group();
 	const shell = new THREE.Group();
 	g.add(shell);
-	const hw = W / 2, zf = L / 2, zr = -L / 2;
-	const zA = zf - bonnet, zW = zA - screen; // foot and top of the windscreen
-	const body = mat(paint, { metalness: 0.35, roughness: 0.32 });
-	const dark = mat(trim, { roughness: 0.6 });
-	// bonnet, front and rear ends below the waist
-	part(box(W, waist - sill, bonnet), body, 0, (waist + sill) / 2, zf - bonnet / 2, shell);
-	part(box(W - 0.06, 0.06, bonnet - 0.04), body, 0, waist + 0.02, zf - bonnet / 2 - 0.02, shell).rotation.x = 0.04;
-	part(box(W, waist - sill, 0.3), body, 0, (waist + sill) / 2, zr + 0.15, shell);
-	// the floor pan and the sills
-	part(box(W - 0.1, 0.06, zA - zr - 0.3), dark, 0, sill + 0.08, (zA + zr + 0.3) / 2, shell);
-	// roof and pillars
-	const rz0 = zr + 0.12, rz1 = zW;
-	part(box(W - 0.06, 0.07, rz1 - rz0), body, 0, H - 0.035, (rz0 + rz1) / 2, shell);
-	for (const sx of [-1, 1]) {
-		const x = sx * (hw - 0.05);
-		// A-pillar raked back along the windscreen
-		const a = part(box(0.07, Math.hypot(screen, H - waist) + 0.02, 0.07), body, x, (waist + H) / 2, (zA + zW) / 2, shell);
-		a.rotation.x = -Math.atan2(screen, H - waist);
-		part(box(0.08, H - waist, 0.1), body, x, (waist + H) / 2, o.bPillar, shell); // B-pillar
-		part(box(0.08, H - waist, 0.18), body, x, (waist + H) / 2, rz0 + 0.09, shell); // C-pillar
+	const hw = S.W / 2;
+	const defs = [["front", o.frontDoor], ["rear", o.rearDoor]];
+	const gap = 0.008;
+	const cuts = defs.flatMap(([, [z0, z1]]) => [z0, z0 + gap, z1 - gap, z1]);
+	const inDoor = (z) => defs.find(([, [z0, z1]]) => z > z0 + gap && z < z1 - gap);
+	const seam = (z) => defs.some(([, [z0, z1]]) => (z > z0 && z < z0 + gap) || (z > z1 - gap && z < z1));
+	const [cab0, cab1] = [o.cabin, S.zA - 0.05];
+	const sk = carSkin(S, { paintSlot: "paint2", cuts, cladding: look.cladding, step: 0.05 }, (z, j, side, which, slot) => {
+		const d = inDoor(z), name = d && (side > 0 ? "L" : "R") + d[0];
+		if (which === "lower") {
+			if (z > cab0 && z < cab1 && j >= 13) return null; // open over the cabin, under the glass
+			if (j >= 4 && j < 13) {
+				if (d) return `door|${name}|${slot}`;
+				if (seam(z)) return "matte2";
+			}
+			return slot;
+		}
+		if (j < 4 && d && (slot === "glass" || slot === "matte")) return `door|${name}|${slot}`;
+		return slot;
+	});
+	const paint = look.paint;
+	const colour = (slot) => (slot === "glass" ? 0xffffff : slot.startsWith("matte") ? look.clad ?? 0x1c1c1e : paint);
+	const kit = new Kit({ see: true });
+	const doorKits = {};
+	for (const m of [sk.lower, sk.green]) for (const [key, geo] of m) {
+		if (!key.startsWith("door|")) {
+			kit.add(geo, at(), colour(key), key === "matte" ? "matte2" : key);
+			continue;
+		}
+		const [, name, slot] = key.split("|");
+		(doorKits[name] ||= []).push([geo, slot]);
 	}
-	// glass: windscreen, rear window, the fixed rear quarter lights
-	const ws = part(new THREE.PlaneGeometry(W - 0.14, Math.hypot(screen, H - waist)), GLASS, 0, (waist + H) / 2, (zA + zW) / 2, shell);
-	ws.rotation.set(-Math.atan2(screen, H - waist), 0, 0);
-	part(new THREE.PlaneGeometry(W - 0.14, H - waist - 0.06), GLASS, 0, (waist + H) / 2, rz0 + 0.02, shell);
-	for (const sx of [-1, 1]) {
-		const q = part(new THREE.PlaneGeometry(o.rearDoor[0] - rz0 - 0.2, H - waist - 0.1), GLASS, sx * (hw - 0.02), (waist + H) / 2, (rz0 + 0.18 + o.rearDoor[0]) / 2, shell);
-		q.rotation.y = Math.PI / 2;
-	}
-	// lights, grille, bumpers and plates
-	part(box(W * 0.8, 0.22, 0.04), dark, 0, sill + 0.32, zf + 0.01, shell);
-	part(box(W + 0.02, 0.14, 0.12), dark, 0, sill + 0.1, zf - 0.02, shell);
-	part(box(W + 0.02, 0.14, 0.12), dark, 0, sill + 0.1, zr + 0.02, shell);
-	for (const x of [-hw + 0.22, hw - 0.22]) {
-		part(new THREE.CircleGeometry(0.1, 14), LIGHT, x, waist - 0.12, zf + 0.012, shell);
-		const t = part(box(0.2, 0.12, 0.03), TAIL, x, waist - 0.1, zr - 0.005, shell);
-		t.rotation.y = Math.PI;
-	}
-	part(box(0.5, 0.12, 0.02), PLATE, 0, sill + 0.24, zf + 0.04, shell);
-	part(box(0.5, 0.12, 0.02), PLATE, 0, sill + 0.3, zr - 0.02, shell);
-	// the cabin: seats, the dashboard and the steering wheel on the right
+	carDressing(kit, S, sk, Object.assign({ noWheels: true }, look));
+	// the cabin: carpet, dashboard, seats and the steering wheel on the right
+	const trim = 0x2a2a2c, seatC = 0x4a4038;
+	kit.rbox(0, S.sill + 0.06, (cab0 + S.zA) / 2, S.W - 0.2, 0.06, S.zA - cab0, 0.02, 0x262422, "matte");
+	kit.rbox(0, S.waist - 0.1, S.zA - 0.2, S.W - 0.22, 0.24, 0.34, 0.06, trim, "matte");
+	kit.rbox(0, S.waist + 0.01, S.zA - 0.12, S.W - 0.3, 0.04, 0.3, 0.02, 0x1a1a1c, "matte");
 	const seatY = o.seatY;
-	part(box(W - 0.2, 0.25, 0.25), dark, 0, waist - 0.12, zA - 0.12, shell);
-	for (const [z, w] of [[o.frontSeat, 0.5], [o.rearSeat, W - 0.3]]) {
+	for (const [z, w] of [[o.frontSeat, 0.5], [o.rearSeat, S.W - 0.32]]) {
 		for (const x of w > 1 ? [0] : [-0.38, 0.38]) {
-			part(box(w, 0.12, 0.5), SEAT, x, seatY - 0.06, z, shell);
-			const back = part(box(w, 0.6, 0.1), SEAT, x, seatY + 0.28, z - 0.3, shell);
-			back.rotation.x = -0.12;
+			kit.rbox(x, seatY - 0.06, z, w, 0.13, 0.5, 0.05, seatC, "matte");
+			kit.rbox(x, seatY + 0.3, z - 0.3, w, 0.62, 0.11, 0.05, seatC, "matte", -0.12);
+			if (w < 1) kit.rbox(x, seatY + 0.68, z - 0.33, 0.26, 0.15, 0.09, 0.04, seatC, "matte", -0.12);
 		}
 	}
-	const sw = part(new THREE.TorusGeometry(0.18, 0.02, 6, 18), dark, -0.38, waist + 0.08, zA - 0.36, shell);
-	sw.rotation.x = -0.9;
-	// four doors, each a painted panel with its window, hinged at the front edge
+	kit.add(prep(new THREE.TorusGeometry(0.18, 0.02, 8, 24)), at(-0.38, S.waist + 0.08, S.zA - 0.4, -0.9, 0, 0), 0x1a1a1c, "matte");
+	kit.cyl(-0.38, S.waist - 0.02, S.zA - 0.3, 0.05, 0.3, trim, "matte", "z", 8);
+	shell.add(kit.build());
+	// the doors, each a panel of the skin with its window, hinged at the front edge
 	const doors = {};
-	for (const [name, [z0, z1]] of [["front", o.frontDoor], ["rear", o.rearDoor]]) {
+	for (const [name, [z0, z1]] of defs) {
 		for (const sx of [-1, 1]) {
+			const key = (sx > 0 ? "L" : "R") + name;
 			const d = hinged(shell, sx * hw, z0, z1, sx, 1.1);
-			const len = z1 - z0;
-			part(box(0.05, waist - sill - 0.04, len - 0.02), body, -sx * 0.025, (waist + sill) / 2 + 0.02, -len / 2, d.pivot);
-			part(box(0.03, 0.04, len - 0.04), body, -sx * 0.02, H - 0.08, -len / 2, d.pivot); // the window frame
-			const gl = part(new THREE.PlaneGeometry(len - 0.08, H - waist - 0.12), GLASS, -sx * 0.02, (waist + H) / 2 - 0.02, -len / 2, d.pivot);
-			gl.rotation.y = Math.PI / 2;
-			part(box(0.02, 0.025, 0.14), CHROME, sx * 0.005, waist - 0.08, -len + 0.18, d.pivot); // the handle
-			doors[(sx > 0 ? "L" : "R") + name] = d;
+			const dk = new Kit({ see: true });
+			const off = at(-sx * hw, 0, -z1);
+			for (const [geo, slot] of doorKits[key] || []) dk.add(geo, off, colour(slot), slot === "matte" ? "matte2" : slot);
+			// the trim panel inside and the handle outside
+			const zm = (z0 + z1) / 2, ym = (S.sill + S.waist) / 2 + 0.05;
+			dk.rbox(sx * (sk.sideX(zm, ym) - 0.07 - hw), ym, zm - z1, 0.025, S.waist - S.sill - 0.22, z1 - z0 - 0.1, 0.01, 0x3a3634, "matte");
+			const hy = S.waist - 0.085, hz = z0 + 0.16;
+			dk.rbox(sx * (sk.sideX(hz, hy) + 0.01 - hw), hy, hz - z1, 0.024, 0.032, 0.16, 0.012, look.chromeHandles ? 0xd8dade : paint, look.chromeHandles ? "chrome" : "paint");
+			d.pivot.add(dk.build());
+			doors[key] = d;
 		}
 	}
 	const wheels = [];
-	for (const x of [-(hw - 0.08), hw - 0.08]) for (const z of [wb / 2 + o.wbOff, -wb / 2 + o.wbOff]) wheels.push(wheel(g, x, r, z, r, 0.22, mat(0xa8a8a8, { metalness: 0.7, roughness: 0.3 })));
-	// wheel arches in black so the tyres sit in the body
-	for (const x of [-hw + 0.01, hw - 0.01]) for (const z of [wb / 2 + o.wbOff, -wb / 2 + o.wbOff]) part(box(0.02, r * 0.9, r * 2.3), dark, x, r + 0.1, z, shell);
-	return { g, shell, doors, wheels, body };
+	for (const sx of [-1, 1]) for (const z of S.axles) wheels.push(roadWheel(g, sx * (hw - (S.tyreW ?? 0.2) / 2 - 0.03), S.r, z, S.r, S.tyreW ?? 0.2, sx, look.wheel ?? "alloy", look.rim ?? 0xb8bcc0));
+	return { g, shell, doors, wheels, sk };
 }
 const SEATED = { hipL: -1.5, hipR: -1.5, hipLz: 0.06, hipRz: -0.06, kneeL: 1.45, kneeR: 1.45, ankleL: 0.05, ankleR: 0.05, shL: -0.5, shR: -0.45, shLz: 0.12, shRz: -0.1, elL: -0.95, elR: -0.9, lean: -0.04, nod: 0.02 };
 export { SEATED };
 
-// A white Toyota Innova-like taxi, yellow plates, as at the Tirupati and Pune taxi stands.
+// A white Toyota Innova Crysta-like taxi with yellow commercial plates, as at the Tirupati and Pune taxi
+// stands: the long bonnet and big chrome grille, swept headlamps, the people-carrier's long glasshouse.
 export function taxi() {
-	const o = { L: 4.58, W: 1.78, H: 1.74, waist: 1.0, sill: 0.32, bonnet: 0.95, screen: 0.75, wb: 2.75, wbOff: 0.05, r: 0.33, paint: 0xf2f2ee, trim: 0x2a2a2c, bPillar: 0.4, frontDoor: [0.42, 1.36], rearDoor: [-0.62, 0.38], frontSeat: 0.72, rearSeat: -0.24, seatY: 0.66 };
-	const c = carBody(o);
-	part(box(0.5, 0.12, 0.2), mat(0xf2c230, { emissive: 0x3a2a00, emissiveIntensity: 0.3 }), 0, o.H + 0.06, -0.2, c.shell); // the "TAXI" roof sign
+	const o = { L: 4.58, W: 1.78, H: 1.74, waist: 1.0, sill: 0.32, r: 0.33, frontDoor: [0.42, 1.04], rearDoor: [-0.62, 0.38], frontSeat: 0.72, rearSeat: -0.24, seatY: 0.66, cabin: -0.62 };
+	const S = { L: o.L, W: o.W, H: o.H, sill: 0.3, waist: o.waist, nose: 0.86, cowl: 1.02, noseBack: 0.22, frontR: 0.16, zA: 1.34, zW: 0.6, zR: -1.98, tail: "hatch", axles: [1.425, -1.325], r: o.r, tyreW: 0.22, gi: 0.07, cornerF: 0.36, cornerR: 0.2, pillars: [[0.37, 0.45, "matte"], [-0.7, -0.6, "matte"], [-9, -1.9, "paint"]] };
+	const c = rideCar(S, o, { paint: 0xf4f4f0, plate: "taxi", grille: "innova", plateY: 0.44, lampW: 0.36, lampH: 0.12, lampIn: 0.27, tailW: 0.2, tailH: 0.24, tailY: 0.9, chromeHandles: true, rim: 0xc4c8cc });
+	// the TAXI light on the roof
+	const k = new Kit();
+	k.rbox(0, o.H + 0.05, -0.2, 0.5, 0.11, 0.17, 0.03, 0xf3c623, "paint");
+	for (const s of [1, -1]) k.sign("taxisign", 0, o.H + 0.05, -0.2 + s * 0.087, 0.44, 0.08, s < 0 ? Math.PI : 0);
+	c.shell.add(k.build());
 	const driver = seatedFigure(41);
 	driver.position.set(-0.38, o.seatY - 0.95 + 0.08, o.frontSeat + 0.08);
 	c.shell.add(driver);
@@ -222,19 +304,39 @@ export function taxi() {
 		hull: { x: o.W / 2, y0: o.sill, y1: o.H, z0: -o.L / 2, z1: o.L / 2 }, roof: o.H, waist: o.waist };
 }
 
-// A white Mahindra Bolero-like pilgrim jeep with a roof rack, luggage and a saffron flag on the bonnet.
+// A white Mahindra Bolero-like pilgrim jeep: the upright box, flat bonnet and chrome slatted grille, black
+// cladding and wheel arches, roof rails with luggage, the spare wheel on the tailgate, a saffron flag.
 export function jeep() {
-	const o = { L: 3.99, W: 1.75, H: 1.9, waist: 1.08, sill: 0.42, bonnet: 1.0, screen: 0.32, wb: 2.68, wbOff: 0.1, r: 0.37, paint: 0xeeeeea, trim: 0x2a2a2c, bPillar: 0.65, frontDoor: [0.68, 1.6], rearDoor: [-0.5, 0.62], frontSeat: 0.95, rearSeat: -0.05, seatY: 0.78 };
-	const c = carBody(o);
-	const trim = mat(0x2a2a2c, { roughness: 0.6 });
-	// the roof rack with luggage, the spare wheel on the tailgate, the flag on the bonnet
-	part(box(1.5, 0.05, 2.0), trim, 0, o.H + 0.08, -0.55, c.shell);
-	part(box(1.2, 0.3, 0.8), mat(0x3a5f8a), -0.05, o.H + 0.26, -0.2, c.shell);
-	part(box(0.9, 0.26, 0.6), mat(0x8f3a1e), 0.1, o.H + 0.24, -1.0, c.shell);
-	const spare = wheel(c.shell, 0, 0.95, -o.L / 2 - 0.12, 0.33, 0.2);
-	spare.rotation.y = Math.PI / 2;
-	part(cyl(0.01, 0.01, 0.5, 6), CHROME, 0.75, o.waist + 0.25, o.L / 2 - 0.1, c.shell);
-	part(new THREE.PlaneGeometry(0.32, 0.2), mat(0xff8a1e, { side: THREE.DoubleSide, emissive: 0x803000, emissiveIntensity: 0.3 }), 0.75, o.waist + 0.4, o.L / 2 - 0.26, c.shell).rotation.y = Math.PI / 2;
+	const o = { L: 3.99, W: 1.75, H: 1.9, waist: 1.08, sill: 0.42, r: 0.37, frontDoor: [0.66, 0.98], rearDoor: [-0.5, 0.62], frontSeat: 0.78, rearSeat: -0.05, seatY: 0.78, cabin: -0.48 };
+	const S = { L: o.L, W: o.W, H: o.H, sill: 0.4, waist: o.waist, nose: 1.1, cowl: 1.13, noseBack: 0.06, frontR: 0.07, zA: 0.995, zW: 0.74, zR: -1.9, tail: "box", axles: [1.44, -1.24], r: o.r, tyreW: 0.23, arch: 0.08, gi: 0.05, cornerF: 0.14, cornerR: 0.1, nLow: 10, nTop: 8, shoulder: 0.58, tumble: 0.04, railR: 0.04, crown: 0.012, screenR: 0.05, rearR: 0.05, pillars: [[0.58, 0.68, "matte"], [-0.56, -0.46, "matte"], [-9, -1.84, "paint"]] };
+	const c = rideCar(S, o, { paint: 0xeeeeea, plate: "jeep", grille: "bolero", lampW: 0.25, lampH: 0.19, lampIn: 0.2, lampY: 0.98, grilleY: 0.97, tailW: 0.16, tailH: 0.34, tailY: 1.0, cladding: true, clad: 0x1c1c1e, wheel: "steel", rim: 0xd0d2d4, mirrorBlack: true });
+	const k = new Kit();
+	const black = 0x1c1c1e;
+	const hw = o.W / 2;
+	// black arch flares and the side steps
+	for (const sx of [-1, 1]) {
+		for (const z of S.axles) archFlare(k, sx * (hw - 0.02), S.r + 0.03, z, c.sk.ra, 0.08, black, "matte", Math.PI * 1.06);
+		k.rbox(sx * (hw - 0.04), S.sill - 0.03, 0.12, 0.14, 0.04, 1.3, 0.015, 0x2a2a2c, "matte");
+	}
+	// a heavy black bumper with the fog lamps, and the bull bar's two uprights
+	k.rbox(0, S.sill + 0.12, o.L / 2 + 0.05, o.W - 0.04, 0.2, 0.14, 0.05, black, "matte");
+	k.rbox(0, S.sill + 0.12, -o.L / 2 - 0.04, o.W - 0.06, 0.18, 0.1, 0.05, black, "matte");
+	// roof rails and the luggage on them, the spare wheel on the tailgate, the flag on the bonnet
+	for (const sx of [-1, 1]) k.rbox(sx * 0.66, o.H + 0.05, -0.6, 0.04, 0.04, 2.3, 0.015, black, "matte");
+	for (const z of [-1.6, -0.6, 0.4]) k.rbox(0, o.H + 0.07, z, 1.36, 0.025, 0.04, 0.01, black, "matte");
+	k.rbox(-0.05, o.H + 0.24, -0.2, 1.2, 0.3, 0.8, 0.06, 0x3a5f8a, "matte");
+	k.rbox(0.1, o.H + 0.22, -1.0, 0.9, 0.26, 0.6, 0.06, 0x8f3a1e, "matte");
+	k.cyl(0.75, o.waist + 0.3, o.L / 2 - 0.12, 0.016, 0.5, 0xd8dade, "chrome", "y", 6);
+	k.add(QUAD, at(0.75, o.waist + 0.45, o.L / 2 - 0.28, 0, Math.PI / 2, 0, 0.32, 0.2, 1), 0xff8a1e, "matte");
+	k.add(QUAD, at(0.75, o.waist + 0.45, o.L / 2 - 0.28, 0, -Math.PI / 2, 0, 0.32, 0.2, 1), 0xff8a1e, "matte");
+	c.shell.add(k.build());
+	const sp = new Kit();
+	wheel(sp, 0, 0, 0, 0.35, 0.2, 1, "steel", 0xd0d2d4, 22);
+	sp.cyl(0, 0, 0, 0.6, 0.16, black, "matte", "x", 22); // its cover
+	const spare = sp.build();
+	spare.position.set(0, 0.98, -o.L / 2 - 0.15);
+	spare.rotation.y = -Math.PI / 2;
+	c.shell.add(spare);
 	const driver = seatedFigure(77);
 	driver.position.set(-0.38, o.seatY - 0.95 + 0.08, o.frontSeat + 0.08);
 	c.shell.add(driver);
@@ -242,38 +344,129 @@ export function jeep() {
 		hull: { x: o.W / 2, y0: o.sill, y1: o.H, z0: -o.L / 2, z1: o.L / 2 }, roof: o.H, waist: o.waist };
 }
 
-// A green and yellow Bajaj three-wheeler: a canvas hood on a frame, open sides, the driver up front on the
-// centre line, a bench across the back for the passengers.
+// ---------- the autorickshaw ----------
+// A Bajaj RE three-wheeler, in metres: the rounded front cowl with its single headlamp over the front wheel
+// and its mudguard, the windscreen, the black canvas hood on its frame with the side curtains rolled up, the
+// handlebar and the meters, the driver's seat on the centre line and the open passenger bench behind, and
+// the rear body over the engine with the spare wheel. Colours: Pune's black and yellow, or Delhi's green and
+// yellow. `see` makes the windscreen see-through (the traveller's own ride).
+export function autoBody(kit, look = {}) {
+	const [lowC, upC] = look.colours || [0x18181a, 0xf2c11c];
+	const black = 0x161618, canvasC = 0x1c1c1e, steel = 0x2a2a2c;
+	// the rear body: a lofted tub from the tail to the cowl, notched over the rear wheels, dipping to the
+	// footwell and the passengers' step, up again behind the bench over the engine
+	const tub = new Outline([[-1.22, 0.42, 0.1], [-1.1, 0.3, 0.06], ...arc(-0.72, 0.25, 0.3, Math.PI, 0, 10).map((p) => [p[0], Math.max(0.3, p[1]), 0]), [0.62, 0.3, 0.04], [0.66, 0.44, 0.03], [-0.3, 0.44, 0.04], [-0.36, 0.6, 0.05], [-0.96, 0.62, 0.05], [-1.02, 0.96, 0.08], [-1.22, 0.94, 0.1]]);
+	const plan = planWidth(0.65, tub.zmin, tub.zmax, 0.15, 0.28);
+	const body = loft(stations(tub.zmin, tub.zmax, 0.05, [-0.42, -1.02]), (z) => {
+		const [yb, yt] = tub.span(z) || [0.3, 0.31];
+		return section(plan(z), yb, yt, yb + (yt - yb) * 0.55, 8, 5, 16);
+	}, (z, j) => (j < 8 || (j >= 13 && z > -0.98) ? "lo" : "up"), { front: "lo", rear: "lo" });
+	for (const [k, geo] of body) kit.add(geo, at(), k === "lo" ? lowC : upC, "paint");
+	// a coloured band along the tub, and the low side panels by the bench
+	for (const sx of [-1, 1]) {
+		kit.rbox(sx * 0.645, 0.72, -0.66, 0.035, 0.22, 0.62, 0.015, upC, "paint");
+		kit.rbox(sx * 0.645, 0.84, -0.66, 0.04, 0.03, 0.64, 0.012, black, "matte");
+	}
+	// the cowl: a U of panel round the front, from the footwell up to the dash, and its top
+	const cowlShape = (r1, r0) => {
+		const s = new THREE.Shape();
+		s.moveTo(-0.46, 0.0);
+		s.lineTo(-0.46, -0.3);
+		s.absellipse(0, -0.3, 0.46, r1, Math.PI, 2 * Math.PI, false);
+		s.lineTo(0.46, 0.0);
+		s.lineTo(0.43, 0.0);
+		s.lineTo(0.43, -0.3);
+		s.absellipse(0, -0.3, 0.43, r0, 0, Math.PI, true);
+		s.lineTo(-0.43, 0.0);
+		return s;
+	};
+	const wall = (y0, y1, c) => {
+		const e = new THREE.ExtrudeGeometry(cowlShape(0.27, 0.24), { depth: y1 - y0, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.012, bevelOffset: -0.012, bevelSegments: 2, curveSegments: 20 });
+		e.rotateX(-Math.PI / 2); // shape y -> -z, depth -> +y
+		kit.add(prep(e), at(0, y0, 0.62), c, "paint");
+	};
+	wall(0.36, 0.72, lowC);
+	wall(0.72, 0.98, upC);
+	const lid = new THREE.Shape();
+	lid.moveTo(-0.46, 0);
+	lid.lineTo(-0.46, -0.3);
+	lid.absellipse(0, -0.3, 0.46, 0.27, Math.PI, 2 * Math.PI, false);
+	lid.lineTo(0.46, 0);
+	const top = new THREE.ExtrudeGeometry(lid, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelOffset: -0.015, bevelSegments: 2, curveSegments: 20 });
+	top.rotateX(-Math.PI / 2);
+	kit.add(prep(top), at(0, 0.98, 0.62), upC, "paint");
+	// the headlamp in its chrome ring on the nose, the indicators, the horn grille, the plate
+	const nz = 0.62 + 0.3 + 0.27;
+	kit.add(CYL(20), at(0, 0.84, nz - 0.01, Math.PI / 2, 0, 0, 0.19, 0.05, 0.19), 0xd8dade, "chrome");
+	kit.lamp(0, 0.84, nz + 0.012, 0.15, 0.15, "head", false, 0xf4f2ea, true);
+	for (const sx of [-1, 1]) kit.rbox(sx * 0.36, 0.94, 0.62 + 0.3 + 0.17, 0.07, 0.04, 0.05, 0.015, 0xf08a1e, "matte", 0, sx * 0.7);
+	kit.plate(look.plate || "auto", 0, 0.6, nz + 0.012, 0.3, 0.08);
+	kit.rbox(0, 0.48, nz - 0.03, 0.3, 0.05, 0.04, 0.015, black, "matte");
+	// the windscreen in its black frame, with the wiper
+	const sy0 = 1.0, sy1 = 1.5, sz0 = 1.0, sz1 = 0.92;
+	kit.add(QUAD, at(0, (sy0 + sy1) / 2, (sz0 + sz1) / 2, -Math.atan2(sz0 - sz1, sy1 - sy0), 0, 0, 0.84, Math.hypot(sy1 - sy0, sz0 - sz1), 1), 0xffffff, "glass");
+	for (const sx of [-1, 1]) kit.add(BOX, at(sx * 0.43, (sy0 + sy1) / 2, (sz0 + sz1) / 2, -Math.atan2(sz0 - sz1, sy1 - sy0), 0, 0, 0.04, 0.52, 0.04), black, "matte");
+	kit.add(BOX, at(0, sy1, sz1, 0, 0, 0, 0.9, 0.04, 0.05), black, "matte");
+	kit.add(BOX, at(0.08, 1.12, 0.985, -0.16, 0, 0.5, 0.012, 0.32, 0.012), 0x111111, "matte");
+	// the hood: black canvas over a steel frame, its sides part way down, the side curtains rolled up
+	const hood = new THREE.Shape();
+	const hx = 0.66, yb = 1.26, yt = 1.72, rr = 0.16;
+	hood.moveTo(-hx, yb);
+	hood.lineTo(-hx, yt - rr);
+	hood.quadraticCurveTo(-hx, yt, -hx + rr, yt);
+	hood.lineTo(hx - rr, yt);
+	hood.quadraticCurveTo(hx, yt, hx, yt - rr);
+	hood.lineTo(hx, yb);
+	hood.lineTo(hx - 0.02, yb);
+	hood.lineTo(hx - 0.02, yt - rr);
+	hood.quadraticCurveTo(hx - 0.02, yt - 0.02, hx - rr, yt - 0.02);
+	hood.lineTo(-hx + rr, yt - 0.02);
+	hood.quadraticCurveTo(-hx + 0.02, yt - 0.02, -hx + 0.02, yt - rr);
+	hood.lineTo(-hx + 0.02, yb);
+	kit.add(longSlab(hood, -1.16, 0.95, 0.04, 8), at(), canvasC, "matte");
+	// the back of the hood, down to the rear body, with its little window
+	kit.rbox(0, 1.33, -1.13, 1.3, 0.78, 0.03, 0.02, canvasC, "matte");
+	kit.add(QUAD, at(0, 1.42, -1.15, 0, Math.PI, 0, 0.5, 0.16, 1), 0xffffff, "glass");
+	for (const sx of [-1, 1]) {
+		kit.cyl(sx * 0.65, yb, -0.1, 0.07, 2.0, canvasC, "matte", "z", 10); // the rolled-up curtain
+		// the frame: the posts by the driver and at the back, the grab rail
+		kit.cyl(sx * 0.6, 1.17, 0.12, 0.03, 0.62, steel, "matte", "y", 8);
+		kit.cyl(sx * 0.62, 1.1, -1.08, 0.03, 0.4, steel, "matte", "y", 8);
+		kit.cyl(sx * 0.42, 1.2, 0.86, 0.03, 0.5, steel, "matte", "y", 8);
+	}
+	kit.cyl(0, 1.24, -0.2, 0.025, 0.8, 0xd8dade, "chrome", "z", 8);
+	// the handlebar, the speedometer and the fare meter on its bracket at the driver's left
+	kit.cyl(0, 1.05, 0.66, 0.025, 0.66, 0xd8dade, "chrome", "x", 8);
+	for (const sx of [-1, 1]) kit.cyl(sx * 0.3, 1.05, 0.66, 0.035, 0.1, black, "matte", "x", 10);
+	kit.cyl(0, 1.0, 0.86, 0.06, 0.14, black, "matte", "y", 8);
+	kit.add(DISC(16), at(0, 1.02, 0.8, -0.9, 0, 0, 0.11), 0xf2f0e6, "matte");
+	kit.rbox(0.36, 1.1, 0.78, 0.16, 0.08, 0.06, 0.012, 0x1a1a1a, "matte");
+	kit.sign("meter", 0.36, 1.1, 0.75, 0.13, 0.05, Math.PI);
+	kit.cyl(0.36, 1.02, 0.78, 0.015, 0.14, steel, "matte", "y", 6);
+	// the seats: the driver's on the centre line, the passengers' bench and its back
+	kit.rbox(0, 0.72, 0.36, 0.44, 0.1, 0.36, 0.04, 0x2a2420, "matte");
+	kit.rbox(0, 0.67, -0.6, 1.1, 0.12, 0.44, 0.05, 0x3a2f28, "matte");
+	kit.rbox(0, 0.92, -0.86, 1.1, 0.44, 0.1, 0.05, 0x3a2f28, "matte", 0.12);
+	kit.rbox(0, 0.86, 0.17, 0.5, 0.26, 0.06, 0.03, 0x2a2420, "matte", 0.1);
+	// tail lamps, the plate, the spare wheel on the back, the silencer
+	for (const sx of [-1, 1]) {
+		kit.rbox(sx * 0.48, 0.74, -1.218, 0.14, 0.09, 0.03, 0.02, 0x1a1a1a, "matte");
+		kit.lamp(sx * 0.48, 0.74, -1.235, 0.11, 0.065, "tail", true);
+	}
+	kit.plate(look.plate || "auto", 0, 0.56, -1.235, 0.3, 0.08, true);
+	kit.cyl(-0.4, 0.36, -1.0, 0.07, 0.5, 0x7a7a7c, "chrome", "z", 10);
+	return kit;
+}
 export function autorickshaw() {
 	const g = new THREE.Group();
-	const green = mat(0x2f8a3a, { metalness: 0.3, roughness: 0.4 }), yellow = mat(0xf0c419, { roughness: 0.7 }), dark = mat(0x222224);
-	const wheels = [wheel(g, 0, 0.23, 1.0, 0.23, 0.11), wheel(g, -0.56, 0.23, -0.72, 0.23, 0.12), wheel(g, 0.56, 0.23, -0.72, 0.23, 0.12)];
-	// the tub: floor, the low sides by the bench, the rear body over the engine, the front cowl and screen
-	part(box(1.24, 0.08, 1.9), dark, 0, 0.36, -0.12, g);
-	for (const x of [-0.6, 0.6]) part(box(0.06, 0.32, 0.75), green, x, 0.54, -0.68, g);
-	part(box(1.28, 0.62, 0.3), green, 0, 0.62, -1.02, g);
-	part(box(0.92, 0.66, 0.36), green, 0, 0.66, 0.98, g);
-	part(box(0.92, 0.1, 0.36), yellow, 0, 1.0, 0.98, g);
-	const ws = part(new THREE.PlaneGeometry(0.88, 0.48), GLASS, 0, 1.28, 0.86, g);
-	ws.rotation.x = -0.12;
-	part(cyl(0.012, 0.012, 0.6, 6), dark, 0, 1.06, 0.62, g).rotation.z = Math.PI / 2; // handlebar
-	// the hood: a yellow canvas roof on a black frame, with its back curtain
-	const hood = part(new THREE.CylinderGeometry(0.66, 0.66, 1.95, 16, 1, true, -Math.PI / 2, Math.PI), yellow, 0, 1.38, -0.12, g);
-	hood.rotation.x = Math.PI / 2;
-	hood.scale.set(1, 1, 0.42);
-	hood.material = hood.material.clone();
-	hood.material.side = THREE.DoubleSide;
-	part(box(1.3, 0.06, 1.98), yellow, 0, 1.4, -0.12, g);
-	for (const z of [0.82, -1.08]) for (const x of [-0.62, 0.62]) part(box(0.035, 1.05, 0.035), dark, x, 0.88, z, g);
-	part(box(1.26, 0.7, 0.03), yellow, 0, 1.0, -1.15, g);
-	// the passengers' bench and the driver's seat
-	part(box(1.08, 0.12, 0.42), SEAT, 0, 0.62, -0.62, g);
-	part(box(1.08, 0.42, 0.08), SEAT, 0, 0.88, -0.86, g);
-	part(box(0.42, 0.1, 0.36), SEAT, 0, 0.72, 0.36, g);
-	part(box(0.04, 0.04, 0.8), CHROME, 0, 1.24, -0.2, g); // the grab rail behind the driver
-	part(new THREE.CircleGeometry(0.07, 12), LIGHT, 0, 0.82, 1.17, g);
-	part(box(0.36, 0.1, 0.02), PLATE, 0, 0.5, -1.18, g);
-	for (const x of [-0.5, 0.5]) part(box(0.1, 0.06, 0.03), TAIL, x, 0.62, -1.18, g);
+	const k = autoBody(new Kit({ see: true }), { colours: [0x18181a, 0xf2c11c], plate: "auto" });
+	// the front wheel's mudguard and fork, under the cowl
+	const fk = new Kit();
+	archFlare(fk, 0, 0.23, 1.0, 0.27, 0.16, 0x18181a, "paint", Math.PI * 0.95);
+	for (const sx of [-1, 1]) fk.add(CYL(8), at(sx * 0.08, 0.5, 0.98, 0.25, 0, 0, 0.04, 0.55, 0.04), 0xb8bcc0, "chrome");
+	k.parts.push(...fk.parts);
+	g.add(k.build());
+	const wheels = [roadWheel(g, 0, 0.23, 1.0, 0.23, 0.11, 1, "auto", 0xc8ccd0), roadWheel(g, -0.56, 0.23, -0.72, 0.23, 0.12, -1, "auto", 0xc8ccd0), roadWheel(g, 0.56, 0.23, -0.72, 0.23, 0.12, 1, "auto", 0xc8ccd0)];
 	const driver = seatedFigure(23, { reach: 1.0, knee: 1.2 });
 	driver.position.set(0, 0.78 - 0.95 + 0.05, 0.42);
 	g.add(driver);
@@ -283,7 +476,7 @@ export function autorickshaw() {
 
 // ---------- the train ----------
 // Carriage windows glow after dark; main.js sets emissiveIntensity from the hour.
-export const WINDOW_GLOW = [];
+export const WINDOW_GLOW = [...LAMPS];
 // Indian Railways rolling stock, in metres along the coupled length (pitch), with the body's own length,
 // the bogie centres, the wheelbase, wheel radius, floor height, and where the doors are.
 export const STOCK = {
@@ -483,19 +676,19 @@ function tpl(g) {
 }
 const TB = tpl(new THREE.BoxGeometry(1, 1, 1)), TC = tpl(new THREE.CylinderGeometry(0.5, 0.5, 1, 20)), TC8 = tpl(new THREE.CylinderGeometry(0.5, 0.5, 1, 8));
 const _e = new THREE.Euler(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3();
-const at = (x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(_v.set(x, y, z), _q.setFromEuler(_e.set(rx, ry, rz)), _s.set(sx, sy, sz));
+const atT = (x, y, z, sx, sy, sz, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(_v.set(x, y, z), _q.setFromEuler(_e.set(rx, ry, rz)), _s.set(sx, sy, sz));
 class Pieces {
 	constructor() {
 		this.b = new Batch();
 	}
 	box(x, y, z, w, h, d, c, rx, ry, rz) {
-		this.b.add(TB, at(x, y, z, w, h, d, rx, ry, rz), c);
+		this.b.add(TB, atT(x, y, z, w, h, d, rx, ry, rz), c);
 		return this;
 	}
 	// a cylinder of diameter dm and length l, along x ("x"), y or z
 	cyl(x, y, z, dm, l, c, axis = "y", fine = true) {
 		const r = axis === "x" ? [0, 0, Math.PI / 2] : axis === "z" ? [Math.PI / 2, 0, 0] : [0, 0, 0];
-		this.b.add(fine ? TC : TC8, at(x, y, z, dm, l, dm, ...r), c);
+		this.b.add(fine ? TC : TC8, atT(x, y, z, dm, l, dm, ...r), c);
 		return this;
 	}
 	mesh(m = METAL) {
