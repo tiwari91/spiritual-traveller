@@ -126,6 +126,8 @@ async function init() {
 		}
 		else if (i === 0) music.ambient(key);
 	}, onExit: (key) => {
+		// out of the temple, the rituals are over: Krishna Das fades out and the temple's quiet bed returns
+		kd.stop(1.5);
 		music.ambient(key);
 		renderer.setSize(innerWidth, innerHeight, false);
 		$("enter").innerHTML = "Go inside again <span>the rituals play by themselves (E)</span>";

@@ -70,6 +70,9 @@ export class KDMusic {
 		this.muting = false; // true while the synth is muted for us
 		this.buttons = [];
 		this.token = 0;
+		// YouTube's terms do not allow its audio with the video hidden, so the track only plays while the
+		// card is expanded; folded, it is a small pill and the temple's own music plays instead
+		this.expanded = false;
 		if (audio && audio.onToggle) audio.onToggle((on) => this.onSound(on));
 	}
 	static get TRACKS() {
@@ -132,6 +135,10 @@ export class KDMusic {
 	async start() {
 		const key = this.key, t = TRACKS[key];
 		if (!t || this.mode !== "kd" || !this.audio.on) return;
+		if (!this.expanded) {
+			this.showPill(t);
+			return;
+		}
 		if (this.state === "playing" && this.loaded === key) return;
 		if (this.state === "loading" && this.want === key) return;
 		const my = ++this.token;
@@ -281,9 +288,20 @@ export class KDMusic {
 		c.setAttribute("aria-label", "Aarti music");
 		c.innerHTML = `<div class="kd-video"><div class="kd-slot"></div></div>
 			<div class="kd-credit"><span class="kd-label">Music:</span> <a class="kd-artist" href="${KD_SITE}" target="_blank" rel="noopener">Krishna Das</a>, <span class="kd-title"></span> (<a class="kd-link" target="_blank" rel="noopener">official video</a>)<span class="kd-hint"> · tap the video to play</span></div>
-			<button class="kd-close" type="button" aria-label="Stop Krishna Das and play the temple music" title="Stop, and play the temple music">×</button>`;
+			<button class="kd-close" type="button" aria-label="Fold away Krishna Das and play the temple music" title="Fold away, and play the temple music">–</button>
+			<button class="kd-pill" type="button" aria-label="Listen to Krishna Das"><span class="kd-note">♪</span> <span><b>Krishna Das</b> <span class="kd-pill-title"></span></span><span class="kd-open">Listen ▸</span></button>`;
 		this.slot = c.querySelector(".kd-slot");
-		c.querySelector(".kd-close").addEventListener("click", () => this.stop(0.6));
+		c.querySelector(".kd-close").addEventListener("click", () => {
+			this.expanded = false;
+			const k = this.key;
+			this.halt(0.6);
+			this.key = k;
+			if (TRACKS[k]) this.showPill(TRACKS[k]);
+		});
+		c.querySelector(".kd-pill").addEventListener("click", () => {
+			this.expanded = true;
+			this.start();
+		});
 		this.parent.appendChild(c);
 		return c;
 	}
@@ -293,10 +311,17 @@ export class KDMusic {
 		const a = c.querySelector(".kd-link");
 		a.href = watchUrl(t.id);
 		c.classList.toggle("kd-playing", playing);
+		c.classList.remove("kd-folded");
 		c.classList.add("show");
+	}
+	showPill(t) {
+		const c = this.card;
+		c.querySelector(".kd-pill-title").textContent = `‘${t.title}’`;
+		c.classList.remove("kd-playing", "kd-tap");
+		c.classList.add("show", "kd-folded");
 	}
 	hideCard() {
 		if (!this._card) return;
-		this._card.classList.remove("show", "kd-tap", "kd-playing");
+		this._card.classList.remove("show", "kd-tap", "kd-playing", "kd-folded");
 	}
 }
