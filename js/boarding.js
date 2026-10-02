@@ -1093,19 +1093,24 @@ Object.assign(Journey.prototype, {
 		d.open(k);
 		const pos = this.coachPt(r, S.W / 2 - 0.17, S.floor, d.z - sg * 0.05);
 		const grip = this.coachPt(r, S.W / 2 + 0.07, S.floor + 1.08, d.z + S.doorW / 2 + 0.06);
-		this.tvSet(pos, 1.0, "idle", DOOR, 1, { quat: c.group.quaternion, diya: false, vis: k > 0.3, reachL: grip });
-		// the camera: alongside the line, then close at the door, then ahead looking back along the train
+		// the traveller rides at the open door, always in view, holding the grab rail
+		this.tvSet(pos, 1.0, "idle", DOOR, 1, { quat: c.group.quaternion, diya: false, vis: true, reachL: grip });
+		// every shot is framed on the traveller in the doorway: close beside the door, from a little ahead
+		// along the coach with the train curving behind, and from outside level with the door
 		const h = c.group.rotation.y;
 		const shot = this.halt ? 3 : Math.floor(this.app.t / 13) % 3;
-		if (shot === 0) {
-			// alongside the line, from the open side away from the road
-			const m = this.coachPt(r, 0, 2.2, 0);
-			this.cam = { target: m, yaw: h - Math.PI / 2 - 0.3, pitch: 0.15, dist: 14 };
-		} else if (shot === 1) this.cam = { target: pos.clone().add(new THREE.Vector3(0, 0.3, 0)), yaw: h + 0.26, pitch: 0.08, dist: 3.2 };
-		else if (shot === 2) {
-			const lc = railAt(r.rail, r.a - 8, {});
-			this.cam = { target: new THREE.Vector3(lc.x, lc.y + 0.8, lc.z), yaw: h - 0.75, pitch: 0.3, dist: 26 };
-		} else this.cam = { target: pos.clone().add(new THREE.Vector3(0, 0.22, 0)), yaw: h + 0.16, pitch: 0.03, dist: 4.6 }; // at a halt, along the platform under the canopy
+		const me = pos.clone().add(new THREE.Vector3(0, 0.3, 0));
+		// cameras sit outside the doorway, on the door's own side of the coach (local +x), so the open door
+		// and the traveller standing in it face the lens
+		const from = (out, along, up) => {
+			const q = this.coachPt(r, S.W / 2 + out, S.floor + up, d.z + sg * along);
+			const dx = q.x - me.x, dy = q.y - me.y, dz = q.z - me.z, dist = Math.hypot(dx, dy, dz);
+			return { target: me, yaw: Math.atan2(dx, dz), pitch: Math.asin(dy / dist), dist };
+		};
+		if (shot === 0) this.cam = from(2.6, 1.6, 0.5);
+		else if (shot === 1) this.cam = from(1.2, 0.9, 0.35);
+		else if (shot === 2) this.cam = from(3.6, 4.5, 1.4);
+		else this.cam = { target: pos.clone().add(new THREE.Vector3(0, 0.22, 0)), yaw: h + 0.16, pitch: 0.03, dist: 4.6 }; // at a halt, along the platform under the canopy
 	},
 	drive(dt, t, dist) {
 		const tv = this.tv, tr = this.traveller, J = tr.J;

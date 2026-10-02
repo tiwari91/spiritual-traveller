@@ -392,11 +392,40 @@ function cameraGoal() {
 	}
 	return g;
 }
+const occRay = new THREE.Raycaster(), occDir = new THREE.Vector3();
+// Distance from the traveller towards the camera to the first solid thing in the way, or null.
+function occlusion(to) {
+	const from = rig.target, d = to.distanceTo(from);
+	occDir.subVectors(to, from).normalize();
+	occRay.set(from, occDir);
+	occRay.camera = camera; // sprites need it to be tested at all
+	occRay.near = 0.25;
+	occRay.far = d;
+	const solid = [roads.group, scenery.group, ...landmarks.map((l) => l.root)];
+	if (journey && journey.rake) for (const c of journey.rake.cars || []) solid.push(c.group);
+	const hits = occRay.intersectObjects(solid, true);
+	for (const h of hits) {
+		const o = h.object, m = o.material;
+		if (!o.visible || o.isSprite || o.isPoints || o.isLine) continue;
+		if (m && (m.transparent && m.opacity < 0.6)) continue;
+		// skip anything the traveller is standing in or on (the coach they ride, the vehicle)
+		let p = o, mine = false;
+		while (p) {
+			if (p === traveller.group) mine = true;
+			p = p.parent;
+		}
+		if (mine) continue;
+		return h.distance - 0.3;
+	}
+	return null;
+}
 function updateCamera(dt) {
 	const g = cameraGoal();
-	const yaw = g.yaw + rig.userYaw, pitch = clamp(g.pitch + rig.userPitch, -0.05, 1.45), dist = g.dist * rig.zoom;
+	const yaw = g.yaw + rig.userYaw + (rig.swing || 0), pitch = clamp(g.pitch + rig.userPitch, -0.05, 1.45), dist = g.dist * rig.zoom;
 	const k = rig.snap ? 1 : 1 - Math.exp(-dt * 1.8), ky = rig.snap ? 1 : 1 - Math.exp(-dt * 1.1);
-	rig.target.lerp(g.target, rig.snap ? 1 : 1 - Math.exp(-dt * 4));
+	// while travelling the camera stays locked on the moving traveller (a slow ease would fall behind a
+	// train or a car and leave them at the edge of the frame); elsewhere it eases
+	rig.target.lerp(g.target, rig.snap ? 1 : 1 - Math.exp(-dt * (app.state === "travel" ? 25 : 4)));
 	rig.yaw = angLerp(rig.yaw, yaw, ky);
 	rig.pitch = lerp(rig.pitch, pitch, k);
 	rig.dist = Math.exp(lerp(Math.log(rig.dist), Math.log(dist), k));
@@ -421,6 +450,33 @@ function updateCamera(dt) {
 		rig.lift = lerp(rig.lift || 0, lift, 1 - Math.exp(-dt * 4));
 		camera.position.y += rig.lift;
 	} else rig.lift = 0;
+	// nothing solid between the camera and the traveller: if a wall, a coach side, a house or a tree is in
+	// the way, the camera comes in to just in front of it (and eases back out once the view is clear)
+	if (app.state === "travel" && rig.dist < 40) {
+		const d = camera.position.distanceTo(rig.target);
+		if (app.frames % 3 === 0) rig.block = occlusion(camera.position);
+		// hard against a wall, coming in close does not help: swing round to whichever side is open
+		if (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5) {
+			let best = rig.swing || 0, bestD = rig.block;
+			for (const a of [0.9, -0.9, 1.8, -1.8, Math.PI]) {
+				const yw = rig.yaw + a, cp = Math.cos(rig.pitch);
+				const q = new THREE.Vector3(rig.target.x + Math.sin(yw) * cp * d, rig.target.y + Math.sin(rig.pitch) * d, rig.target.z + Math.cos(yw) * cp * d);
+				const c = occlusion(q) ?? Infinity;
+				if (c > bestD + 0.5) {
+					best = (rig.swing || 0) + a;
+					bestD = c;
+				}
+			}
+			rig.swing = best;
+		} else if (app.frames % 12 === 0 && rig.block == null) rig.swing = (rig.swing || 0) * 0.98;
+		const want = rig.block ?? 1e6;
+		const was = Number.isFinite(rig.clear) ? rig.clear : 1e6;
+		rig.clear = want < was ? want : lerp(was, want, 1 - Math.exp(-dt * 2));
+		if (rig.clear < d) camera.position.lerp(rig.target, 1 - Math.max(0.35, rig.clear) / d);
+	} else {
+		rig.clear = undefined;
+		rig.swing = 0;
+	}
 	camera.lookAt(rig.target);
 	// keep the shrine clear of the darshan panel
 	const open = app.state === "darshan";
