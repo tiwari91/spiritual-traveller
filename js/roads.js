@@ -17,8 +17,21 @@ const KIND = {
 	hill: { paved: 5.5, shoulder: 1.2, lift: 0.05 },
 	trek: { paved: 2.6, shoulder: 0.3, lift: 0.04 },
 };
-const RAIL_OFFSET = 3.4; // world units to the right of the road
+const RAIL_OFFSET = 3.9; // world units to the right of the road
+const STATION_OFFSET = 6.5; // at a station, room for the platform, the building and its forecourt
 const RAIL_BED = 5.6; // metres
+// Broad gauge, 1,676 mm. Heights are above the formation (the line's own level, in world units): the rail
+// head, a high-level platform 840 mm above the rail, the contact wire 5.5 m above it.
+export const RAIL = {
+	gauge: 1.676 * M,
+	top: 0.12,
+	platform: 0.12 + 0.84 * M,
+	wire: 0.12 + 5.5 * M,
+	edge: 1.75 * M, // platform edge from the track's centre
+	platW: 1.3, // platform width
+	platLen: 44, // platform length, room for a locomotive and five coaches
+	bed: RAIL_BED * M,
+};
 
 // Which landscape a point is in.
 export function region(lon, lat) {
@@ -397,6 +410,224 @@ function separate(pts, roads, need, world) {
 	}
 	return pts;
 }
+// ---------- the railway line ----------
+// Laplacian smoothing of a polyline (ends held), carrying the route distance s along so it stays monotonic.
+function smoothLine(pts, passes, keepS = false) {
+	const n = pts.length;
+	if (n < 3) return;
+	const X = new Float64Array(n), Z = new Float64Array(n), S = new Float64Array(n);
+	for (let i = 0; i < n; i++) (X[i] = pts[i].x), (Z[i] = pts[i].z), (S[i] = pts[i].s);
+	const x2 = new Float64Array(n), z2 = new Float64Array(n), s2 = new Float64Array(n);
+	for (let k = 0; k < passes; k++) {
+		x2[0] = X[0], z2[0] = Z[0], s2[0] = S[0], x2[n - 1] = X[n - 1], z2[n - 1] = Z[n - 1], s2[n - 1] = S[n - 1];
+		for (let i = 1; i < n - 1; i++) {
+			x2[i] = (X[i - 1] + 2 * X[i] + X[i + 1]) / 4;
+			z2[i] = (Z[i - 1] + 2 * Z[i] + Z[i + 1]) / 4;
+			s2[i] = (S[i - 1] + 2 * S[i] + S[i + 1]) / 4;
+		}
+		X.set(x2), Z.set(z2);
+		if (!keepS) S.set(s2);
+	}
+	for (let i = 0; i < n; i++) (pts[i].x = X[i]), (pts[i].z = Z[i]), (pts[i].s = S[i]);
+}
+function tangents(pts, k = 1) {
+	for (let i = 0; i < pts.length; i++) {
+		const a = pts[Math.max(0, i - k)], b = pts[Math.min(pts.length - 1, i + k)];
+		const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+		pts[i].dx = (b.x - a.x) / l;
+		pts[i].dz = (b.z - a.z) / l;
+	}
+}
+// Even spacing along the line, so the track's curvature (and the train on it) is smooth everywhere.
+function resample(pts, step) {
+	const out = [pts[0]];
+	let acc = 0;
+	for (let i = 1; i < pts.length; i++) {
+		const a = pts[i - 1], b = pts[i];
+		let seg = Math.hypot(b.x - a.x, b.z - a.z), t0 = 0;
+		while (acc + seg * (1 - t0) >= step) {
+			const t = t0 + (step - acc) / seg;
+			out.push({ x: lerp(a.x, b.x, t), z: lerp(a.z, b.z, t), s: lerp(a.s, b.s, t) });
+			t0 = t;
+			acc = 0;
+		}
+		acc += seg * (1 - t0);
+	}
+	const l = pts[pts.length - 1];
+	if (acc > step * 0.3) out.push({ x: l.x, z: l.z, s: l.s });
+	return out;
+}
+// The track's centre line: the route smoothed into wide curves, set off to the right of the road (further at a
+// station, where `bump` is 1), then pushed clear of every road it runs beside and smoothed again.
+function railLine(route, world, s0, s1, roads, bump) {
+	let pts = [];
+	for (let s = s0; s <= s1 + 1e-6; s += STEP) {
+		const c = route.at(s, {});
+		pts.push({ s, x: c.x, z: c.z });
+	}
+	const raw = pts.map((p) => ({ x: p.x, z: p.z }));
+	smoothLine(pts, 700);
+	tangents(pts, 2);
+	// where the smoothing cut inside a corner that bulges towards the line's side, stand off further by as much,
+	// so the line swings wide round the outside of the bend instead of hugging the road's corner
+	const extra = pts.map((p, i) => Math.max(0, (raw[i].x - p.x) * -p.dz + (raw[i].z - p.z) * p.dx));
+	for (let pass = 0; pass < 120; pass++) for (let i = 1; i < extra.length - 1; i++) extra[i] = Math.max(extra[i] * 0.98, (extra[i - 1] + 2 * extra[i] + extra[i + 1]) / 4);
+	for (let pass = 0; pass < 60; pass++) for (let i = 1; i < extra.length - 1; i++) extra[i] = (extra[i - 1] + 2 * extra[i] + extra[i + 1]) / 4;
+	pts.forEach((p, i) => {
+		const o = RAIL_OFFSET + (STATION_OFFSET - RAIL_OFFSET) * bump(p.s) + extra[i];
+		p.x += -p.dz * o;
+		p.z += p.dx * o;
+	});
+	const hash = new Map();
+	for (const r of roads) for (const q of r) {
+		const k = Math.floor(q.x / 4) * 100003 + Math.floor(q.z / 4);
+		if (!hash.has(k)) hash.set(k, []);
+		hash.get(k).push(q);
+	}
+	const half = (q) => (KIND[q.kind].paved / 2 + KIND[q.kind].shoulder) * M;
+	const push = (relax = 0) => {
+		tangents(pts, 2);
+		for (const p of pts) {
+			const need = 2.1 - relax + (STATION_OFFSET - RAIL_OFFSET) * bump(p.s) * (1 - relax);
+			const cx = Math.floor(p.x / 4), cz = Math.floor(p.z / 4);
+			for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+				for (const q of hash.get((cx + i) * 100003 + (cz + j)) || []) {
+					const dx = p.x - q.x, dz = p.z - q.z;
+					const across = -dx * q.dz + dz * q.dx, along = dx * q.dx + dz * q.dz;
+					const min = need + half(q);
+					if (Math.abs(along) > STEP * 1.5 || Math.abs(across) >= min) continue;
+					if (Math.abs(p.dx * q.dx + p.dz * q.dz) < 0.6) continue; // a crossing: leave it for a bridge
+					// the line keeps to the right of its own road; any other road it is pushed off whichever side it is on
+					const sg = Math.abs(q.s - p.s) < 25 ? 1 : across >= 0 ? 1 : -1;
+					const d = sg * min - across;
+					p.x += -q.dz * d;
+					p.z += q.dx * d;
+				}
+			}
+		}
+	};
+	for (let round = 0; round < 8; round++) {
+		push();
+		smoothLine(pts, 60);
+	}
+	// then ease out every curve still tighter than a coach can take (about 50 m), working only on those bends
+	const RMIN = 16, n = pts.length;
+	for (let iter = 0; iter < 80; iter++) {
+		const flag = new Uint8Array(n);
+		let any = false;
+		for (let i = 5; i < n - 5; i++) {
+			const a = pts[i - 5], b = pts[i], c = pts[i + 5];
+			const ax = b.x - a.x, az = b.z - a.z, bx = c.x - b.x, bz = c.z - b.z;
+			const cr = Math.abs(ax * bz - az * bx), r = (Math.hypot(ax, az) * Math.hypot(bx, bz) * Math.hypot(c.x - a.x, c.z - a.z)) / (2 * cr + 1e-12);
+			if (r < RMIN) {
+				any = true;
+				for (let k = Math.max(1, i - 14); k <= Math.min(n - 2, i + 14); k++) flag[k] = 1;
+			}
+		}
+		if (!any) break;
+		for (let pass = 0; pass < 30; pass++) {
+			for (let i = 1; i < n - 1; i++) {
+				if (!flag[i]) continue;
+				const p = pts[i];
+				p.x = (pts[i - 1].x + 2 * p.x + pts[i + 1].x) / 4;
+				p.z = (pts[i - 1].z + 2 * p.z + pts[i + 1].z) / 4;
+			}
+		}
+		// the bends may come a little nearer the road than the straight runs do
+		push(0.9);
+	}
+	smoothLine(pts, 3);
+	pts = resample(pts, STEP);
+	smoothLine(pts, 6, true);
+	tangents(pts, 1);
+	for (const p of pts) {
+		const g = toGeo(p.x, p.z);
+		p.lon = g.lon;
+		p.lat = g.lat;
+		p.ground = world.height(p.x, p.z);
+		p.y = p.ground;
+		p.kind = "nh";
+		p.region = region(g.lon, g.lat);
+	}
+	return pts;
+}
+// Distance along the track (world units), the train's own measure.
+function arcLength(pts) {
+	let a = 0;
+	pts[0].a = 0;
+	for (let i = 1; i < pts.length; i++) {
+		a += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+		pts[i].a = a;
+	}
+	pts.length && (pts.A = a);
+}
+function search(pts, key, v) {
+	let lo = 0, hi = pts.length - 2;
+	while (lo < hi) {
+		const mid = (lo + hi + 1) >> 1;
+		if (pts[mid][key] <= v) lo = mid;
+		else hi = mid - 1;
+	}
+	return Math.max(0, lo);
+}
+export function sToA(pts, s) {
+	const i = search(pts, "s", s), a = pts[i], b = pts[i + 1];
+	return lerp(a.a, b.a, clamp((s - a.s) / (b.s - a.s || 1), 0, 1));
+}
+export function aToS(pts, x) {
+	const i = search(pts, "a", x), a = pts[i], b = pts[i + 1];
+	return lerp(a.s, b.s, clamp((x - a.a) / (b.a - a.a || 1), 0, 1));
+}
+// The formation level: a smooth gradient over the ground (on low embankments where the ground dips), up onto
+// each bridge deck, never buried.
+function railProfile(pts, world) {
+	const n = pts.length;
+	const base = new Float64Array(n);
+	for (let i = 0; i < n; i++) {
+		const p = pts[i];
+		const l = { x: p.x + p.dz * 0.6, z: p.z - p.dx * 0.6 }, r = { x: p.x - p.dz * 0.6, z: p.z + p.dx * 0.6 };
+		const g = Math.max(p.ground, world.height(l.x, l.z) - 0.05, world.height(r.x, r.z) - 0.05);
+		base[i] = p.bridge > 0.02 ? Math.max(p.y, g * (1 - p.bridge)) : g;
+	}
+	// no steeper than about 1 in 14 (the relief here is exaggerated many times): over a hill the line climbs on
+	// an embankment from well back, rather than up the slope
+	const G = 0.07;
+	for (let i = 1; i < n; i++) base[i] = Math.max(base[i], base[i - 1] - G * (pts[i].a - pts[i - 1].a));
+	for (let i = n - 2; i >= 0; i--) base[i] = Math.max(base[i], base[i + 1] - G * (pts[i + 1].a - pts[i].a));
+	let y = Float64Array.from(base);
+	const y2 = new Float64Array(n);
+	for (let it = 0; it < 260; it++) {
+		for (let i = 0; i < n; i++) y[i] = Math.max(y[i], base[i]);
+		// free ends: the line runs level into its buffer stops rather than tipping up or down at them
+		y2[0] = (y[0] + y[1]) / 2;
+		y2[n - 1] = (y[n - 2] + y[n - 1]) / 2;
+		for (let i = 1; i < n - 1; i++) y2[i] = (y[i - 1] + 2 * y[i] + y[i + 1]) / 4;
+		y.set(y2);
+	}
+	// a last pure smoothing, so the gradient changes as gently as a railway's does (no kinks left by the envelope)
+	for (let it = 0; it < 900; it++) {
+		for (let i = 1; i < n - 1; i++) y2[i] = (y[i - 1] + 2 * y[i] + y[i + 1]) / 4;
+		y2[0] = (y[0] + y[1]) / 2;
+		y2[n - 1] = (y[n - 2] + y[n - 1]) / 2;
+		y.set(y2);
+	}
+	// wherever the smoothing still dipped below the ground or a deck, lift the line gently over a wide stretch
+	const d = new Float64Array(n), d2 = new Float64Array(n);
+	for (let i = 0; i < n; i++) d[i] = Math.max(0, base[i] - y[i]);
+	for (let i = 0; i < n; i++) {
+		let m = 0;
+		for (let k = Math.max(0, i - 40); k <= Math.min(n - 1, i + 40); k++) m = Math.max(m, d[k]);
+		d2[i] = m;
+	}
+	for (let it = 0; it < 500; it++) {
+		for (let i = 1; i < n - 1; i++) d[i] = (d2[i - 1] + 2 * d2[i] + d2[i + 1]) / 4;
+		d[0] = (d2[0] + d2[1]) / 2;
+		d[n - 1] = (d2[n - 2] + d2[n - 1]) / 2;
+		d2.set(d);
+	}
+	for (let i = 0; i < n; i++) pts[i].y = y[i] + d2[i] + 0.01;
+}
+
 // Break a path into separate runs wherever ok(p) fails, so no straight piece jumps across the gap.
 function split(pts, ok) {
 	const runs = [];
@@ -443,7 +674,6 @@ export class Roads {
 		// stretches of road and rail; the return legs reuse the road they came up, so it is not drawn twice
 		this.roadRuns = [[0.4, ch[0].s1 - 2.8], [ch[1].s0 + 2.8, ch[1].s1 - 3.2], [A.tirupatiOut, A.gauri], [A.rudraBack, ch[3].s1 - 2.6]];
 		this.trekRun = [A.gauri, ch[2].s1 - 3.2];
-		this.railRuns = [[A.pune + 2.5, A.tirupatiIn], [A.tirupatiOut, A.rishikesh]];
 		this.rivers = riverLines();
 		// Roads stop well short of each temple, at a bus stand; the last stretch is a pilgrim path on foot.
 		this.shrinePos = route.chapters.map((c) => route.at(c.s1, {}));
@@ -473,26 +703,47 @@ export class Roads {
 			}
 		});
 		this.trek = bridges(samplePath(route, world, this.trekRun[0], this.trekRun[1], 0, { kind: "trek" }), this.rivers, world, 0.5);
-		// The railway: kept off the roads it runs beside, carried over the roads it crosses, and split
-		// wherever it would pass a shrine (Tirupati station is only a few units below Tirumala here).
+		// The railway: a smooth line of gentle curves beside the road, kept off the roads it runs beside,
+		// carried over the roads it crosses, clear of every shrine, and swung out from the road at each
+		// station so the platform, the station building and its forecourt fit between the two.
+		this.railRuns = [[A.pune - 20, A.tirupatiIn], [A.tirupatiOut, A.rishikesh + 4]];
 		const shrines = route.chapters.map((c) => route.at(c.s1, {}));
-		const clear = (p) => shrines.every((w) => Math.hypot(p.x - w.x, p.z - w.z) > 10);
+		const clear = (p) => shrines.every((w) => Math.hypot(p.x - w.x, p.z - w.z) > 10.5);
 		const roadLines = [...this.roads, this.trek, ...this.walks].map((pts) => ({ pts, w: (KIND[pts[0]?.kind || "nh"].paved + 2 * KIND[pts[0]?.kind || "nh"].shoulder) * M, over: true }));
+		const alongside = [...this.roads, this.trek, ...this.walks];
 		this.rails = [];
 		this.railRuns.forEach(([a, b], leg) => {
-			const pts = separate(samplePath(route, world, a, b, RAIL_OFFSET, { kind: "nh" }), [...this.roads, this.trek, ...this.walks], (RAIL_BED / 2) * M + 2.2, world);
-			for (const run of split(pts, clear)) {
-				const r = bridges(run, [...this.rivers, ...roadLines], world, 0.9, 5);
-				r.leg = leg;
-				this.rails.push(r);
+			// a first pass finds where the line can run and where its stations stand, the second swings it out at them
+			let line = null, plan = null;
+			for (let pass = 0; pass < 2; pass++) {
+				const pts = railLine(route, world, a, b, alongside, plan ? (s) => plan.bump(s) : () => 0);
+				line = split(pts, clear).sort((x, y) => y.length - x.length)[0];
+				if (!line) break;
+				arcLength(line);
+				bridges(line, [...this.rivers, ...roadLines], world, 0.9, 16);
+				if (!plan) plan = this.planStations(line, leg);
 			}
+			if (!line) return;
+			// the line ends a little beyond each terminal's platform, at a buffer stop
+			const first = plan.stops[0], end = plan.stops.at(-1);
+			const sa = aToS(line, sToA(line, first.s) - RAIL.platLen / 2 - 3.2), sb = aToS(line, sToA(line, end.s) + RAIL.platLen / 2 + 3.2);
+			line = line.filter((p) => p.s >= sa && p.s <= sb);
+			arcLength(line);
+			railProfile(line, world);
+			line.leg = leg;
+			line.stops = plan.stops.map((st) => this.layoutStation(line, Object.assign({}, st, { a: sToA(line, st.s) })));
+			this.rails.push(line);
 		});
-		// where the train can actually run, for the traveller's choice of transport
-		const ofLeg = (l) => this.rails.filter((r) => r.leg === l);
-		this.at.trainFrom = ofLeg(0)[0]?.[0].s ?? A.pune;
-		this.at.trainTo = ofLeg(0).at(-1)?.at(-1).s ?? A.tirupatiIn;
-		this.at.trainFrom2 = ofLeg(1)[0]?.[0].s ?? A.tirupatiOut;
-		this.at.trainTo2 = ofLeg(1).at(-1)?.at(-1).s ?? A.rishikesh;
+		// where the traveller changes onto and off the train: at each terminal station's forecourt
+		const ofLeg = (l) => this.rails.find((r) => r.leg === l);
+		this.at.trainFrom = ofLeg(0) ? ofLeg(0).stops[0].sRoad : A.pune;
+		this.at.trainTo = ofLeg(0) ? ofLeg(0).stops.at(-1).sRoad : A.tirupatiIn;
+		this.at.trainFrom2 = ofLeg(1) ? ofLeg(1).stops[0].sRoad : A.tirupatiOut;
+		this.at.trainTo2 = ofLeg(1) ? ofLeg(1).stops.at(-1).sRoad : A.rishikesh;
+		this.stations = this.rails.flatMap((r) => r.stops);
+		// the short autorickshaw hops: across Pune to the station, and from Tirupati station to Alipiri
+		this.at.puneCity = this.at.trainFrom - 14;
+		this.at.alipiri = lerp(this.at.trainTo, ch[1].s1 - 14, 0.5);
 		for (const p of this.roads) this.buildRoad(p);
 		this.buildRoad(this.trek);
 		for (const p of this.walks) {
@@ -501,7 +752,7 @@ export class Roads {
 		}
 		for (const st of this.stands) this.busStand(st);
 		for (const p of this.rails) this.buildRail(p);
-		this.buildStations();
+		for (const st of this.stations) this.station(st);
 	}
 
 	// ---------- queries ----------
@@ -566,6 +817,18 @@ export class Roads {
 		for (const w of this.walks) for (const p of w) put(p.x, p.z, 1.3);
 		for (const st of this.stands || []) put(st.x, st.z, 3.2);
 		for (const pts of this.rails) for (const p of pts) put(p.x, p.z, (RAIL_BED / 2) * M + 0.3);
+		// each station: the platform, the building and the forecourt out to the road
+		const q = {};
+		for (const st of this.stations || []) {
+			for (let v = -st.len / 2 - 1; v <= st.len / 2 + 1; v += 0.8) {
+				st.at(RAIL.edge + RAIL.platW / 2, v, q);
+				put(q.x, q.z, RAIL.platW / 2 + 0.5);
+			}
+			for (let v = -7; v <= 7; v += 0.8) for (const u of [2.4, 3.4, 4.3]) {
+				st.at(u, v, q);
+				put(q.x, q.z, 0.75);
+			}
+		}
 		for (const r of this.rivers) for (let i = 0; i < r.pts.length - 1; i++) {
 			const a = r.pts[i], b = r.pts[i + 1];
 			for (let t = 0; t < 1; t += 0.34) put(lerp(a.x, b.x, t), lerp(a.z, b.z, t), r.w / 2 + 0.6);
@@ -785,122 +1048,486 @@ export class Roads {
 		}
 		this.group.add(g);
 	}
+	// ---------- the railway ----------
+	// Where each line's stations stand: a terminal at each end, with the whole train on the platform and a buffer
+	// stop behind it, and halts where the line passes the towns, each platform clear of any bridge.
+	planStations(line, leg) {
+		const L = RAIL.platLen, A = line.A;
+		// a platform wants straight track and no bridge under it: the cost of standing one centred at ac
+		const bend = line.map((p, i) => {
+			const a = line[Math.max(0, i - 6)], c = line[Math.min(line.length - 1, i + 6)];
+			const ax = p.x - a.x, az = p.z - a.z, bx = c.x - p.x, bz = c.z - p.z;
+			const cr = Math.abs(ax * bz - az * bx);
+			return cr < 1e-9 ? 0 : (2 * cr) / (Math.hypot(ax, az) * Math.hypot(bx, bz) * Math.hypot(c.x - a.x, c.z - a.z));
+		});
+		const cost = (ac, ideal) => {
+			if (ac - L / 2 < 0.8 || ac + L / 2 > A - 0.8) return Infinity;
+			let c = Math.abs(ac - ideal) * 0.3, lo = Infinity, hi = -Infinity;
+			for (let i = 0; i < line.length; i++) {
+				const p = line[i];
+				if (p.a < ac - L / 2 - 3 || p.a > ac + L / 2 + 3) continue;
+				if (p.bridge > 0.01) return Infinity;
+				c += Math.max(0, bend[i] - 1 / 45) * 40;
+				lo = Math.min(lo, p.ground);
+				hi = Math.max(hi, p.ground);
+			}
+			// and level ground, so the platform is not on a hillside
+			return c + (hi - lo) * 150;
+		};
+		const best = (ideal, lo, hi, ok = () => true) => {
+			let bc = Infinity, ba = null;
+			for (let x = lo; x <= hi; x += 0.5) {
+				if (!ok(x)) continue;
+				const c = cost(x, ideal);
+				if (c < bc) (bc = c), (ba = x);
+			}
+			return ba;
+		};
+		const ends = leg === 0 ? [["पुणे जंक्शन", "PUNE JN"], ["तिरुपति", "TIRUPATI"]] : [["तिरुपति", "TIRUPATI"], ["हरिद्वार जंक्शन", "HARIDWAR JN"]];
+		const o = 1.2 + L / 2, e = A - 1.2 - L / 2;
+		const stops = [{ hi: ends[0][0], name: ends[0][1], kind: "origin", ac: best(o, o, o + 60) ?? o }];
+		const last = { hi: ends[1][0], name: ends[1][1], kind: "end", ac: best(e, e - 40, e) ?? e };
+		const room = L + 12;
+		for (const [lon, lat, hi, en] of HALTS[leg]) {
+			const t = toWorld(lon, lat);
+			let near = null, bd = 6;
+			for (const p of line) {
+				const d = Math.hypot(p.x - t.x, p.z - t.z);
+				if (d < bd) (bd = d), (near = p);
+			}
+			if (!near) continue;
+			// the best straight stretch near the town; a halt with no room between its neighbours is left out
+			const ac = best(near.a, near.a - 40, near.a + 40, (x) => [...stops, last].every((q) => Math.abs(q.ac - x) >= room));
+			if (ac === null) continue;
+			stops.push({ hi, name: en, kind: "halt", ac });
+		}
+		stops.push(last);
+		stops.sort((a, b) => a.ac - b.ac);
+		for (const st of stops) {
+			st.s = aToS(line, st.ac);
+			st.s0 = aToS(line, st.ac - L / 2);
+			st.s1 = aToS(line, st.ac + L / 2);
+		}
+		const bump = (s) => {
+			let k = 0;
+			for (const st of stops) k = Math.max(k, smoothstep(st.s0 - 16, st.s0 - 3, s) * (1 - smoothstep(st.s1 + 3, st.s1 + 16, s)));
+			return k;
+		};
+		return { stops, bump };
+	}
+	// The station in the track's own frame: u across towards the road (the platform side), v along the line.
+	layoutStation(line, st) {
+		const ac = st.a;
+		st.line = line;
+		st.len = RAIL.platLen;
+		st.at = (u, v, out = {}) => {
+			const p = railAt(line, ac + v, {});
+			out.x = p.x + p.dz * u;
+			out.z = p.z - p.dx * u;
+			out.dx = p.dx;
+			out.dz = p.dz;
+			out.rail = p.y; // formation
+			out.plat = p.y + RAIL.platform;
+			out.ground = this.world.height(out.x, out.z);
+			out.yaw = Math.atan2(p.dx, p.dz);
+			return out;
+		};
+		const c = st.at(0, 0);
+		st.x = c.x;
+		st.z = c.z;
+		st.yaw = c.yaw;
+		st.rail = c.rail;
+		st.plat = c.plat;
+		// the forecourt where a taxi or an auto stops, between the station building and the road
+		const T = st.at(3.75, -1.2);
+		let bs = st.s, bd = Infinity;
+		for (let s = st.s - 12; s <= st.s + 12; s += 0.05) {
+			const r = Roads.lookup(this.roads, s);
+			if (!r) continue;
+			const d = Math.hypot(r.x - T.x, r.z - T.z);
+			if (d < bd) (bd = d), (bs = s);
+		}
+		const r = Roads.lookup(this.roads, bs) || this.route.at(bs, {});
+		const l = Math.hypot(r.dx, r.dz) || 1;
+		st.sRoad = bs;
+		st.laneRoad = ((-(T.x - r.x) * r.dz + (T.z - r.z) * r.dx) / l) / M; // metres right of the road's centre
+		st.forecourt = this.world.height(T.x, T.z);
+		for (const [u, v] of [[3.3, -5], [3.3, 5], [4.4, -5], [4.4, 5], [3.75, 0]]) {
+			const q = st.at(u, v);
+			st.forecourt = Math.max(st.forecourt, q.ground);
+		}
+		st.forecourt += 0.03;
+		return st;
+	}
 	buildRail(pts) {
-		const bedW = RAIL_BED * M;
+		const bedW = RAIL.bed, world = this.world;
 		const tex = ballastTexture();
-		const bed = new THREE.Mesh(ribbon(pts, bedW, this.world, 0.07, tex.userData.len, 3), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
-		bed.receiveShadow = true;
-		this.group.add(bed);
-		// the two rails, 1,676 mm apart, as thin steel strips standing on the sleepers
-		const steel = new THREE.MeshStandardMaterial({ color: 0xb9bcc0, metalness: 0.85, roughness: 0.3 });
+		const n = pts.length;
+		// the ballast on its formation: a low embankment where the ground falls away, plain deck over a bridge
+		{
+			const cols = [[-bedW / 2 - 0.45, 0, 0], [-bedW / 2, 0.035, 0.02], [-bedW * 0.3, 0.07, 0.15], [bedW * 0.3, 0.07, 0.85], [bedW / 2, 0.035, 0.98], [bedW / 2 + 0.45, 0, 1]];
+			const C = cols.length;
+			const pos = new Float32Array(n * C * 3), uv = new Float32Array(n * C * 2), idx = [];
+			for (let i = 0; i < n; i++) {
+				const p = pts[i];
+				for (let c = 0; c < C; c++) {
+					const [o, h, u] = cols[c];
+					const x = p.x - p.dz * o, z = p.z + p.dx * o;
+					let y = p.y + h;
+					// a low embankment down to the ground; a bridge or a viaduct (high over a valley) has plain sides
+					const tall = smoothstep(0.7, 1.1, p.y - p.ground);
+					if (c === 0 || c === C - 1) y = lerp(Math.min(world.height(x, z) - 0.03, p.y), p.y - 0.06, Math.max(p.bridge, tall));
+					pos.set([x, y, z], (i * C + c) * 3);
+					uv.set([u, p.a / tex.userData.len], (i * C + c) * 2);
+				}
+				if (i < n - 1) for (let c = 0; c < C - 1; c++) {
+					const a = i * C + c, b = a + 1, d = a + C, e = d + 1;
+					idx.push(a, b, d, b, e, d);
+				}
+			}
+			const g = new THREE.BufferGeometry();
+			g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+			g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+			g.setIndex(idx);
+			g.computeVertexNormals();
+			const bed = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
+			bed.receiveShadow = true;
+			this.group.add(bed);
+		}
+		// the two rails, 1,676 mm apart: a steel head on a web, standing on the sleepers
+		const steel = new THREE.MeshStandardMaterial({ color: 0x8e9196, metalness: 0.8, roughness: 0.38 });
 		for (const sg of [-1, 1]) {
-			const off = (sg * 1.676 * M) / 2;
-			const shifted = pts.map((p) => {
-				const x = p.x - p.dz * off, z = p.z + p.dx * off;
-				return Object.assign({}, p, { x, z });
-			});
-			const m = new THREE.Mesh(ribbon(shifted, 0.075 * M * 2, this.world, 0.11, 1, 2), steel);
+			const w = 0.036 * M, prof = [[-w * 1.6, 0.07], [-w, RAIL.top - 0.012], [-w, RAIL.top], [w, RAIL.top], [w, RAIL.top - 0.012], [w * 1.6, 0.07]];
+			const C = prof.length;
+			const pos = new Float32Array(n * C * 3), idx = [];
+			for (let i = 0; i < n; i++) {
+				const p = pts[i];
+				for (let c = 0; c < C; c++) {
+					const o = (sg * RAIL.gauge) / 2 + prof[c][0];
+					pos.set([p.x - p.dz * o, p.y + prof[c][1], p.z + p.dx * o], (i * C + c) * 3);
+				}
+				if (i < n - 1) for (let c = 0; c < C - 1; c++) {
+					const a = i * C + c, b = a + 1, d = a + C, e = d + 1;
+					idx.push(a, d, b, b, d, e);
+				}
+			}
+			const g = new THREE.BufferGeometry();
+			g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+			g.setIndex(idx);
+			g.computeVertexNormals();
+			const m = new THREE.Mesh(g, steel);
+			m.receiveShadow = true;
 			this.group.add(m);
 		}
-		// overhead electrification: masts, cantilevers, the contact wire; steel trusses on bridges
+		// overhead electrification: masts on the far side from the road, cantilevers, the contact wire and the
+		// catenary above it; steel trusses on the bridges
 		const b = new Batch();
-		const wire = [];
-		let prev = null;
-		for (let i = 0; i < pts.length; i++) {
+		const wire = [], cat = [];
+		pts.masts = [];
+		let prev = null, nextMast = 2;
+		for (let i = 0; i < n; i++) {
 			const p = pts[i];
 			const yaw = Math.atan2(p.dx, p.dz);
-			const ground = p.bridge > 0.5 ? p.y : this.world.height(p.x, p.z);
 			if (p.onDeck) {
 				for (const sg of [-1, 1]) {
 					const q = { x: p.x - p.dz * sg * bedW * 0.5, z: p.z + p.dx * sg * bedW * 0.5 };
 					b.add(T.box, place(q.x, p.y + 0.07, q.z, yaw, 0.08, 0.12, STEP * 1.02), 0x5e6d74);
 					b.add(T.box, place(q.x, p.y + 1.25, q.z, yaw, 0.06, 0.06, STEP * 1.02), 0x5e6d74);
 					b.add(T.box, place(q.x, p.y + 0.1, q.z, yaw, 0.05, 1.2, 0.05), 0x5e6d74);
-					if (i % 2 === 0) b.add(T.box, place(q.x, p.y + 0.12, q.z, yaw, 0.03, 1.5, 0.03, sg * 0.0, 0.6), 0x6e7d84);
+					if (i % 2 === 0) b.add(T.box, place(q.x, p.y + 0.12, q.z, yaw, 0.03, 1.5, 0.03, 0, 0.6), 0x6e7d84);
 				}
 				if (i % 5 === 0) {
 					const g = this.world.height(p.x, p.z) - 0.5;
 					b.add(T.box, place(p.x, g, p.z, yaw, bedW * 0.9, p.y - g, 0.35), 0x8f8a80);
 				}
 			}
-			if (i % 17 === 0) {
-				const q = { x: p.x + p.dz * (bedW * 0.5 + 0.12), z: p.z - p.dx * (bedW * 0.5 + 0.12) };
+			// a viaduct of concrete piers where the line runs high over a valley
+			if (!p.onDeck && p.y - p.ground > 0.9 && i % 6 === 0) {
+				const g = this.world.height(p.x, p.z) - 0.3;
+				b.add(T.box, place(p.x, g, p.z, yaw, bedW * 0.7, p.y - g - 0.02, 0.45), 0x9a958b);
+				b.add(T.box, place(p.x, p.y - 0.3, p.z, yaw, bedW * 1.02, 0.28, STEP * 6.05), 0x8f8a80);
+			}
+			if (p.a >= nextMast) {
+				nextMast = p.a + 5.2;
+				const off = bedW * 0.5 + 0.16;
+				const q = { x: p.x - p.dz * off, z: p.z + p.dx * off };
 				const y = p.bridge > 0.5 ? p.y : this.world.height(q.x, q.z);
-				b.add(T.box, place(q.x, y, q.z, yaw, 0.09, 2.6, 0.09), 0x6b7378);
-				const top = new THREE.Vector3(q.x, y + 2.25, q.z);
-				const tip = new THREE.Vector3(p.x, ground + 1.65, p.z);
-				b.add(T.box, beam(top, tip, 0.04, 0.04), 0x6b7378);
-				b.add(T.box, beam(new THREE.Vector3(q.x, y + 2.55, q.z), tip, 0.025, 0.025), 0x6b7378);
-				if (prev && prev.distanceTo(tip) < STEP * 19) wire.push(prev.x, prev.y, prev.z, tip.x, tip.y, tip.z);
+				const wy = p.y + RAIL.wire;
+				// the mast, its cantilever and the register arm holding the wire over the track's centre
+				b.add(T.box, place(q.x, y - 0.1, q.z, yaw, 0.1, wy + 0.55 - y, 0.07), 0x6b7378);
+				const tip = new THREE.Vector3(p.x, wy, p.z);
+				b.add(T.box, beam(new THREE.Vector3(q.x, wy + 0.06, q.z), tip, 0.035, 0.035), 0x6b7378);
+				b.add(T.box, beam(new THREE.Vector3(q.x, wy + 0.5, q.z), new THREE.Vector3(p.x, wy + 0.36, p.z), 0.025, 0.025), 0x6b7378);
+				b.add(T.box, beam(new THREE.Vector3(p.x, wy + 0.36, p.z), tip, 0.012, 0.012), 0x6b7378);
+				if (prev && prev.distanceTo(tip) < 9) {
+					wire.push(prev.x, prev.y, prev.z, tip.x, tip.y, tip.z);
+					// the catenary sags from mast to mast, with droppers down to the contact wire
+					let c0 = prev.clone().setY(prev.y + 0.36);
+					for (let k = 1; k <= 6; k++) {
+						const t = k / 6;
+						const c1 = prev.clone().lerp(tip, t);
+						const sag = Math.sin(t * Math.PI) * 0.2;
+						c1.y += 0.36 - sag;
+						cat.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z);
+						if (k < 6) {
+							const w0 = prev.clone().lerp(tip, t);
+							cat.push(c1.x, c1.y, c1.z, w0.x, w0.y, w0.z);
+						}
+						c0 = c1;
+					}
+				}
+				pts.masts.push({ a: p.a, y: wy });
 				prev = tip;
+			}
+		}
+		// buffer stops at the ends of the line
+		for (const at of [0.35, pts.A - 0.35]) {
+			const p = railAt(pts, at, {});
+			const yaw = Math.atan2(p.dx, p.dz);
+			for (const sg of [-1, 1]) {
+				const o = sg * RAIL.gauge * 0.5;
+				b.add(T.box, place(p.x - p.dz * o, p.y + 0.07, p.z + p.dx * o, yaw, 0.06, 0.3, 0.3), 0x2a2a2a);
+			}
+			b.add(T.box, place(p.x, p.y + 0.3, p.z, yaw, 0.95, 0.12, 0.08), 0xc8261c);
+			for (const sg of [-1, 1]) {
+				const o = sg * 0.32;
+				b.add(T.box, place(p.x - p.dz * o, p.y + 0.31, p.z + p.dx * o, yaw, 0.12, 0.08, 0.12), 0xf2f2ee);
 			}
 		}
 		this.group.add(b.build(VCOL));
 		const g = new THREE.BufferGeometry();
 		g.setAttribute("position", new THREE.Float32BufferAttribute(wire, 3));
-		this.group.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x3a3a3a, transparent: true, opacity: 0.8 })));
+		this.group.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x2e2e2e, transparent: true, opacity: 0.85 })));
+		const g2 = new THREE.BufferGeometry();
+		g2.setAttribute("position", new THREE.Float32BufferAttribute(cat, 3));
+		this.group.add(new THREE.LineSegments(g2, new THREE.LineBasicMaterial({ color: 0x3a3a3a, transparent: true, opacity: 0.6 })));
 	}
-	// Stations where the line passes the towns, with platforms, shelters and yellow name boards.
-	buildStations() {
-		const STATIONS = [
-			[73.86, 18.52, "पुणे जंक्शन", "PUNE JN"], [75.91, 17.68, "सोलापुर", "SOLAPUR"], [78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"],
-			[78.04, 15.83, "कर्नूल सिटी", "KURNOOL CITY"], [79.42, 13.63, "तिरुपति", "TIRUPATI"], [79.09, 21.15, "नागपुर", "NAGPUR"],
-			[78.57, 25.45, "झाँसी जंक्शन", "JHANSI JN"], [77.21, 28.61, "नई दिल्ली", "NEW DELHI"], [78.16, 29.95, "हरिद्वार जंक्शन", "HARIDWAR JN"],
-			[78.29, 30.09, "योग नगरी ऋषिकेश", "YOG NAGARI RISHIKESH"],
-		];
-		this.stations = [];
-		for (const [lon, lat, hi, en] of STATIONS) {
-			const t = toWorld(lon, lat);
-			let best = null, bd = 6;
-			for (const pts of this.rails) for (const p of pts) {
-				const d = Math.hypot(p.x - t.x, p.z - t.z);
-				if (d < bd && !p.bridge) {
-					bd = d;
-					best = p;
-				}
+	// A station: a high-level platform on the road side of the line with its canopy, benches and yellow name
+	// boards, the station building with a passage through to the forecourt, and the forecourt itself.
+	station(st) {
+		const line = st.line, L = st.len, W = RAIL.platW, E = RAIL.edge;
+		const world = this.world;
+		// the platform: its face to the track, the paved top with the yellow line, its back down to the ground
+		const rows = line.filter((p) => p.a >= st.a - L / 2 && p.a <= st.a + L / 2);
+		const top = [], side = [], uv = [];
+		const ti = [], si = [];
+		rows.forEach((p, i) => {
+			const lx = p.dz, lz = -p.dx, y = p.y + RAIL.platform;
+			const e = [p.x + lx * E, p.z + lz * E], k = [p.x + lx * (E + W), p.z + lz * (E + W)];
+			top.push(e[0], y, e[1], k[0], y, k[1]);
+			uv.push(0, (p.a - st.a) / 2.2, 1, (p.a - st.a) / 2.2);
+			side.push(e[0], p.y - 0.05, e[1], e[0], y, e[1], k[0], y, k[1], k[0], Math.min(world.height(k[0], k[1]), p.y) - 0.15, k[1]);
+			if (i < rows.length - 1) {
+				const a = i * 2;
+				ti.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+				const s0 = i * 4, s1 = s0 + 4;
+				si.push(s0, s1, s0 + 1, s0 + 1, s1, s1 + 1, s0 + 2, s1 + 2, s0 + 3, s0 + 3, s1 + 2, s1 + 3);
 			}
-			if (!best || this.stations.some((s) => Math.abs(s.s - best.s) < 20)) continue;
-			this.stations.push({ s: best.s, name: en });
-			this.station(best, hi, en);
-		}
-	}
-	station(p, hi, en) {
-		const g = new THREE.Group();
+		});
+		const gt = new THREE.BufferGeometry();
+		gt.setAttribute("position", new THREE.Float32BufferAttribute(top, 3));
+		gt.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+		gt.setIndex(ti);
+		gt.computeVertexNormals();
+		const gs = new THREE.BufferGeometry();
+		gs.setAttribute("position", new THREE.Float32BufferAttribute(side, 3));
+		gs.setIndex(si);
+		gs.computeVertexNormals();
+		const grp = new THREE.Group();
+		const topM = new THREE.Mesh(gt, new THREE.MeshStandardMaterial({ map: platformTexture(), roughness: 0.85, side: THREE.DoubleSide }));
+		const sideM = new THREE.Mesh(gs, new THREE.MeshStandardMaterial({ color: 0x8d877c, roughness: 0.9, side: THREE.DoubleSide }));
+		topM.receiveShadow = sideM.receiveShadow = true;
+		grp.add(topM, sideM);
+		// along the platform, each in its own frame: canopy, benches, a tea stall, lamps and the name boards
 		const b = new Batch();
-		const len = 22, bedW = RAIL_BED * M;
-		const y0 = this.world.height(p.x, p.z);
-		// lay the station out in the track's own frame: x across (positive away from the road), z along
-		const off = bedW / 2 + 0.75;
-		b.add(T.box, place(off, 0, 0, 0, 1.4, 0.3, len), 0xb9b2a4); // platform
-		b.add(T.box, place(off - 0.66, 0.3, 0, 0, 0.08, 0.01, len), 0xf0c419); // yellow edge
-		for (let z = -len * 0.3; z <= len * 0.3; z += 1.8) {
-			b.add(T.cyl, place(off + 0.2, 0.3, z, 0, 0.06, 1.0, 0.06), 0x7a2a22);
-			b.add(T.box, place(off + 0.2, 1.3, z, 0, 0.9, 0.04, 0.4), 0x8a3a2c);
+		const q = {};
+		for (let v = -L * 0.3; v <= L * 0.3 + 1e-6; v += 2.4) {
+			st.at(E + W * 0.62, v, q);
+			b.add(T.cyl, place(q.x, q.plat, q.z, q.yaw, 0.07, 0.98, 0.07), 0x6a2a22);
+			st.at(E + W * 0.5, v, q);
+			b.add(T.box, place(q.x, q.plat + 0.98, q.z, q.yaw, W * 0.95, 0.04, 2.45, 0, 0.08), 0x7d8288);
 		}
-		b.add(T.box, place(off + 0.2, 1.3, 0, 0, 1.25, 0.06, len * 0.65), 0x6d6a64); // shelter roof
-		b.add(T.box, place(off + 1.9, 0, 0, 0, 1.8, 1.1, 6), 0xefe3c8); // station building
-		b.add(T.box, place(off + 1.9, 1.1, 0, 0, 1.9, 0.12, 6.1), 0x8a2a22);
-		b.add(T.box, place(off + 1.9, 0.75, 0, 0, 1.85, 0.08, 6.05), 0x8a2a22);
-		for (const z of [-2, -0.7, 0.7, 2]) b.add(T.box, place(off + 0.99, 0.15, z, 0, 0.02, 0.6, 0.35), 0x2b2620);
-		for (const z of [-4, -2, 2, 4]) b.add(T.box, place(off + 0.35, 0.3, z, 0, 0.18, 0.12, 0.5), 0x50565c); // benches
-		g.add(b.build(VCOL));
-		const board = new THREE.MeshStandardMaterial({ map: boardTexture(hi, en), roughness: 0.6 });
-		for (const z of [-len * 0.42, len * 0.42]) {
-			for (const x of [-0.25, 0.25]) {
-				const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.9, 0.04), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-				post.position.set(off + 0.1 + x, 0.75, z);
-				g.add(post);
+		st.at(E + W * 0.55, 0, q);
+		st.at(E + 0.05, 0, q);
+		b.add(T.box, place(q.x, q.plat + 0.9, q.z, q.yaw, 0.04, 0.12, L * 0.6 + 2.4), 0x8a3a2c); // the canopy's fascia
+		for (const v of [-11, -6.5, 3, 12.5, 16]) {
+			st.at(E + W * 0.8, v, q);
+			b.add(T.box, place(q.x, q.plat, q.z, q.yaw, 0.16, 0.12, 0.55), 0x50565c);
+			b.add(T.box, place(q.x + q.dz * 0.07, q.plat + 0.12, q.z - q.dx * 0.07, q.yaw, 0.03, 0.12, 0.55), 0x50565c);
+		}
+		// a tea stall with its kettle and glasses
+		st.at(E + W * 0.72, -3.4, q);
+		b.add(T.box, place(q.x, q.plat, q.z, q.yaw, 0.42, 0.3, 0.75), 0x2f6a8a);
+		b.add(T.box, place(q.x, q.plat + 0.3, q.z, q.yaw, 0.44, 0.03, 0.78), 0xe8e2d0);
+		b.add(T.cyl, place(q.x, q.plat + 0.33, q.z + 0.15, 0, 0.09, 0.1, 0.09), 0xc8902a);
+		// lamps beyond the canopy
+		for (const v of [-L * 0.42, -L * 0.36, L * 0.36, L * 0.42]) {
+			st.at(E + W * 0.85, v, q);
+			b.add(T.box, place(q.x, q.plat, q.z, q.yaw, 0.04, 1.1, 0.04), 0x50565c);
+			b.add(T.box, place(q.x - q.dz * 0.12, q.plat + 1.08, q.z + q.dx * 0.12, q.yaw, 0.28, 0.03, 0.06), 0x50565c);
+		}
+		const board = new THREE.MeshStandardMaterial({ map: boardTexture(st.hi, st.name), roughness: 0.6 });
+		const postM = new THREE.MeshStandardMaterial({ color: 0x222222 });
+		st.boards = [];
+		for (const v of [-L * 0.43, -3.9, 3.9, L * 0.43]) {
+			st.at(E + W * 0.72, v, q);
+			for (const dv of [-0.42, 0.42]) {
+				const p2 = st.at(E + W * 0.72, v + dv, {});
+				b.add(T.box, place(p2.x, p2.plat, p2.z, q.yaw, 0.04, 0.95, 0.04), 0x222222);
 			}
-			const s = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.32, 1.0), [board, board, board, board, board, board]);
-			// the board runs along the platform, readable from the train
-			s.position.set(off + 0.1, 1.2, z);
-			g.add(s);
+			const s = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.34, 1.05), [board, board, board, board, board, board]);
+			s.position.set(q.x, q.plat + 0.8, q.z);
+			s.rotation.y = q.yaw;
+			s.castShadow = true;
+			grp.add(s);
+			st.boards.push(v);
 		}
-		g.traverse((o) => (o.castShadow = o.receiveShadow = true));
-		// track frame: z along the line, x away from the road (the rail is right of the road)
-		const yaw = Math.atan2(p.dx, p.dz);
-		g.position.set(p.x, y0 + 0.02, p.z);
-		g.rotation.y = yaw + Math.PI;
-		this.group.add(g);
+		void postM;
+		// the station building, cream with maroon bands, floored at platform level, a passage through the middle
+		const yP = st.plat, B0 = E + W + 0.02, B1 = B0 + 1.25;
+		let gMin = st.forecourt;
+		for (const [u, v] of [[B0, -6], [B0, 6], [B1, -6], [B1, 6], [4.6, -6.5], [4.6, 6.5], [B1, 0]]) gMin = Math.min(gMin, st.at(u, v).ground);
+		const yG = gMin - 0.12;
+		const fr = st.at(0, 0);
+		const lx = fr.dz, lz = -fr.dx, ax = fr.dx, az = fr.dz;
+		const at = (u, v) => [fr.x + lx * u + ax * v, fr.z + lz * u + az * v];
+		for (const [v0, v1] of [[-5.6, -0.48], [0.48, 5.6]]) {
+			const [cx, cz] = at((B0 + B1) / 2, (v0 + v1) / 2);
+			b.add(T.box, place(cx, yG, cz, fr.yaw, B1 - B0, yP + 1.12 - yG, v1 - v0), 0xefe3c8);
+			b.add(T.box, place(cx, yP + 1.12, cz, fr.yaw, B1 - B0 + 0.08, 0.1, v1 - v0 + 0.08), 0x8a2a22); // parapet
+			b.add(T.box, place(cx, yP + 0.72, cz, fr.yaw, B1 - B0 + 0.04, 0.06, v1 - v0 + 0.04), 0x8a2a22); // band
+			b.add(T.box, place(cx, yG, cz, fr.yaw, B1 - B0 + 0.03, yP - yG + 0.02, v1 - v0 + 0.03), 0x9a8a72); // plinth
+		}
+		{
+			const [cx, cz] = at((B0 + B1) / 2, 0);
+			b.add(T.box, place(cx, yG, cz, fr.yaw, B1 - B0, yP - yG, 0.96), 0xb9b2a4); // the passage floor
+			b.add(T.box, place(cx, yP + 1.0, cz, fr.yaw, B1 - B0 + 0.02, 0.22, 1.0), 0xefe3c8);
+			b.add(T.box, place(cx, yP + 1.22, cz, fr.yaw, B1 - B0 + 0.1, 0.12, 1.2), 0x8a2a22); // a raised gable over the entrance
+		}
+		// steps down from the passage to the forecourt
+		const rise = Math.max(0.05, yP - st.forecourt), nSteps = Math.max(2, Math.round(rise / 0.05));
+		const run = Math.min(0.9, Math.max(0.35, rise * 1.4));
+		for (let k = 0; k < nSteps; k++) {
+			const u = B1 + (run * (k + 0.5)) / nSteps;
+			const [cx, cz] = at(u, 0);
+			b.add(T.box, place(cx, yG, cz, fr.yaw, run / nSteps + 0.01, yP - (rise * (k + 1)) / nSteps - yG + 0.01, 1.4), 0xa8a196);
+		}
+		st.steps = { u0: B1, u1: B1 + run, rise };
+		st.building = { u0: B0, u1: B1 };
+		// the forecourt, paved, with two autos waiting at the kerb
+		{
+			const u0 = B1 + run, u1 = 4.65;
+			const [cx, cz] = at((u0 + u1) / 2, 0);
+			b.add(T.box, place(cx, yG, cz, fr.yaw, u1 - u0, st.forecourt - yG, 13), 0x8a857c);
+		}
+		grp.add(b.build(VCOL));
+		// facades: arched windows and doors in the cream walls, and the big name board over the entrance
+		const fac = new THREE.MeshStandardMaterial({ map: facadeTexture(), roughness: 0.8, transparent: true, alphaTest: 0.5 });
+		for (const [u, flip] of [[B1 + 0.002, 1], [B0 - 0.002, -1]]) {
+			for (const [v0, v1] of [[-5.6, -0.48], [0.48, 5.6]]) {
+				const m = new THREE.Mesh(new THREE.PlaneGeometry(v1 - v0, 0.62), fac);
+				const [cx, cz] = at(u, (v0 + v1) / 2);
+				m.position.set(cx, yP + 0.36, cz);
+				m.rotation.y = fr.yaw + (flip > 0 ? Math.PI / 2 : -Math.PI / 2);
+				grp.add(m);
+			}
+		}
+		const big = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.5), new THREE.MeshStandardMaterial({ map: boardTexture(st.hi, st.name), roughness: 0.6 }));
+		const [bx, bz] = at(B1 + 0.05, 0);
+		big.position.set(bx, yP + 1.5, bz);
+		big.rotation.y = fr.yaw + Math.PI / 2;
+		grp.add(big);
+		const R = rand(Math.round(st.a * 13) + 7);
+		for (const v of [3.2, 4.9]) {
+			const m = parkedVehicle("auto", R).build(VCOL);
+			const [cx, cz] = at(3.85, v);
+			m.position.set(cx, st.forecourt, cz);
+			m.rotation.y = fr.yaw + (v > 4 ? 0.3 : -0.2);
+			m.scale.setScalar(M);
+			grp.add(m);
+		}
+		grp.traverse((o) => (o.castShadow = o.receiveShadow = true));
+		this.group.add(grp);
 	}
+}
+// A point on a railway line at distance a along the track.
+export function railAt(pts, x, out = {}) {
+	x = clamp(x, 0, pts.A);
+	const i = search(pts, "a", x), a = pts[i], b = pts[i + 1] || a;
+	const t = clamp((x - a.a) / (b.a - a.a || 1), 0, 1);
+	out.x = lerp(a.x, b.x, t);
+	out.y = lerp(a.y, b.y, t);
+	out.z = lerp(a.z, b.z, t);
+	let dx = lerp(a.dx, b.dx, t), dz = lerp(a.dz, b.dz, t);
+	const l = Math.hypot(dx, dz) || 1;
+	out.dx = dx / l;
+	out.dz = dz / l;
+	out.s = lerp(a.s, b.s, t);
+	out.bridge = Math.max(a.bridge, b.bridge);
+	return out;
+}
+// The top of one rail (side -1 left, +1 right of the direction of travel), where a wheel's tread runs.
+export function railHead(pts, x, side, out = {}) {
+	railAt(pts, x, out);
+	const o = (side * RAIL.gauge) / 2;
+	out.x += -out.dz * o;
+	out.z += out.dx * o;
+	out.y += RAIL.top;
+	return out;
+}
+// Height of the contact wire over the line at distance a: straight from mast to mast.
+export function wireAt(pts, x) {
+	const m = pts.masts;
+	if (!m || m.length < 2) return railAt(pts, x).y + RAIL.wire;
+	const i = search(m, "a", x), a = m[i], b = m[i + 1] || a;
+	return lerp(a.y, b.y, clamp((x - a.a) / (b.a - a.a || 1), 0, 1));
+}
+const HALTS = [
+	[[75.91, 17.68, "सोलापुर", "SOLAPUR"], [78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"], [78.04, 15.83, "कर्नूल सिटी", "KURNOOL CITY"]],
+	[[78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"], [79.09, 21.15, "नागपुर", "NAGPUR"], [78.57, 25.45, "झाँसी जंक्शन", "JHANSI JN"], [77.21, 28.61, "नई दिल्ली", "NEW DELHI"]],
+];
+// Platform paving: the white coping at the edge, the yellow line, then square pavers.
+let _plat;
+function platformTexture() {
+	if (_plat) return _plat;
+	const R = rand(57);
+	_plat = canvasTex(128, 256, (g, W, H) => {
+		g.fillStyle = "#b3ab9c";
+		g.fillRect(0, 0, W, H);
+		for (let y = 0; y < H; y += 16) for (let x = 0; x < W; x += 16) {
+			const v = 160 + R() * 26;
+			g.fillStyle = `rgb(${v},${v - 6},${v - 16})`;
+			g.fillRect(x + 1, y + 1, 14, 14);
+		}
+		g.fillStyle = "#d8d4cc";
+		g.fillRect(0, 0, 8, H);
+		g.fillStyle = "#e8c21e";
+		g.fillRect(12, 0, 8, H);
+		speckle(g, W, H, R, 1600, 0.2, 0.06);
+	});
+	return _plat;
+}
+let _fac;
+function facadeTexture() {
+	if (_fac) return _fac;
+	_fac = canvasTex(256, 64, (g, W, H) => {
+		g.clearRect(0, 0, W, H);
+		for (let x = 10; x < W - 20; x += 34) {
+			g.fillStyle = "#3a2a22";
+			g.beginPath();
+			g.moveTo(x, H - 6);
+			g.lineTo(x, 26);
+			g.arc(x + 9, 26, 9, Math.PI, 0);
+			g.lineTo(x + 18, H - 6);
+			g.closePath();
+			g.fill();
+			g.strokeStyle = "#8a2a22";
+			g.lineWidth = 3;
+			g.stroke();
+			g.fillStyle = "rgba(255,220,150,0.35)";
+			g.fillRect(x + 3, 30, 12, 10);
+		}
+	});
+	_fac.wrapS = _fac.wrapT = THREE.ClampToEdgeWrapping;
+	return _fac;
 }

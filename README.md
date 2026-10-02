@@ -7,8 +7,8 @@ A quiet pilgrimage across India in the browser. You set out from Pune as a pilgr
 ## The route
 
 1. **Pune to Bhimashankar** (by motorbike, about 110 km): at dawn, up through Rajgurunagar into the monsoon forest on the crest of the Western Ghats.
-2. **Bhimashankar to Tirumala** (by taxi, train and taxi): down to Pune station, then the train south across the Deccan via Solapur, Hyderabad and Kurnool to Tirupati, and a taxi up the ghat road to the seven hills.
-3. **Tirumala to Kedarnath** (by train and jeep, then on foot): the train north through the night across the Deccan and the Gangetic plain to Delhi, Haridwar and Rishikesh, a jeep up the Alaknanda and the Mandakini to Gaurikund, and the last 16 km on foot.
+2. **Bhimashankar to Tirumala** (by taxi, auto, train, auto and taxi): down to Pune, an autorickshaw across town to Pune Junction, then the train south across the Deccan via Solapur to Tirupati, an auto to Alipiri at the foot of the hills, and a taxi up the ghat road to the seven hills.
+3. **Tirumala to Kedarnath** (by train and jeep, then on foot): the train north through the night across the Deccan and the Gangetic plain via Secunderabad, Nagpur and Jhansi to Haridwar, a jeep by Rishikesh up the Alaknanda and the Mandakini to Gaurikund, and the last 16 km on foot.
 4. **Kedarnath to Badrinath** (by jeep, about 220 km): back down the Mandakini to Rudraprayag, then up the Alaknanda past Chamoli and Joshimath.
 
 You can change how you travel with the bike chip or V: **Mixed** (above, the way most pilgrims go), **Train** (the railway wherever it runs, taxis and jeeps for the rest; no line climbs to Bhimashankar), **Bike** or **Car** the whole way. The 16 km up to Kedarnath is always on foot.
@@ -18,7 +18,8 @@ You can change how you travel with the bike chip or V: **Mixed** (above, the way
 Everything along the way is drawn to the same life scale as the pilgrims:
 
 - **Roads** that look like Indian roads: two-lane national highways with white edge lines and a dashed centre on dusty shoulders (red laterite in the Sahyadri, brown on the Deccan); ghat roads with a solid yellow centre, black and white kerb stones and yellow and black crash barriers on the valley side; narrow Garhwal hill roads with BRO parapet blocks and stone retaining walls; and the stone-flagged trek to Kedarnath with its railing. Traffic keeps to the left. Roads rise onto bridges where they cross a river, with milestones counting down to the next shrine.
-- **The railway** runs beside the road on the long legs: broad-gauge track on ballast with concrete sleepers, overhead electric masts and wire, steel girder bridges, and stations at Pune, Solapur, Secunderabad, Kurnool, Tirupati, Nagpur, Jhansi, New Delhi, Haridwar and Yog Nagari Rishikesh, each with a platform, a shelter and the yellow Hindi and English name boards.
+- **The railway** runs beside the road on the long legs, on a smooth line of gentle curves and gradients: broad-gauge track (1,676 mm) on a ballast embankment, overhead electrification with masts, cantilevers, catenary and contact wire, steel girder bridges, buffer stops at the termini, and stations at Pune Junction, Solapur, Tirupati, Secunderabad, Nagpur, Jhansi and Haridwar, each with a high-level platform, a canopy, benches, a tea stall, the yellow Hindi and English name boards, and a station building with a forecourt where the autos wait.
+- **The trains**: a red and white WAP-7 electric with its pantograph up against the wire, hauling blue ICF coaches with a cream band (Pune to Tirupati) or red LHB coaches with a silver band (Tirupati to Haridwar): general, sleeper, AC three-tier and the guard's van, with barred windows, doors, vestibules and under-frames. Every carriage rides on its two bogies and every wheelset on the rails; the train pulls out slowly, runs at line speed, brakes into each halt, and other passengers get on and off. With the sound on there is the guard's whistle, the horn and the wheels on the rail joints.
 - **Traffic**: painted goods trucks, state transport buses, green and yellow autorickshaws, tractors with fodder trolleys and cars.
 - **The country**: fields of the region's crops (monsoon paddy in the Sahyadri, cotton, jowar and sunflower on the Deccan, wheat and mustard on the Gangetic plain, terraces in the Garhwal hills), villages in the local style (tile roofs, flat concrete roofs with water tanks, slate roofs and wooden balconies in the hills), roadside trees with white and red painted trunks, neem, mango, banyan, palms, eucalyptus and pines, Deccan boulder piles, brick kilns, haystacks, dhabas with charpais, cattle, buffaloes and goats.
 
@@ -49,6 +50,10 @@ Aarti music by Krishna Das, played from his official YouTube channel; all rights
 | Badrinath | [Narayana / For Your Love (from *Heart As Wide As The World*)](https://www.youtube.com/watch?v=a3XaLpZSW14) |
 
 The temple music (drone, bells, conch, drums, harmonium, nadaswaram and the rest) is original, synthesised in the page with the Web Audio API.
+
+## Getting on and off
+
+Every change is shown: the traveller walks to the motorbike on its side stand, straps the staff onto the carrier, swings a leg over, kicks up the stand and wobbles off, and at the end puts a foot down, drops the stand and steps off. A taxi, jeep or auto pulls up, a door opens (or, for the auto, the traveller ducks in at the side), the traveller gets in and sits, seen through the windows, and the reverse at the other end. At the station the train is already standing at the platform: the traveller goes up the steps and through the station building, walks along the platform past the name board to a sleeper coach, climbs in, the door shuts, the guard whistles and the train pulls out; on the way the traveller stands at the open door. The camera comes down close for each of these and goes back up after.
 
 ## Getting to the door
 

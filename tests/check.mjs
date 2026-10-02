@@ -144,6 +144,25 @@ try {
 		await o.ctx.close();
 	}
 
+	// ---------- getting on and off ----------
+	{
+		const o = await open({}, "?noenter=1&s=0.9&go=mixed");
+		const until = (fn, ms) => o.page.waitForFunction(fn, null, { timeout: ms }).then(() => true, () => false);
+		ok("Bike: walks to the motorbike on its stand and gets on", await until(() => app.journey.status().ep === "walk>bike", 15000));
+		ok("Bike: kicks up the stand and rides off", await until(() => app.mode === "bike" && !app.journey.status().ep && app.ride.bike.stand.rotation.x < -1, 40000));
+		// by auto to Pune station, along the platform, into the coach, and away; then a halt with passengers
+		await o.page.evaluate(() => {
+			app.leg = 1;
+			app.s = app.roads.at.trainFrom - 3;
+			app.setSpeed(3);
+		});
+		ok("Train: walks along the platform and climbs into the coach", await until(() => app.journey.status().ep === "auto>train" && app.journey.status().step >= 7, 60000));
+		ok("Train: the doors close and it pulls out slowly", await until(() => app.journey.status().onTrain && app.journey.rake.state === "run" && app.journey.rake.v < 2, 30000));
+		ok("Train: halts at the next station, passengers getting on and off", await until(() => app.journey.status().halt && app.journey.walkers.some((w) => w.group.visible), 60000));
+		ok("Boarding console clean", o.errors.length === 0, o.errors.slice(0, 3).join(" | "));
+		await o.ctx.close();
+	}
+
 	// ---------- phone ----------
 	const phone = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, "?noenter=1");
 	await wait(phone.page, 1200);
