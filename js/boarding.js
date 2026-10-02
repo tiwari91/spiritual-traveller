@@ -1136,7 +1136,9 @@ Object.assign(Journey.prototype, {
 			}
 		}
 		if (J.staff) J.staff.visible = tv.staff;
-		if (J.diya) J.diya.visible = tv.diya;
+		// the lit diya is carried only on foot: never on the bike, in a vehicle or on the train (quat = riding in something)
+		if (J.diya) J.diya.visible = tv.diya && tv.mode !== "ride" && !tv.quat;
+		if (J.halo && J.diya) J.halo.visible = J.diya.visible;
 	},
 	// main.js lets go of the traveller: back upright and life-size in the world
 	release() {

@@ -138,7 +138,8 @@ export class Traffic {
 	}
 	// s: where the traveller is; pace: the traveller's speed along the route (units a second);
 	// on: whether traffic should show; scale: world units per metre; me: the traveller's half width (m)
-	update(dt, s, pace, on, scale) {
+	// me: { x, z, r } the traveller's footprint (world units); nothing may ever overlap it
+	update(dt, s, pace, on, scale, me = null) {
 		this.frame = (this.frame || 0) + 1;
 		if (!on) {
 			for (const c of this.cars) if (c.mesh) c.mesh.visible = false;
@@ -204,9 +205,21 @@ export class Traffic {
 				m.visible = false;
 				continue;
 			}
+			const px = (a.x + b.x) / 2, pz = (a.z + b.z) / 2, yaw = Math.atan2(b.x - a.x, b.z - a.z);
+			// where roads meet (a junction, a bus stand) another road's traffic can cross the traveller's path:
+			// never drive through them, send the vehicle on its way out of sight instead
+			if (me) {
+				const dx = me.x - px, dz = me.z - pz, fx = Math.sin(yaw), fz = Math.cos(yaw);
+				const along = dx * fx + dz * fz, across = dx * fz - dz * fx;
+				if (Math.abs(along) < (len / 2 + 0.6) * scale + me.r && Math.abs(across) < (half + 0.4) * scale + me.r) {
+					m.visible = false;
+					this.spawn(c, s, true, kind || "nh");
+					continue;
+				}
+			}
 			m.visible = true;
-			m.position.set((a.x + b.x) / 2, (a.y + b.y) / 2 + 0.02, (a.z + b.z) / 2);
-			m.rotation.set(0, Math.atan2(b.x - a.x, b.z - a.z), 0);
+			m.position.set(px, (a.y + b.y) / 2 + 0.02, pz);
+			m.rotation.set(0, yaw, 0);
 			m.scale.setScalar(scale);
 		}
 	}

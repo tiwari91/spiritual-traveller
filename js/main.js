@@ -472,7 +472,9 @@ function updateCamera(dt) {
 		const want = rig.block ?? 1e6;
 		const was = Number.isFinite(rig.clear) ? rig.clear : 1e6;
 		rig.clear = want < was ? want : lerp(was, want, 1 - Math.exp(-dt * 2));
-		if (rig.clear < d) camera.position.lerp(rig.target, 1 - Math.max(0.35, rig.clear) / d);
+		// never closer than a little over a body length (the traveller is about 0.5 units tall): any nearer and
+		// the lens is inside their clothes; when the wall is closer than that, the swing above finds another side
+		if (rig.clear < d) camera.position.lerp(rig.target, 1 - Math.max(Math.min(d, 1.1), rig.clear) / d);
 	} else {
 		rig.clear = undefined;
 		rig.swing = 0;
@@ -679,7 +681,9 @@ function updateTraveller(dt) {
 	// the road around the traveller: scenery chunks and traffic
 	scenery.update(app.state === "darshan" ? route.chapters[app.at].s1 : app.s, camera);
 	const pace = moving ? route.legSpeed[app.leg] * speed : 0;
-	traffic.update(dt, app.s, pace, app.state === "travel" && mode !== "train" && !journey.busy() && dist < 70, vs);
+	// the traveller's footprint: the bike, car or jeep they ride, or themselves on foot
+	const mp = mover(), fr = { bike: 1.2, car: 2.3, jeep: 2.3, auto: 1.6 }[app.travelMode] || 0.5;
+	traffic.update(dt, app.s, pace, app.state === "travel" && mode !== "train" && !journey.busy() && dist < 70, vs, { x: mp.x, z: mp.z, r: fr * vs });
 	if (mode !== app.travelMode) app.modeT = 0;
 	app.modeT = (app.modeT || 0) + dt;
 	app.travelMode = mode;
@@ -1062,7 +1066,7 @@ function installInput() {
 	});
 }
 // from close enough to see faces to high enough to see half of India
-const ZMIN = 0.12, ZMAX = 8;
+const ZMIN = 0.42, ZMAX = 8; // the closest zoom still keeps the whole traveller in view
 function zoomBy(k) {
 	rig.zoom = clamp(rig.zoom * k, ZMIN, ZMAX);
 }
