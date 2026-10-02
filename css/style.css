@@ -186,8 +186,13 @@ body.hide-hud .hud { opacity: 0 !important; }
 	.route-list b { font-size: 19px; }
 	body.darshan-open .bottom .map { display: none; }
 }
-@media (max-width: 380px) {
+@media (max-width: 480px) {
+	/* time and weather keep their icons; the travel choice keeps its word */
 	#btn-time span, #btn-weather span { display: none; }
+	.controls { gap: 5px; }
+}
+@media (max-width: 340px) {
+	#btn-transport span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
 	.loader img { animation: none; }

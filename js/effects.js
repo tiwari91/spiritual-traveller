@@ -36,12 +36,12 @@ export function routeLine(route) {
 	g.setAttribute("aSide", new THREE.BufferAttribute(side, 1));
 	g.setIndex(idx);
 	const mat = new THREE.ShaderMaterial({
-		uniforms: { uProg: { value: 0 }, uTime: { value: 0 }, uDone: { value: new THREE.Color(0xffa63d) }, uAhead: { value: new THREE.Color(0xf3dfa8) }, uWidth: { value: 0.3 } },
+		uniforms: { uAlpha: { value: 1 }, uProg: { value: 0 }, uTime: { value: 0 }, uDone: { value: new THREE.Color(0xffa63d) }, uAhead: { value: new THREE.Color(0xf3dfa8) }, uWidth: { value: 0.3 } },
 		vertexShader: `
 uniform float uWidth; attribute vec3 aDir; attribute float aS; attribute float aSide; varying float vS; varying float vSide;
 void main(){ vS = aS; vSide = aSide; gl_Position = projectionMatrix * modelViewMatrix * vec4(position + aDir * aSide * uWidth, 1.0); }`,
 		fragmentShader: `
-uniform float uProg, uTime; uniform vec3 uDone, uAhead; varying float vS; varying float vSide;
+uniform float uProg, uTime, uAlpha; uniform vec3 uDone, uAhead; varying float vS; varying float vSide;
 void main(){
 	float edge = 1.0 - smoothstep(0.55, 1.0, abs(vSide));
 	vec4 c;
@@ -52,6 +52,7 @@ void main(){
 		float dash = step(0.45, fract(vS * 0.35 - uTime * 0.25));
 		c = vec4(uAhead, 0.55 * dash * edge);
 	}
+	c.a *= uAlpha;
 	if (c.a < 0.02) discard;
 	gl_FragColor = c;
 	#include <colorspace_fragment>

@@ -280,3 +280,6 @@ export function crowdFigure(seed) {
 	return m;
 }
 const CROWD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+
+// Shared with the temple interiors (sanctum.js), which pose their own figures.
+export { body, pose, SKIN, NAMASTE, STAND };
