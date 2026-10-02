@@ -22,7 +22,8 @@
 </head>
 <body>
 <!-- Lineup of every kind of figure from js/pilgrim.js. ?light=sun for outdoor light, ?spin=1 to turn them,
-     ?view=fig&i=N or ?view=face&i=N to frame one, ?t=S to freeze the clock at S seconds, ?ui=0 hides the bar. -->
+     ?view=fig&i=N or ?view=face&i=N to frame one, ?t=S to freeze the clock at S seconds, ?ui=0 hides the bar,
+     ?place=tirupati (or bhimashankar, kedarnath, badrinath) dresses the crowd row as the pilgrims there, ?n=12 sets its size. -->
 <canvas id="scene" aria-label="Figures from the pilgrimage, lined up"></canvas>
 <div class="bar" id="bar"></div>
 <div class="info" id="info"></div>
@@ -146,10 +147,11 @@ fig("Woman in a red sari", { skin: SKIN[0], top: 0xf2c14e, bottom: 0xc0262d, sas
 fig("Elder woman, veiled", { skin: SKIN[6], top: 0x6a2a8a, bottom: 0x7b2fa0, sash: 0x7b2fa0, headColor: 0x7b2fa0, head: "veil", sari: true, age: "elder", border: 0xf2c14e }, Object.assign({}, STAND, { nod: 0.12 }));
 fig("Woman in a green sari", { skin: SKIN[3], top: 0xb8261c, bottom: 0x2f8a4a, sash: 0x2f8a4a, headColor: 0x2f8a4a, head: "veil", sari: true }, Object.assign({}, STAND, { shR: -0.5, elR: -1.3, shRz: -0.1 }));
 const crowd = new THREE.Group();
-for (let i = 0; i < 6; i++) {
-	const m = crowdFigure(301 + i * 17);
+const nCrowd = +(params.get("n") || 6);
+for (let i = 0; i < nCrowd; i++) {
+	const m = crowdFigure(301 + i * 17, params.get("place") || undefined);
 	m.geometry.scale(1 / 0.28, 1 / 0.28, 1 / 0.28);
-	m.position.x = (i - 2.5) * 0.7;
+	m.position.x = (i - (nCrowd - 1) / 2) * 0.7;
 	crowd.add(m);
 }
 crowd.position.set(0, 0, 2.2);
@@ -187,7 +189,7 @@ function frame(view, i = 0) {
 		camera.position.set(x + Math.sin(yaw) * d, h + (view === "fig" ? 0.25 : 0.03), Math.cos(yaw) * d);
 	} else if (view === "crowd") {
 		controls.target.set(0, 0.85, 2.2);
-		camera.position.set(0.4, 1.3, 6.4);
+		camera.position.set(0.4, 1.3, 2.2 + Math.max(4.2, nCrowd * 0.5));
 	} else {
 		controls.target.set(0, 0.85, 0.6);
 		const wide = innerWidth / innerHeight < 1;
@@ -221,8 +223,8 @@ if (fixed) {
 for (const it of items) it.tris = tris(it.obj);
 let crowdTris = 0;
 crowd.traverse((m) => m.isMesh && (crowdTris += m.geometry.index.count / 3));
-info.textContent = items.map((it) => `${it.name}: ${it.tris.toLocaleString()}`).join(" · ") + ` · crowd LOD: ${Math.round(crowdTris / 6).toLocaleString()} each`;
-window.figures = { items: items.map((it) => ({ name: it.name, tris: it.tris })), crowd: Math.round(crowdTris / 6), step };
+info.textContent = items.map((it) => `${it.name}: ${it.tris.toLocaleString()}`).join(" · ") + ` · crowd LOD: ${Math.round(crowdTris / nCrowd).toLocaleString()} each`;
+window.figures = { items: items.map((it) => ({ name: it.name, tris: it.tris })), crowd: Math.round(crowdTris / nCrowd), step };
 function loop(now) {
 	const dt = Math.min(0.05, (now - last) / 1000);
 	last = now;
