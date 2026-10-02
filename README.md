@@ -35,6 +35,21 @@ The order starts with the shrine nearest Pune, takes Tirumala while still in the
 
 At each darshan the pujari comes to the door, blows the shankh and performs the aarti with a brass lamp and bell while the pilgrims raise their hands, and then offers the flame to the traveller. Each shrine has its own music, all synthesised in the page (no recordings): the Shaiva aarti with conch, damaru, bells, nagara and a harmonium drone at Bhimashankar (in the Maharashtrian style, with tal and pakhawaj) and at Kedarnath (with Garhwali dhol-damau and ransingha); the nadaswaram, thavil and jalra of the mangala vadyam at Tirumala; and harmonium, dholak and manjira for the Badrinath aarti. Turn sound on with M or the speaker button.
 
+With the sound on, the aarti plays Krishna Das by default: each shrine's chant streams from his official YouTube channel in a small player card in the corner, credited there while it plays, and the synthesised drone fades down beneath it. The note chip in the controls bar (or the Controls dialog on a phone) switches "Aarti music" between **Krishna Das** and **Temple** (the synthesised music). Nothing loads from YouTube until you turn the sound on, and if the video cannot load (offline, blocked, an ad-blocker) the temple's synthesised aarti plays instead. The 3D aarti always follows the synthesised music's clock, and the track keeps playing as the darshan's music until you move on.
+
+## Music
+
+Aarti music by Krishna Das, played from his official YouTube channel; all rights belong to Krishna Das and his label. Visit [krishnadas.com](https://www.krishnadas.com). Nothing of his is downloaded, copied or bundled here: the videos are embedded with YouTube's IFrame Player API from `youtube-nocookie.com`.
+
+| Shrine | Track (official video, [@KrishnaDasMusic](https://www.youtube.com/@KrishnaDasMusic)) |
+| --- | --- |
+| Bhimashankar | [Om Namah Shivaya (Krishna Das Live! Songs With Lyrics)](https://www.youtube.com/watch?v=PTc8X37oJBE) |
+| Tirumala | [Govinda Hare (NYC Kirtan, recorded 2023)](https://www.youtube.com/watch?v=e5jylnA2KdQ) |
+| Kedarnath | [Jai Shiva Omkara (from *Peace of My Heart*)](https://www.youtube.com/watch?v=sn1otVlvVrM) |
+| Badrinath | [Narayana / For Your Love (from *Heart As Wide As The World*)](https://www.youtube.com/watch?v=a3XaLpZSW14) |
+
+The temple music (drone, bells, conch, drums, harmonium, nadaswaram and the rest) is original, synthesised in the page with the Web Audio API.
+
 ## Getting to the door
 
 No vehicle goes into a temple. Each road ends at a bus stand short of the shrine, with buses, jeeps and autos parked in rows, and the traveller walks the last stretch up a paved path lined with flower, coconut and prasad stalls. The train runs on its own line beside the road, kept clear of every road and temple, carried over roads on overbridges; it pulls away slowly, runs at line speed and halts at each station.
@@ -70,6 +85,7 @@ Click the minimap (or press G) for a full-screen satellite map with real 3D terr
 | Time of day / weather | T / W | sun and cloud chips |
 | Mixed, train, bike or car | V | bike chip |
 | Temple sounds (drone and bells) | M | speaker button |
+| Aarti music: Krishna Das / Temple (synth) | | note chip, or the Controls dialog |
 | Enter the temple (at darshan) | E | Enter the temple |
 | Hide the panels | H | |
 

@@ -254,12 +254,14 @@ function samplePath(route, world, s0, s1, offset, opts = {}) {
 				pts[i].z = (pts[i - 1].z + pts[i].z * 2 + pts[i + 1].z) / 4;
 			}
 		}
-		for (let i = 0; i < pts.length; i++) {
-			const p = pts[Math.max(0, i - 1)], q = pts[Math.min(pts.length - 1, i + 1)];
-			const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
-			pts[i].dx = (q.x - p.x) / l;
-			pts[i].dz = (q.z - p.z) / l;
-		}
+	}
+	// the road's own direction at each point (not the wide look-around), so on a hairpin the road
+	// and the vehicles on it turn with the bend instead of cutting across it
+	for (let i = 0; i < pts.length; i++) {
+		const p = pts[Math.max(0, i - 2)], q = pts[Math.min(pts.length - 1, i + 2)];
+		const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+		pts[i].dx = (q.x - p.x) / l;
+		pts[i].dz = (q.z - p.z) / l;
 	}
 	for (const p of pts) {
 		const g = toGeo(p.x, p.z);

@@ -13,6 +13,7 @@ import { Traffic } from "./traffic.js";
 import { Sanctum } from "./sanctum.js";
 import { Music } from "./music.js";
 import { Aarti } from "./aarti.js";
+import { KDMusic } from "./kdmusic.js";
 import { MapView } from "./map3d.js";
 import { Audio } from "./audio.js";
 import { CITIES, GAURIKUND, INDIA, LANKA, SHRINES, toWorld } from "./geo.js";
@@ -52,7 +53,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 5000);
 app.camera = camera;
 
-let world, route, sky, landmarks, line, traveller, ride, lights, weather, petals, roads, scenery, traffic, sanctum, music, aarti;
+let world, route, sky, landmarks, line, traveller, ride, lights, weather, petals, roads, scenery, traffic, sanctum, music, aarti, kd;
 const audio = new Audio();
 
 async function init() {
@@ -82,6 +83,8 @@ async function init() {
 	// the aarti at the door, with each shrine's own music
 	music = new Music(audio);
 	aarti = new Aarti({ scene, landmarks, music, traveller, low: LOW });
+	// Krishna Das from his official YouTube channel at the aarti, over the synth music (which keeps the aarti's clock)
+	kd = new KDMusic({ audio, music, onNotice: (t) => toast(t) });
 	ride = { bike: motorbike(), jeep: jeep(), car: jeep(), train: train(4) };
 	ride.car.group.children[0].material = ride.car.group.children[0].material.clone();
 	ride.car.group.children[0].material.color.set(0xf2c230); // a yellow-roofed Tirupati taxi
@@ -94,7 +97,7 @@ async function init() {
 	petals = new Petals(scene);
 	sky = new Sky(scene);
 	if (LOW) sky.sun.shadow.mapSize.set(1024, 1024);
-	Object.assign(app, { world, route, sky, landmarks, scene, roads, scenery, traffic });
+	Object.assign(app, { world, route, sky, landmarks, scene, roads, scenery, traffic, ride, traveller });
 	// where the road gives way to the footpath below Kedarnath
 	const gk = toWorld(GAURIKUND[0], GAURIKUND[1]);
 	const c2 = route.chapters[2];
@@ -117,7 +120,10 @@ async function init() {
 	// inside each temple: the shrine's own rituals, step by step
 	sanctum = new Sanctum({ renderer, container: document.body, audio, low: LOW, onStep: (i, step, key) => {
 		// the music of the temple follows the rituals inside
-		if (/aarti/i.test(step.title) && !/take/i.test(step.title)) music.aarti(key);
+		if (/aarti/i.test(step.title) && !/take/i.test(step.title)) {
+			music.aarti(key);
+			kd.play(key);
+		}
 		else if (i === 0) music.ambient(key);
 	}, onExit: (key) => {
 		music.ambient(key);
@@ -125,7 +131,7 @@ async function init() {
 		$("enter").innerHTML = "Go inside again <span>the rituals play by themselves (E)</span>";
 		$("continue").focus();
 	} });
-	Object.assign(app, { sanctum, music, aarti });
+	Object.assign(app, { sanctum, music, aarti, kd });
 	// the 3D satellite map, opened from the minimap or with G
 	app.mapView = new MapView({ opener: $("map-wrap"), hotkey: "g", onOpen: () => (app.mapOpen = true), onClose: () => (app.mapOpen = false) });
 	buildUI();
@@ -223,7 +229,7 @@ function arrive(i) {
 	$("d-note").textContent = s.note;
 	$("d-greet").textContent = s.greeting;
 	$("continue").textContent = i === 3 ? "Complete the yatra" : `Continue to ${SHRINES[i + 1].name}`;
-	$("enter").innerHTML = app.inside[i] ? "Go inside again <span>the rituals play by themselves (E)</span>" : "Enter the temple <span>the traveller goes in by themselves in a moment (E)</span>";
+	$("enter").innerHTML = app.inside[i] ? "Go inside again <span>the rituals play by themselves (E)</span>" : "Going inside… <span>the rituals play by themselves</span>";
 	$("darshan").querySelector(".d-scroll").scrollTop = 0;
 	$("darshan").classList.add("show");
 	document.body.classList.add("darshan-open");
@@ -231,6 +237,7 @@ function arrive(i) {
 	toast(`${s.mantraLatin}`);
 	audio.bell(3);
 	app.aartiDone = false;
+	kd.play(s.key);
 	aarti.start(i).then(() => {
 		if (app.state === "darshan" && app.at === i) app.aartiDone = true;
 	});
@@ -248,6 +255,7 @@ function enterTemple(auto = false) {
 function closeDarshan() {
 	aarti.stop();
 	music.stop(1.2);
+	kd.stop(1.2);
 	$("darshan").classList.remove("show");
 	document.body.classList.remove("darshan-open");
 }
@@ -431,7 +439,7 @@ function loop(now) {
 	if (app.state === "darshan") {
 		app.darshanT += dt;
 		// after a few moments at the door, the traveller goes in and does the rituals by themselves
-		if (!app.inside[app.at] && (app.aartiDone || !aarti.active) && app.darshanT > 6 && !sanctum.active && !app.params.has("noenter")) {
+		if (!app.inside[app.at] && app.darshanT > 3.5 && !sanctum.active && !app.params.has("noenter")) {
 			app.inside[app.at] = true;
 			enterTemple(true);
 		}
@@ -563,7 +571,11 @@ function updateTraveller(dt) {
 	// on foot the traveller keeps to the left verge; vehicles run near the middle of the road
 	const onRoad = roads.road(app.s, 0, {});
 	const half = onRoad ? (onRoad.kind === "nh" ? 3.75 : onRoad.kind === "ghat" ? 3.5 : onRoad.kind === "hill" ? 2.75 : 0) : 0;
-	const p = pre === "walk" ? roadPoint(app.s, -(half + 0.6)) : roadPoint(app.s, -0.7);
+	// vehicles ride just left of the centre line, clear of oncoming traffic on the right
+	// on the narrow Garhwal roads keep further left, so an oncoming bus has room on a bend
+	const narrow = onRoad && onRoad.kind === "hill";
+	const myLane = pre === "bike" ? (narrow ? -1.1 : -0.6) : narrow ? -1.55 : -1.15;
+	const p = pre === "walk" ? roadPoint(app.s, -(half + 0.6)) : roadPoint(app.s, myLane);
 	let yaw = Math.atan2(p.dx, p.dz);
 	travPos.set(p.x, p.y, p.z);
 	let atShrine = false;
@@ -602,7 +614,11 @@ function updateTraveller(dt) {
 		const v = ride[k];
 		v.group.visible = mode === k && app.state === "travel";
 		if (!v.group.visible) continue;
-		setOn(v.group, roadPoint(app.s, -0.7 * (vs / M)), vs);
+		// on its two axles, so it follows the bend
+		const lane = myLane * (vs / M), ax = (k === "bike" ? 0.7 : 1.3) * vs;
+		const a = roadPoint(app.s - ax, lane), ax0 = { x: a.x, y: a.y, z: a.z };
+		const b = roadPoint(app.s + ax, lane);
+		setOn(v.group, { x: (ax0.x + b.x) / 2, y: (ax0.y + b.y) / 2, z: (ax0.z + b.z) / 2 }, vs, Math.atan2(b.x - ax0.x, b.z - ax0.z));
 		for (const w of v.wheels) w.rotation.x += spin;
 	}
 	const onTrain = mode === "train" && app.state === "travel";
@@ -705,6 +721,8 @@ function buildUI() {
 	$("btn-zout").addEventListener("click", () => zoomBy(1.45));
 	$("transport-label").textContent = TRANSPORT[app.transport];
 	$("btn-sound").addEventListener("click", toggleSound);
+	kd.bind($("btn-aarti-music"));
+	kd.bind($("help-aarti-music"));
 	$("btn-chapters").addEventListener("click", () => ($("chapters").hidden ? openMenu() : closeMenu()));
 	$("btn-restart").addEventListener("click", restart);
 	$("btn-help").addEventListener("click", () => { $("help").hidden = false; $("help-close").focus(); });

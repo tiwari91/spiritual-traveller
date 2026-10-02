@@ -90,6 +90,8 @@ const MIX = {
 	hill: ["car", "bus", "car", "truck"],
 };
 const LEN = { truck: 7.5, bus: 10.5, auto: 2.6, tractor: 6, car: 4 };
+// half widths in metres, for keeping lanes apart
+const HALF = { truck: 1.25, bus: 1.3, auto: 0.7, tractor: 1.15, car: 0.85 };
 
 export class Traffic {
 	constructor(roads, scene, low = false) {
@@ -130,52 +132,81 @@ export class Traffic {
 		c.type = type;
 		c.dir = this.R() < 0.55 ? -1 : 1; // -1 oncoming
 		c.s = s + (ahead ? 1 : this.R() * 2 - 0.6) * (18 + this.R() * 22);
-		c.k = 0.35 + this.R() * 0.35; // fraction of the traveller's pace
+		// same-direction traffic is a little quicker than the traveller and overtakes on the right
+		c.k = 1.25 + this.R() * 0.5; // fraction of the traveller's pace
 		c.live = true;
 	}
 	// s: where the traveller is; pace: the traveller's speed along the route (units a second);
-	// on: whether traffic should show (the traveller is on the road and the camera is close)
+	// on: whether traffic should show; scale: world units per metre; me: the traveller's half width (m)
 	update(dt, s, pace, on, scale) {
-		const p = this.p;
-		// no vehicle drives through the one in front in its lane: it drops back to keep a gap
+		this.frame = (this.frame || 0) + 1;
+		if (!on) {
+			for (const c of this.cars) if (c.mesh) c.mesh.visible = false;
+			return;
+		}
+		const p = this.p, q0 = {}, q1 = {};
+		const here = this.roads.road(s, 0, p);
+		const kind = here ? here.kind : null;
+		// 1. move everyone, and recycle vehicles that have dropped too far behind or ahead
 		for (const c of this.cars) {
+			if (!c.live && kind && kind !== "trek") this.spawn(c, s, false, kind);
 			if (!c.live) continue;
-			for (const o of this.cars) {
-				if (o === c || !o.live || o.dir !== c.dir) continue;
-				const gap = (o.s - c.s) * c.dir;
-				const need = ((LEN[c.type] + LEN[o.type]) / 2 + 3) * scale;
-				if (gap > 0 && gap < need) c.s = o.s - need * c.dir;
+			c.s += (c.dir > 0 ? pace * (c.k - 1) + 0.6 : -(pace * 0.8 + 1.4)) * dt;
+			const rel = c.s - s;
+			if (rel < -26 || rel > 48) this.spawn(c, s, true, kind || "nh");
+		}
+		const live = this.cars.filter((c) => c.live);
+		const paved = kind === "nh" ? 7.5 : kind === "ghat" ? 7 : 5.5;
+		const gap = (a, b) => ((LEN[a.type] + LEN[b.type]) / 2 + 3) * scale;
+		// 2. same-direction traffic either overtakes the traveller (only with the oncoming lane clear) or waits behind
+		for (const c of live) {
+			if (c.dir < 0) continue;
+			const span = (LEN[c.type] / 2 + 4) * scale + 8 * scale;
+			const busy = live.some((o) => o.dir < 0 && o.s > s - span - 12 * scale && o.s < s + span + 30 * scale);
+			const rel = c.s - s;
+			if (busy && rel > -span && rel < span && !(c.passing > 0.5)) c.s = Math.min(c.s, s - span);
+			const want = Math.abs(c.s - s) < span && (!busy || c.passing > 0.5) ? 1 : 0;
+			c.passing = (c.passing || 0) + (want - (c.passing || 0)) * Math.min(1, dt * 1.5);
+		}
+		// 3. in each direction, nobody drives through the vehicle in front: walk the queue and space it out
+		for (const dir of [1, -1]) {
+			const q = live.filter((c) => c.dir === dir).sort((a, b) => (b.s - a.s) * dir);
+			for (let i = 1; i < q.length; i++) {
+				const front = q[i - 1], c = q[i];
+				// vehicles in different lanes (one overtaking) may pass each other
+				if (Math.abs((front.passing || 0) - (c.passing || 0)) > 0.5) continue;
+				const need = gap(front, c);
+				if ((front.s - c.s) * dir < need) c.s = front.s - need * dir;
 			}
 		}
+		// 4. lanes and placement
 		for (const c of this.cars) {
-			if (!on) {
+			if (!c.live) {
 				if (c.mesh) c.mesh.visible = false;
 				continue;
 			}
-			const here = this.roads.road(s, 0, p);
-			if (!c.live && here && here.kind !== "trek") this.spawn(c, s, false, here.kind);
-			if (!c.live) continue;
-			// same-direction traffic is slower than the traveller and is overtaken; oncoming closes fast
-			c.s += (c.dir > 0 ? pace * c.k : -pace * (0.4 + c.k * 0.5)) * dt + (c.dir > 0 ? 1 : -1) * dt * 1.2;
-			const rel = c.s - s;
-			if (rel < -22 || rel > 48) {
-				this.spawn(c, s, true, here ? here.kind : "nh");
-				if (!c.live) continue;
-			}
+			const m = c.mesh;
 			const r = this.roads.road(c.s, 0, p);
-			if (!r || r.kind === "trek") {
-				c.mesh.visible = false;
+			if (!r || r.kind !== kind) {
+				m.visible = false;
 				continue;
 			}
-			const paved = r.kind === "nh" ? 7.5 : r.kind === "ghat" ? 7 : 5.5;
-			// lane offsets in metres from the centre; slow vehicles hug the left edge
-			// lanes widen with the vehicles when they are drawn larger than life from far away
-			const lane = (c.dir > 0 ? -(paved / 2 - 1.3) : paved / 2 - 1.25) * (scale / M);
-			const q = this.roads.road(c.s, lane, p);
-			const m = c.mesh;
+			const half = HALF[c.type], len = LEN[c.type];
+			// lanes in metres from the centre: oncoming keeps right of the centre line, same-direction keeps
+			// to the left edge and swings out right to pass the traveller, who rides just left of centre
+			const right = Math.min(paved / 2 - half - 0.1, half + 0.35);
+			const left = -(paved / 2 - half - 0.1);
+			const lane = (c.dir < 0 ? right : left + (right - left) * (c.passing || 0)) * (scale / M);
+			// set the vehicle on its two axles, so a long bus follows the bend instead of cutting across it
+			const ax = len * 0.32 * scale;
+			const a = this.roads.road(c.s - ax * c.dir, lane, q0), b = this.roads.road(c.s + ax * c.dir, lane, q1);
+			if (!a || !b) {
+				m.visible = false;
+				continue;
+			}
 			m.visible = true;
-			m.position.set(q.x, q.y + 0.02, q.z);
-			m.rotation.y = Math.atan2(q.dx, q.dz) + (c.dir > 0 ? 0 : Math.PI);
+			m.position.set((a.x + b.x) / 2, (a.y + b.y) / 2 + 0.02, (a.z + b.z) / 2);
+			m.rotation.set(0, Math.atan2(b.x - a.x, b.z - a.z), 0);
 			m.scale.setScalar(scale);
 		}
 	}

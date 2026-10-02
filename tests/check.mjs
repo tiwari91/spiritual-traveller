@@ -62,7 +62,8 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + ".png
 
 try {
 	// ---------- desktop ----------
-	const { ctx, page, errors } = await open();
+	// the main run stays at the door (?noenter=1); going inside by itself is checked further down
+	const { ctx, page, errors } = await open({}, "?noenter=1");
 	await wait(page, 1500);
 	await shot(page, "01-intro");
 	await page.click("#start");
@@ -121,7 +122,7 @@ try {
 	await ctx.close();
 
 	// ---------- weather close-ups ----------
-	for (const [q, name] of [["?shrine=1", "40-bhimashankar-monsoon"], ["?shrine=3", "41-kedarnath-snow"], ["?shrine=2&h=20", "42-tirumala-night"], ["?shrine=4&h=17.8", "43-badrinath-dusk"]]) {
+	for (const [q, name] of [["?shrine=1&noenter=1", "40-bhimashankar-monsoon"], ["?shrine=3&noenter=1", "41-kedarnath-snow"], ["?shrine=2&h=20&noenter=1", "42-tirumala-night"], ["?shrine=4&h=17.8&noenter=1", "43-badrinath-dusk"]]) {
 		const o = await open({}, q);
 		await wait(o.page, 5000);
 		await shot(o.page, name);
@@ -129,8 +130,22 @@ try {
 		await o.ctx.close();
 	}
 
+	// ---------- inside the temple, by itself ----------
+	{
+		const o = await open({}, "?shrine=1");
+		await o.page.waitForFunction(() => app.sanctum && app.sanctum.active, null, { timeout: 15000 }).catch(() => {});
+		ok("Goes inside the temple by itself", await o.page.evaluate(() => app.sanctum.active));
+		await wait(o.page, 6000);
+		const step = await o.page.evaluate(() => app.sanctum.idx);
+		await wait(o.page, 20000);
+		ok("Rituals move on by themselves", (await o.page.evaluate(() => app.sanctum.idx)) > step);
+		await shot(o.page, "44-inside-bhimashankar");
+		ok("Inside console clean", o.errors.length === 0, o.errors.slice(0, 3).join(" | "));
+		await o.ctx.close();
+	}
+
 	// ---------- phone ----------
-	const phone = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+	const phone = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, "?noenter=1");
 	await wait(phone.page, 1200);
 	await shot(phone.page, "50-phone-intro");
 	await phone.page.tap("#start");
