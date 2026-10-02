@@ -107,9 +107,9 @@ export class Scenery {
 		for (let i = 0; i < nf; i++) {
 			const s = s0 + R() * (s1 - s0), side = R() < 0.5 ? -1 : 1, off = side * (2.6 + Math.pow(R(), 0.8) * 26);
 			const c = lateral(s, off);
-			if (!this.ok(c.x, c.z, 1.2)) continue;
 			const [col, stripe] = pick(R, crops);
 			const w = (reg === "garhwal" ? 1.2 : 2) + R() * 3.5, l = w * (0.8 + R() * 1.4);
+			if (!this.ok(c.x, c.z, Math.hypot(w, l) / 2 + 0.2)) continue;
 			// fields line up with the road, or with the slope in the hills
 			let yaw = c.yaw + (R() - 0.5) * 0.3;
 			if (reg === "garhwal") {
@@ -151,7 +151,8 @@ export class Scenery {
 			const n = 1 + Math.floor(R() * (reg === "garhwal" ? 6 : 3));
 			for (let j = 0; j < n; j++) {
 				const x = c.x + (R() - 0.5) * 2.5, z = c.z + (R() - 0.5) * 2.5;
-				if (!this.ok(x, z, 0.4)) continue;
+				// crowns spread a metre or two; keep them off the line and the road
+				if (!this.ok(x, z, 1.1)) continue;
 				this.tree(b, R, x, z, this.species(R, reg));
 			}
 		}
@@ -324,10 +325,11 @@ export class Scenery {
 		for (let i = 0; i < n; i++) {
 			const a = R() * Math.PI * 2, d = Math.sqrt(R()) * (2.2 + n * 0.12);
 			const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
-			if (!this.ok(x, z, 0.4)) continue;
-			const y = world.height(x, z);
 			const yaw = yaw0 + (R() < 0.7 ? 0 : Math.PI / 2) + (R() - 0.5) * 0.2;
 			const w = (5 + R() * 5) * M, dpt = (5 + R() * 5) * M;
+			// the whole house, not just its middle, keeps clear of the road and the line
+			if (!this.ok(x, z, Math.hypot(w, dpt) / 2 + 0.3)) continue;
+			const y = world.height(x, z);
 			const floors = style === "plains" ? (R() < 0.35 ? 2 : 1) : style === "garhwal" ? 1 + Math.floor(R() * 3) : 1;
 			const h = floors * 3.1 * M;
 			const wall = C(pick(R, walls));
@@ -360,7 +362,7 @@ export class Scenery {
 		// the village water tank on its legs
 		if (style !== "garhwal" && R() < 0.7) {
 			const x = c.x + 2.5, z = c.z - 1.5;
-			if (this.ok(x, z, 0.5)) {
+			if (this.ok(x, z, 1.4)) {
 				const y = world.height(x, z);
 				for (const [lx, lz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) b.add(T.box, place(x + lx * 0.5, y, z + lz * 0.5, 0, 0.12, 3.2, 0.12), 0xb9b4aa);
 				b.add(T.cyl12, place(x, y + 3.2, z, 0, 1.9, 1.2, 1.9), 0xd6d1c6);
@@ -370,13 +372,13 @@ export class Scenery {
 		// a small whitewashed shrine with a saffron flag, under a peepal
 		if (R() < 0.75) {
 			const x = c.x - 2, z = c.z + 1.6;
-			if (this.ok(x, z, 0.5)) {
+			if (this.ok(x, z, 0.8)) {
 				const y = world.height(x, z);
 				b.add(T.box, place(x, y, z, yaw0, 0.7, 0.75, 0.7), 0xf4f1ea);
 				b.add(T.pyramid, place(x, y + 0.75, z, yaw0, 0.55, 0.9, 0.55), style === "garhwal" ? 0x8a8378 : 0xe07a1e);
 				b.add(T.box, place(x, y + 1.6, z, 0, 0.02, 0.7, 0.02), 0x5a4434);
 				b.add(T.box, place(x + 0.12, y + 2.12, z, 0, 0.22, 0.14, 0.01), 0xff8a1e);
-				this.tree(b, R, x + 1.6, z + 0.6, "banyan");
+				if (this.ok(x + 1.6, z + 0.6, 2)) this.tree(b, R, x + 1.6, z + 0.6, "banyan");
 			}
 		}
 	}

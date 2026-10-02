@@ -137,6 +137,16 @@ export class Traffic {
 	// on: whether traffic should show (the traveller is on the road and the camera is close)
 	update(dt, s, pace, on, scale) {
 		const p = this.p;
+		// no vehicle drives through the one in front in its lane: it drops back to keep a gap
+		for (const c of this.cars) {
+			if (!c.live) continue;
+			for (const o of this.cars) {
+				if (o === c || !o.live || o.dir !== c.dir) continue;
+				const gap = (o.s - c.s) * c.dir;
+				const need = ((LEN[c.type] + LEN[o.type]) / 2 + 3) * scale;
+				if (gap > 0 && gap < need) c.s = o.s - need * c.dir;
+			}
+		}
 		for (const c of this.cars) {
 			if (!on) {
 				if (c.mesh) c.mesh.visible = false;
@@ -159,7 +169,8 @@ export class Traffic {
 			}
 			const paved = r.kind === "nh" ? 7.5 : r.kind === "ghat" ? 7 : 5.5;
 			// lane offsets in metres from the centre; slow vehicles hug the left edge
-			const lane = c.dir > 0 ? -(paved / 2 - 1.3) : paved / 2 - 1.25;
+			// lanes widen with the vehicles when they are drawn larger than life from far away
+			const lane = (c.dir > 0 ? -(paved / 2 - 1.3) : paved / 2 - 1.25) * (scale / M);
 			const q = this.roads.road(c.s, lane, p);
 			const m = c.mesh;
 			m.visible = true;

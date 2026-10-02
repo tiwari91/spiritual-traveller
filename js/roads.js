@@ -270,7 +270,8 @@ function cross(ax, az, bx, bz, cx, cz, dx, dz) {
 	const u = ((cx - ax) * (bz - az) - (cz - az) * (bx - ax)) / d;
 	return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? t : -1;
 }
-function bridges(pts, rivers, world, halfW) {
+// lines: rivers ({ pts, w }) and, for the railway, roads ({ pts, w, over: true }) to be carried over
+function bridges(pts, rivers, world, halfW, ramp = 1.6) {
 	const spans = [];
 	for (let i = 0; i < pts.length - 1; i++) {
 		const p = pts[i], q = pts[i + 1];
@@ -283,7 +284,9 @@ function bridges(pts, rivers, world, halfW) {
 				// the span grows as the crossing gets more oblique
 				const rd = Math.hypot(b.x - a.x, b.z - a.z) || 1, pd = Math.hypot(q.x - p.x, q.z - p.z) || 1;
 				const sin = Math.abs(((b.x - a.x) * (q.z - p.z) - (b.z - a.z) * (q.x - p.x)) / (rd * pd));
-				spans.push({ s: lerp(p.s, q.s, t), half: Math.min(4, r.w / 2 / Math.max(0.35, sin) + 0.5), deck: world.height(a.x, a.z) + 0.25 + 0.55 });
+				// over a road the deck clears a truck (about 6 m); over a river it sits just above the water
+				const deck = r.over ? Math.max(world.height(a.x, a.z), world.height(p.x, p.z)) + 6 * M : world.height(a.x, a.z) + 0.25 + 0.55;
+				spans.push({ s: lerp(p.s, q.s, t), half: Math.min(5, r.w / 2 / Math.max(0.35, sin) + 0.5), deck });
 			}
 		}
 	}
@@ -292,7 +295,7 @@ function bridges(pts, rivers, world, halfW) {
 		p.y = p.ground;
 		for (const sp of spans) {
 			const d = Math.abs(p.s - sp.s);
-			const k = smoothstep(sp.half + halfW + 1.6, sp.half, d);
+			const k = smoothstep(sp.half + halfW + ramp, sp.half, d);
 			if (k > p.bridge) {
 				p.bridge = k;
 				p.y = lerp(p.ground, Math.max(sp.deck, p.ground), k);
@@ -335,6 +338,69 @@ function ribbon(pts, width, world, lift, uvLen, cols = 5) {
 	return g;
 }
 
+// Push a path away from roads that run alongside it (not ones it crosses), then smooth it again.
+function separate(pts, roads, need, world) {
+	const hash = new Map();
+	for (const r of roads) for (const q of r) {
+		const k = Math.floor(q.x / 4) * 100003 + Math.floor(q.z / 4);
+		if (!hash.has(k)) hash.set(k, []);
+		hash.get(k).push(q);
+	}
+	const kind = (q) => (KIND[q.kind].paved / 2 + KIND[q.kind].shoulder) * M;
+	for (let pass = 0; pass < 3; pass++) {
+		for (const p of pts) {
+			const cx = Math.floor(p.x / 4), cz = Math.floor(p.z / 4);
+			for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+				for (const q of hash.get((cx + i) * 100003 + (cz + j)) || []) {
+					const dx = p.x - q.x, dz = p.z - q.z;
+					// distance across the road at q
+					const across = -dx * q.dz + dz * q.dx;
+					const along = dx * q.dx + dz * q.dz;
+					const min = need + kind(q) - (RAIL_BED / 2) * M;
+					if (Math.abs(along) > STEP * 1.5 || Math.abs(across) >= min) continue;
+					if (Math.abs(p.dx * q.dx + p.dz * q.dz) < 0.6) continue; // a crossing: leave it for a bridge
+					const sg = across >= 0 ? 1 : -1;
+					const push = sg * min - across;
+					p.x += -q.dz * push;
+					p.z += q.dx * push;
+				}
+			}
+		}
+		for (let i = 1; i < pts.length - 1; i++) {
+			pts[i].x = (pts[i - 1].x + pts[i].x * 2 + pts[i + 1].x) / 4;
+			pts[i].z = (pts[i - 1].z + pts[i].z * 2 + pts[i + 1].z) / 4;
+		}
+	}
+	for (let i = 0; i < pts.length; i++) {
+		const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+		const l = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+		pts[i].dx = (b.x - a.x) / l;
+		pts[i].dz = (b.z - a.z) / l;
+	}
+	for (const p of pts) {
+		const g = toGeo(p.x, p.z);
+		p.lon = g.lon;
+		p.lat = g.lat;
+		p.ground = world.height(p.x, p.z);
+		p.region = region(g.lon, g.lat);
+	}
+	return pts;
+}
+// Break a path into separate runs wherever ok(p) fails, so no straight piece jumps across the gap.
+function split(pts, ok) {
+	const runs = [];
+	let cur = [];
+	for (const p of pts) {
+		if (ok(p)) cur.push(p);
+		else if (cur.length) {
+			runs.push(cur);
+			cur = [];
+		}
+	}
+	if (cur.length) runs.push(cur);
+	return runs.filter((r) => r.length > 6);
+}
+
 export class Roads {
 	constructor(route, world, scene, low = false) {
 		this.route = route;
@@ -366,14 +432,30 @@ export class Roads {
 		// stretches of road and rail; the return legs reuse the road they came up, so it is not drawn twice
 		this.roadRuns = [[0.4, ch[0].s1 - 2.8], [ch[1].s0 + 2.8, ch[1].s1 - 3.2], [A.tirupatiOut, A.gauri], [A.rudraBack, ch[3].s1 - 2.6]];
 		this.trekRun = [A.gauri, ch[2].s1 - 3.2];
-		this.railRuns = [[A.pune, A.tirupatiIn], [A.tirupatiOut, A.rishikesh]];
+		this.railRuns = [[A.pune + 2.5, A.tirupatiIn], [A.tirupatiOut, A.rishikesh]];
 		this.rivers = riverLines();
 		this.roads = this.roadRuns.map(([a, b]) => bridges(samplePath(route, world, a, b, 0), this.rivers, world, 1.8));
 		this.trek = bridges(samplePath(route, world, this.trekRun[0], this.trekRun[1], 0, { kind: "trek" }), this.rivers, world, 0.5);
-		// keep the line well away from the shrines (Tirupati station is only a few units below Tirumala here)
+		// The railway: kept off the roads it runs beside, carried over the roads it crosses, and split
+		// wherever it would pass a shrine (Tirupati station is only a few units below Tirumala here).
 		const shrines = route.chapters.map((c) => route.at(c.s1, {}));
-		const clear = (p) => shrines.every((w) => Math.hypot(p.x - w.x, p.z - w.z) > 9);
-		this.rails = this.railRuns.map(([a, b]) => bridges(samplePath(route, world, a, b, RAIL_OFFSET, { kind: "nh" }).filter(clear), this.rivers, world, 0.9));
+		const clear = (p) => shrines.every((w) => Math.hypot(p.x - w.x, p.z - w.z) > 10);
+		const roadLines = [...this.roads, this.trek].map((pts) => ({ pts, w: (KIND[pts[0]?.kind || "nh"].paved + 2 * KIND[pts[0]?.kind || "nh"].shoulder) * M, over: true }));
+		this.rails = [];
+		this.railRuns.forEach(([a, b], leg) => {
+			const pts = separate(samplePath(route, world, a, b, RAIL_OFFSET, { kind: "nh" }), [...this.roads, this.trek], (RAIL_BED / 2) * M + 2.2, world);
+			for (const run of split(pts, clear)) {
+				const r = bridges(run, [...this.rivers, ...roadLines], world, 0.9, 5);
+				r.leg = leg;
+				this.rails.push(r);
+			}
+		});
+		// where the train can actually run, for the traveller's choice of transport
+		const ofLeg = (l) => this.rails.filter((r) => r.leg === l);
+		this.at.trainFrom = ofLeg(0)[0]?.[0].s ?? A.pune;
+		this.at.trainTo = ofLeg(0).at(-1)?.at(-1).s ?? A.tirupatiIn;
+		this.at.trainFrom2 = ofLeg(1)[0]?.[0].s ?? A.tirupatiOut;
+		this.at.trainTo2 = ofLeg(1).at(-1)?.at(-1).s ?? A.rishikesh;
 		for (const p of this.roads) this.buildRoad(p);
 		this.buildRoad(this.trek);
 		for (const p of this.rails) this.buildRail(p);
@@ -384,7 +466,13 @@ export class Roads {
 	static lookup(paths, s) {
 		for (const pts of paths) {
 			if (!(pts.length > 1) || !(s >= pts[0].s - 1e-6 && s <= pts[pts.length - 1].s + 1e-6)) continue;
-			const i = clamp(Math.floor((s - pts[0].s) / STEP), 0, pts.length - 2);
+			let lo = 0, hi = pts.length - 2;
+			while (lo < hi) {
+				const mid = (lo + hi + 1) >> 1;
+				if (pts[mid].s <= s) lo = mid;
+				else hi = mid - 1;
+			}
+			const i = lo;
 			const a = pts[i], b = pts[i + 1];
 			const t = clamp((s - a.s) / (b.s - a.s || 1), 0, 1);
 			return { x: lerp(a.x, b.x, t), z: lerp(a.z, b.z, t), y: lerp(a.y, b.y, t), dx: lerp(a.dx, b.dx, t), dz: lerp(a.dz, b.dz, t), kind: a.kind, region: a.region, bridge: a.bridge };

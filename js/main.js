@@ -87,7 +87,7 @@ async function init() {
 	petals = new Petals(scene);
 	sky = new Sky(scene);
 	if (LOW) sky.sun.shadow.mapSize.set(1024, 1024);
-	Object.assign(app, { world, route, sky, landmarks, scene });
+	Object.assign(app, { world, route, sky, landmarks, scene, roads, scenery, traffic });
 	// where the road gives way to the footpath below Kedarnath
 	const gk = toWorld(GAURIKUND[0], GAURIKUND[1]);
 	const c2 = route.chapters[2];
@@ -441,8 +441,8 @@ function modeAt(s) {
 	if (choice === "Car") return "jeep";
 	// no railway climbs to Bhimashankar, so even by train it starts by road
 	if (app.leg === 0) return choice === "Train" ? "car" : "bike";
-	if (app.leg === 1) return s < app.sPune ? "car" : s < app.sTirupatiIn ? "train" : "car";
-	if (app.leg === 2) return s < app.sTirupatiOut ? "car" : s < app.sRishikesh ? "train" : "jeep";
+	if (app.leg === 1) return s < roads.at.trainFrom ? "car" : s < roads.at.trainTo ? "train" : "car";
+	if (app.leg === 2) return s < roads.at.trainFrom2 ? "car" : s < roads.at.trainTo2 ? "train" : "jeep";
 	return "jeep";
 }
 const travPos = new THREE.Vector3(), tp = {}, rp = {};
@@ -498,23 +498,23 @@ function updateTraveller(dt) {
 	const ls = Math.max(app.state === "darshan" ? 1.15 : 1, dist * 0.03);
 	// world units per metre for a vehicle: true to the figure up close, grown with distance so a bike or
 	// a jeep still reads from high above; the train is long already, so it grows less
-	const vs = clamp(dist * 0.012, 0.28, 0.6), vt = clamp(dist * 0.004, 0.28, 0.4);
+	const vs = clamp(dist * 0.009, 0.28, 0.42), vt = clamp(dist * 0.004, 0.28, 0.4);
 	const speed = SPEEDS[app.speed];
 	const spin = moving ? dt * 22 * Math.sqrt(speed) : 0;
 	for (const k of ["bike", "jeep", "car"]) {
 		const v = ride[k];
 		v.group.visible = mode === k && app.state === "travel";
 		if (!v.group.visible) continue;
-		setOn(v.group, roadPoint(app.s, -0.7), vs);
+		setOn(v.group, roadPoint(app.s, -0.7 * (vs / M)), vs);
 		for (const w of v.wheels) w.rotation.x += spin;
 	}
 	const onTrain = mode === "train" && app.state === "travel";
 	let off = 0;
 	// the train leaves from Pune, or from Tirupati on the way north; carriages still in the station stay hidden
-	const station = app.leg === 1 ? app.sPune : app.sTirupatiOut;
+	const station = app.leg === 1 ? roads.at.trainFrom : roads.at.trainFrom2;
 	ride.train.forEach((c) => {
 		const half = (c.len * vt) / 2;
-		const at = onTrain && app.s - off - half * 2 > station ? roads.rail(app.s - off - half, {}) : null;
+		const at = onTrain && app.s - off - half > station ? roads.rail(app.s - off - half, {}) : null;
 		c.group.visible = !!at;
 		off += half * 2 + 0.8 * vt;
 		// each carriage follows the line on its own, so the train bends through curves
