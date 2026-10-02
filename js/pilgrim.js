@@ -530,12 +530,38 @@ const joint = (x, y, z, parent) => {
 	parent.add(g);
 	return g;
 };
-// Cloth that a pose bends with the legs: the kurta's panels, the sari, the dhoti's pleats.
+// Cloth that hangs: the kurta's skirt, the sari, the dhoti's pleats, the pallu's tail, the uparna's ends.
+// Each point of the cloth is either held (it follows the waist, blending from the hips to the torso) or hangs
+// from a point on the waist line (o.anchor), and is re-draped for every pose by drape() below.
+// o: frame ("torso" | "hips", the joint the mesh hangs under), anchor(bH, k) -> rest point it hangs from (hips
+// frame) or null when held, wT(y) -> how much a held point follows the torso, clear (gap kept from the body),
+// gap (true: also kept off the fork of the legs, for an outer layer).
 function drapeable(J, mesh, o) {
-	const g = mesh.geometry;
-	J.cloth.push(Object.assign({ mesh, base: g.attributes.position.array.slice(), nbase: g.attributes.normal.array.slice(), fF: 0, fB: 0, kF: 0.85, kB: 0.6, py: 0, ramp: 0.3, torso: true }, o));
+	const g = mesh.geometry, a = g.attributes.position, n = a.count;
+	mesh.updateMatrix();
+	const M = mesh.matrix.clone(), Mi = M.clone().invert();
+	const bh = new Float32Array(n * 3), a0 = new Float32Array(n * 3), d0 = new Float32Array(n * 3), len = new Float32Array(n), wt = new Float32Array(n), wta = new Float32Array(n);
+	const v = V(), w = V();
+	for (let k = 0; k < n; k++) {
+		v.fromBufferAttribute(a, k).applyMatrix4(M);
+		bh.set([v.x, v.y, v.z], k * 3);
+		wt[k] = o.wT ? o.wT(v.y) : 0;
+		const an = o.anchor(v, k);
+		if (!an) {
+			len[k] = -1;
+			continue;
+		}
+		a0.set([an.x, an.y, an.z], k * 3);
+		w.subVectors(v, an);
+		len[k] = w.length();
+		w.multiplyScalar(1 / (len[k] || 1));
+		if (len[k] < 1e-5) w.set(0, -1, 0);
+		d0.set([w.x, w.y, w.z], k * 3);
+		wta[k] = o.wT ? o.wT(an.y) : 0;
+	}
+	J.cloth.push({ mesh, geo: g, M, Mi, bh, a0, d0, len, wt, wta, frame: o.frame || "torso", clear: o.clear ?? 0.02, gap: !!o.gap, key: "" });
 	g.computeBoundingSphere();
-	g.boundingSphere.radius *= 1.4;
+	g.boundingSphere.radius = Math.max(g.boundingSphere.radius * 1.4, 0.9);
 }
 
 // Builds the body. opts:
@@ -572,7 +598,7 @@ function body(opts) {
 	const skinC = new THREE.Color(skinHex);
 	const root = new THREE.Group();
 	const hips = joint(0, 0.95, 0, root);
-	const J = { root, hips, cloth: [], lod };
+	const J = { root, hips, cloth: [], lod, fem };
 	const surf = torsoShape(fem, opts.build);
 	const longDhoti = pujari || opts.dhoti === "long";
 	const k = fem ? 0.9 : 1; // limb girth
@@ -581,15 +607,30 @@ function body(opts) {
 		const S = side < 0 ? "L" : "R";
 		const hip = joint(side * 0.095, 0, 0, hips);
 		const loose = fem ? 0.92 : 1.1;
+		// soft folds round the leg, the hollows a little darker so the cloth reads as cloth
 		const fold = (p, th, r) => {
 			const a = 1 + (fem ? 0.01 : 0.05) * Math.sin(5 * th + r[0] * 11 + side * 2) + (fem ? 0 : 0.03) * Math.sin(8 * th - r[0] * 19 + side);
-			return [p[0] * a, p[1], p[2] * a];
+			const k = fem ? 1 : 0.8 + 0.2 * clamp((a - 0.93) / 0.12, 0, 1);
+			return [p[0] * a, p[1], p[2] * a, [k, k, k * 0.98]];
 		};
 		const ku = !opts.sari && !(opts.bare || pujari) ? 0.84 : 1;
 		part(tube([[0.05, 0, 0, -side * 0.02], [0.035, 0.06 * ku, 0.07 * ku, -side * 0.02], [0.0, 0.082 * ku, 0.1 * loose * ku, -side * 0.018], [-0.14, 0.09 * loose * ku, 0.098 * loose * ku, -side * 0.008], [-0.3, 0.09 * loose, 0.09 * loose], [-0.44, 0.086 * loose, 0.084 * loose], [-0.5, 0.074, 0.074], [-0.53, 0, 0]], sg(fem ? 8 : 18), fem ? 1 : sg(3, 1), fold), M.bottom, 0, 0, 0, hip);
 		const knee = joint(0, -0.46, 0, hip);
-		const dl = fem ? 0.2 : longDhoti ? 0.37 : 0.24;
-		part(tube([[0.075, 0, 0], [0.055, 0.07, 0.07], [0.0, 0.086 * loose, 0.084 * loose], [-dl * 0.5, 0.084, 0.083], [-dl, 0.092, 0.09], [-dl - 0.005, 0.08, 0.078], [-dl + 0.006, 0, 0]], sg(fem ? 8 : 20), fem ? 1 : sg(3, 1), fold), M.bottom, 0, 0, 0, knee);
+		// below the knee the dhoti falls loose: wider towards the hem, in soft vertical folds, the hem uneven and
+		// turned in (open, not capped), hanging a little forward of the shin
+		const dl = fem ? 0.2 : longDhoti ? 0.385 : 0.3, hw = longDhoti ? 0.118 : 0.106;
+		const fall = (p, th, r) => {
+			const y = p[1], f = sstep(0.0, -dl, y);
+			const a = 1 + (0.03 + 0.07 * f) * (0.6 * Math.sin(5 * th + side * 1.3 + y * 6) + 0.4 * Math.sin(9 * th - side + y * 11)) * (fem ? 0.3 : 1);
+			const hemDrop = (0.012 * Math.sin(2 * th + side) + 0.008 * Math.sin(5 * th + 1)) * sstep(-dl * 0.6, -dl, y);
+			const k = 0.78 + 0.22 * clamp((a - 0.92 + 0.04 * (1 - f)) / (0.1 + 0.08 * f), 0, 1);
+			return [p[0] * a, y + hemDrop, p[2] * a, [k, k, k * 0.98]];
+		};
+		const kt = fem
+			? [[0.075, 0, 0], [0.055, 0.07, 0.07], [0.0, 0.086 * loose, 0.084 * loose], [-dl * 0.5, 0.084, 0.083], [-dl, 0.09, 0.088], [-dl + 0.006, 0, 0]]
+			: [[0.08, 0, 0], [0.062, 0.066, 0.068], [0.03, 0.09, 0.094], [0.0, 0.096, 0.1, 0, 0.004], [-dl * 0.3, 0.094, 0.098, 0, 0.006], [-dl * 0.65, hw * 0.95, hw * 1.0, 0, 0.01], [-dl, hw, hw * 1.04, 0, 0.012], [-dl - 0.004, hw * 0.99, hw * 1.03, 0, 0.012], [-dl + 0.014, hw * 0.9, hw * 0.93, 0, 0.011]];
+		part(tube(kt, sg(fem ? 8 : 26), fem ? 1 : sg(4, 1), fem ? fold : fall), M.bottom, 0, 0, 0, knee);
+		J.legR = { thigh: fem ? 0.085 : 0.097, knee: fem ? 0.09 : hw * 0.9, dl };
 		// the shin, with the calf behind
 		part(tube([[0.032, 0, 0], [0.022, 0.04 * k, 0.04 * k], [0.0, 0.049 * k, 0.05 * k, 0, 0.003], [-0.06, 0.049 * k, 0.054 * k, 0, -0.004], [-0.13, 0.045 * k, 0.054 * k, 0, -0.011], [-0.24, 0.037 * k, 0.04 * k, 0, -0.005], [-0.34, 0.029 * k, 0.031 * k], [-0.39, 0.027 * k, 0.03 * k], [-0.41, 0.023, 0.026], [-0.425, 0, 0]], sg(fem ? 10 : 16), fem ? 1 : sg(3, 1)), M.skin, 0, 0, 0, knee);
 		const ankle = joint(0, -0.4, 0, knee);
@@ -613,14 +654,16 @@ function body(opts) {
 			const crease = 1 - 0.2 * gs(p[0], 0.028) * sstep(-0.08, -0.17, p[1]);
 			return [p[0] * fold, p[1], p[2] * fold * crease];
 		}), M.bottom, 0, 0, 0, hips);
-		const pl = loft(sg(14), sg(16, 6), (t, u) => {
-			const y = lerp(0.08, longDhoti ? -0.78 : -0.62, t), th = u * TAU, s = Math.sin(th), c = Math.cos(th);
+		const pbot = longDhoti ? -0.8 : -0.66, pnt = sg(14), pnu = sg(16, 6);
+		const plF = (t, u) => {
+			const y = lerp(0.08, pbot, t), th = u * TAU, s = Math.sin(th), c = Math.cos(th);
 			const w = lerp(0.034, 0.1, sstep(0.0, 0.85, t)), z0 = (bare ? 0.114 : 0.098) + 0.024 * sstep(0.25, 1, t);
 			const x = s * w, tri = Math.abs(frac((x / 0.0145) + 0.5) - 0.5) * 2;
 			return [x, y, z0 + 0.007 * tri * sstep(0, 0.25, t) + c * 0.003];
-		});
-		const panel = part(pl, M.bottom, 0, 0, 0, hips);
-		drapeable(J, panel, { torso: false, kF: 0.95, kB: 0, ramp: 0.45, py: -0.05 });
+		};
+		const panel = part(loft(pnt, pnu, plF), M.bottom, 0, 0, 0, hips);
+		const tA = (0.08 - 0.03) / (0.08 - pbot);
+		drapeable(J, panel, { frame: "hips", clear: 0.006, anchor: (v, k) => (v.y >= 0.03 ? null : V(...plF(tA, (k % (pnu + 1)) / pnu))) });
 		J.pleats = panel;
 		if (lod) {
 			const kc = ribbon([V(0, 0.09, -0.118), V(0, -0.02, -0.128), V(0, -0.12, -0.105), V(0, -0.19, -0.04)], { nt: sg(10), nth: 6, w: (t) => lerp(0.05, 0.03, t), th: 0.014, up: () => V(0, 0, -1), fold: (t, s) => 0.004 * Math.sin(s * 4 + t * 9) });
@@ -639,8 +682,10 @@ function body(opts) {
 		const bot = -0.92, bc = ratio(border, opts.bottom), dark = ratio(opts.bottom, opts.bottom, 0.72);
 		const nth = sg(64, 16), nr = sg(20, 5);
 		const ys = [...Array.from({ length: nr }, (_, i) => lerp(0.105, bot + 0.1, i / nr)), ...(lod ? [bot + 0.082, bot + 0.0785, bot + 0.0745, bot + 0.071, bot + 0.066, bot + 0.0625, bot + 0.03, bot + 0.006, bot + 0.002] : [bot + 0.066, bot + 0.062, bot + 0.004]), bot];
+		const ths = [];
 		const g = loft(ys.length - 1, nth, (t, u, i) => {
 			const y = ys[i], th0 = u * TAU, th = th0 - 0.72 * Math.sin(th0);
+			ths.push(th);
 			const p = skirtR(y, th), f = sstep(0.05, -0.85, y);
 			const a = Math.atan2(Math.sin(th - 0.08), Math.cos(th - 0.08));
 			let d = 0.004 * Math.sin(th * 6 + 1) * f + 0.003 * Math.sin(th * 11) * f;
@@ -653,7 +698,7 @@ function body(opts) {
 			return [p[0] + (p[0] / l) * d, y, p[2] + (p[2] / l) * d, col];
 		});
 		const skirt = part(outward(g), M.bottom, 0, 0, 0, torso);
-		drapeable(J, skirt, { kF: 0.7, kB: 0.5, ramp: 0.5, py: -0.05 });
+		drapeable(J, skirt, { frame: "torso", clear: 0.012, gap: true, wT: (y) => sstep(-0.02, 0.1, y), anchor: (v, k) => (v.y >= 0.06 ? null : V(...skirtR(0.06, ths[k]))) });
 	} else if (bare) {
 		// a bare chest: the dhoti's waist, rolled at the top
 		const g = loft(sg(8, 4), sg(34, 10), (t, u) => {
@@ -672,9 +717,11 @@ function body(opts) {
 			const sx = 1 + 0.2 * f + d / 0.18, sz = 1 + 0.36 * f + d / 0.14;
 			return [p[0] * sx, y, p[2] * sz];
 		};
-		const upper = loft(sg(8, 3), nth, (t, u) => ring(lerp(top, slit, t), u * TAU));
+		const ths = [];
+		const upper = loft(sg(8, 3), nth, (t, u) => (ths.push(u * TAU), ring(lerp(top, slit, t), u * TAU)));
 		const pnl = (a0, a1) => loft(sg(10, 4), Math.round(nth * 0.46), (t, u) => {
 			const y = t < 0.9 ? lerp(slit, bot, t / 0.9) : bot + (t - 0.9) * 0.08;
+			ths.push(lerp(a0, a1, u));
 			const p = ring(Math.max(y, bot), lerp(a0, a1, u));
 			const inn = t < 0.9 ? 0 : 0.92;
 			return [p[0] * (1 - 0.04 * inn), y, p[2] * (1 - 0.05 * inn)];
@@ -685,7 +732,7 @@ function body(opts) {
 		const g = mergeGeometries([upper, front, back]);
 		[upper, front, back].forEach((x) => x.dispose());
 		const hem = part(g, M.top, 0, 0, 0, torso);
-		drapeable(J, hem, { kF: 0.9, kB: 0.75, ramp: 0.25, py: 0.02 });
+		drapeable(J, hem, { frame: "torso", clear: 0.024, gap: true, wT: (y) => sstep(-0.02, 0.1, y), anchor: (v, k) => (v.y >= 0.075 ? null : V(...ring(0.075, ths[k]))) });
 	}
 	// the chest: a kurta, or bare skin (also under the choli)
 	const skinTorso = bare || fem;
@@ -1198,12 +1245,23 @@ function buildHead(J, head, opts, M, c) {
 }
 
 // ---------- poses (angles in radians) ----------
-// Optional keys beyond the old ones: ankleL/R (foot pitch; by default the soles stay near level), pelvisY,
-// pelvisZ (hip yaw and roll), sway (hips sideways), tilt (torso roll), headTilt.
+// Optional keys beyond the old ones: ankleL/R (the ankle's bend; by default the soles stay near level, and a foot
+// under a kneeling or prone body rests on its tucked toes), footL/R (the foot's pitch to the ground instead: 0 sole
+// level, positive toes down), pelvisX, pelvisY, pelvisZ (the hips' pitch forward, yaw and roll; pelvisX = PI/2 lays
+// the body face down), shift (the hips forward of the spot where the feet stand, m), sway (hips sideways), tilt
+// (torso roll), headTilt, hipLy/R (the thigh's turn about its own length, as when sitting cross-legged), and seat (the height under the hips of a seat the cloth rests on, m above the ground).
+const TOE = 1.25; // the foot's pitch on tucked toes
+const _pv = V();
+function kneeHeight(J, S) {
+	const hip = J["hip" + S];
+	J.hips.updateMatrix();
+	hip.updateMatrix();
+	return _pv.set(0, -0.46, 0).applyMatrix4(hip.matrix).applyMatrix4(J.hips.matrix).y;
+}
 function pose(J, p) {
 	const set = (j, x = 0, y = 0, z = 0) => j && j.rotation.set(x, y, z);
-	set(J.hipL, p.hipL ?? 0, 0, p.hipLz ?? 0);
-	set(J.hipR, p.hipR ?? 0, 0, p.hipRz ?? 0);
+	set(J.hipL, p.hipL ?? 0, p.hipLy ?? 0, p.hipLz ?? 0);
+	set(J.hipR, p.hipR ?? 0, p.hipRy ?? 0, p.hipRz ?? 0);
 	set(J.kneeL, p.kneeL ?? 0);
 	set(J.kneeR, p.kneeR ?? 0);
 	set(J.shL, p.shL ?? 0, p.shLy ?? 0, p.shLz ?? 0.08);
@@ -1212,14 +1270,21 @@ function pose(J, p) {
 	set(J.elR, p.elR ?? 0, p.elRy ?? 0);
 	set(J.torso, p.lean ?? 0, p.twist ?? 0, p.tilt ?? 0);
 	set(J.head, p.nod ?? 0, p.look ?? 0, p.headTilt ?? 0);
-	J.hips.position.y = 0.95 + (p.bob ?? 0);
-	J.hips.position.x = p.sway ?? 0;
-	J.hips.rotation.set(0, p.pelvisY ?? 0, p.pelvisZ ?? 0);
+	J.hips.position.set(p.sway ?? 0, 0.95 + (p.bob ?? 0), p.shift ?? 0);
+	J.hips.rotation.set(p.pelvisX ?? 0, p.pelvisY ?? 0, p.pelvisZ ?? 0);
 	for (const S of ["L", "R"]) {
 		const a = J["ankle" + S];
 		if (!a) continue;
-		const sum = (p["hip" + S] ?? 0) + (p["knee" + S] ?? 0);
-		a.rotation.set(p["ankle" + S] ?? -sum * (1 - sstep(0.55, 1.2, Math.abs(sum))), 0, 0);
+		const sum = (p.pelvisX ?? 0) + (p["hip" + S] ?? 0) + (p["knee" + S] ?? 0);
+		let x = p["ankle" + S];
+		if (x === undefined && p["foot" + S] !== undefined) x = p["foot" + S] - sum;
+		if (x === undefined) {
+			x = -sum * (1 - sstep(0.55, 1.2, Math.abs(sum)));
+			// a shin lying back along the floor: the foot stands on its tucked toes
+			const w = sstep(1.1, 1.4, sum) * sstep(0.3, 0.15, kneeHeight(J, S));
+			if (w > 0) x = lerp(x, TOE - sum, w);
+		}
+		a.rotation.set(x, 0, 0);
 	}
 	wrists(J);
 	drape(J, p);
@@ -1253,37 +1318,210 @@ function wrists(J) {
 		h.m.position.copy(WRIST).sub(WRIST.clone().applyQuaternion(h.m.quaternion));
 	}
 }
-// Bends the hanging cloth so the legs stay inside it: the front follows the leg furthest forward, the back the one behind.
+
+// ---------- the drape ----------
+// Every hanging point of the cloth is laid out from the point on the waist it hangs from, in short steps: each
+// step heads the way gravity pulls the cloth (its rest direction turned to the pose's down), slides over the thighs,
+// shins, seat and chest instead of passing through them, and lies along the ground (or a seat) where it reaches
+// it, spreading the way it fell. So a kurta lies over the lap when seated, over the backs of the legs when prone,
+// and pools on the floor behind a kneeling body. Held points follow the waist, blending from the hips to the torso.
+const DS = 0.035, BEND = 0.3;
+const Y1 = V(0, 1, 0), DOWN = V(0, -1, 0);
+const _qT = new THREE.Quaternion(), _qTi = new THREE.Quaternion(), _qH = new THREE.Quaternion(), _qG = new THREE.Quaternion(), _qk = new THREE.Quaternion();
+const _A = V(), _P = V(), _Q = V(), _D = V(), _DP = V(), _DR = V(), _T = V(), _U = V(), _N = V(), _W = V(), _C = V();
+const CAPS = Array.from({ length: 8 }, () => ({ a: V(), b: V(), r: 0, gap: false }));
+const ELL = [{ c: V(), r: V(), q: null, qi: null }, { c: V(), r: V(), q: new THREE.Quaternion(), qi: new THREE.Quaternion() }];
+const CS = { caps: CAPS, n: 0, ell: ELL, up: V(), floor: 0 };
+function colliders(J, p) {
+	const R = J.legR || { thigh: 0.095, knee: 0.092, dl: 0.24 };
+	let n = 0;
+	const kn = [];
+	for (const S of ["L", "R"]) {
+		const hip = J["hip" + S], knee = J["knee" + S];
+		if (!hip) continue;
+		_qk.setFromEuler(hip.rotation);
+		const k = V(0, -0.46, 0).applyQuaternion(_qk).add(hip.position);
+		kn.push(k);
+		// thigh (starting a little down the leg: the joint itself is inside the seat), knee to the dhoti's hem, shin
+		let c = CAPS[n++];
+		c.a.set(0, -0.06, 0).applyQuaternion(_qk).add(hip.position);
+		c.b.copy(k);
+		c.r = R.thigh;
+		c.gap = false;
+		_qk.multiply(_q0.setFromEuler(knee.rotation));
+		c = CAPS[n++];
+		c.a.copy(k);
+		c.b.set(0, -R.dl, 0).applyQuaternion(_qk).add(k);
+		c.r = R.knee;
+		c.gap = false;
+		c = CAPS[n++];
+		c.a.copy(CAPS[n - 2].b);
+		c.b.set(0, -0.38, 0).applyQuaternion(_qk).add(k);
+		c.r = 0.05;
+		c.gap = false;
+	}
+	if (kn.length === 2) {
+		// the fork of the legs, which an outer layer bridges rather than sinking into
+		const c = CAPS[n++];
+		c.a.set(0, -0.1, 0.02);
+		c.b.copy(kn[0]).add(kn[1]).multiplyScalar(0.5);
+		c.b.lerp(c.a, 0.25);
+		c.r = 0.07;
+		c.gap = true;
+	}
+	CS.n = n;
+	// the seat of the dhoti (hips frame) and the chest (torso frame)
+	const fem = !!J.fem;
+	ELL[0].c.set(0, -0.03, -0.005);
+	ELL[0].r.set(fem ? 0.175 : 0.165, 0.19, fem ? 0.122 : 0.112);
+	ELL[1].q.copy(_qT);
+	ELL[1].qi.copy(_qTi);
+	ELL[1].c.set(0, 0.3, 0.0).applyQuaternion(_qT);
+	ELL[1].r.set(0.16, 0.25, fem ? 0.115 : 0.105);
+	// the ground, in the hips' frame
+	CS.up.copy(Y1).applyQuaternion(_qH.clone().invert());
+	const hy = J.hips.position.y;
+	CS.floor = Math.max(-hy, p.seat !== undefined ? p.seat - hy : -1e9);
+	// a seat or chest resting on the ground keeps the cloth under it
+	for (const e of ELL) e.low = e.c.dot(CS.up) - CS.floor < Math.max(e.r.x, e.r.z) + 0.03;
+}
+function collide(q, clear, gap) {
+	let hit = false;
+	for (let i = 0; i < CS.n; i++) {
+		const c = CAPS[i];
+		if (c.gap && !gap) continue;
+		_T.subVectors(c.b, c.a);
+		const L2 = _T.lengthSq();
+		const s = L2 > 0 ? clamp(_U.subVectors(q, c.a).dot(_T) / L2, 0, 1) : 0;
+		_U.copy(c.a).addScaledVector(_T, s);
+		_U.subVectors(q, _U);
+		const d = _U.length(), R = c.r + clear;
+		if (d < R) {
+			if (d < 1e-6) _U.set(0, 0, 1);
+			else _U.multiplyScalar(1 / d);
+			// cloth caught between a limb and the ground stays there, under it, rather than squeezing out
+			if (_U.dot(CS.up) < -0.35 && _C.copy(c.a).addScaledVector(_T, s).dot(CS.up) - CS.floor < R + 0.02) continue;
+			q.addScaledVector(_U, R - d);
+			_N.copy(_U);
+			hit = true;
+		}
+	}
+	for (const e of ELL) {
+		_T.subVectors(q, e.c);
+		if (e.q) _T.applyQuaternion(e.qi);
+		const rx = e.r.x + clear, ry = e.r.y + clear, rz = e.r.z + clear;
+		const k = Math.hypot(_T.x / rx, _T.y / ry, _T.z / rz);
+		if (k < 1 && k > 1e-6 && !(e.low && _U.copy(q).sub(e.c).dot(CS.up) < 0)) {
+			_T.multiplyScalar(1 / k);
+			_U.set(_T.x / (rx * rx), _T.y / (ry * ry), _T.z / (rz * rz)).normalize();
+			if (e.q) {
+				_T.applyQuaternion(e.q);
+				_U.applyQuaternion(e.q);
+			}
+			q.copy(e.c).add(_T);
+			_N.copy(_U);
+			hit = true;
+		}
+	}
+	const h = q.dot(CS.up) - CS.floor - clear * 0.4;
+	CS.fh = h < 0;
+	if (h < 0) {
+		q.addScaledVector(CS.up, -h);
+		_N.copy(CS.up);
+		hit = true;
+	}
+	return hit;
+}
+const DRAPE_KEYS = ["hipL", "hipR", "hipLy", "hipRy", "hipLz", "hipRz", "kneeL", "kneeR", "lean", "twist", "tilt", "pelvisX", "pelvisY", "pelvisZ", "bob", "shift", "sway", "seat"];
 function drape(J, p) {
 	if (!J.cloth || !J.cloth.length) return;
-	const hl = p.hipL ?? 0, hr = p.hipR ?? 0;
+	let key = "";
+	for (const k of DRAPE_KEYS) key += (p[k] ?? 0).toFixed(4) + ",";
+	if (key === J.drapeKey) return;
+	J.drapeKey = key;
+	_qT.setFromEuler(J.torso.rotation);
+	_qTi.copy(_qT).invert();
+	_qH.setFromEuler(J.hips.rotation);
+	colliders(J, p);
+	const g = _W.copy(DOWN).applyQuaternion(_qH.clone().invert());
+	_qG.setFromUnitVectors(DOWN, g);
+	const tw = p.twist ?? 0;
 	for (const c of J.cloth) {
-		const rel = c.torso ? p.lean ?? 0 : 0;
-		const back = Math.max(hl, hr) - rel;
-		const fF = Math.min(0, Math.min(hl, hr) - rel) * c.kF, fB = back > 0 ? back * c.kB : c.kB ? -rel * 0.5 : 0;
-		if (Math.abs(fF - c.fF) + Math.abs(fB - c.fB) < 2e-4) continue;
-		c.fF = fF;
-		c.fB = fB;
-		const g = c.mesh.geometry, P = g.attributes.position.array, N = g.attributes.normal.array, b = c.base, nb = c.nbase;
-		for (let i = 0; i < P.length; i += 3) {
-			const x = b[i], y = b[i + 1], z = b[i + 2], dy = c.py - y;
-			if (dy <= 0) {
-				P[i + 1] = y;
-				P[i + 2] = z;
-				N[i + 1] = nb[i + 1];
-				N[i + 2] = nb[i + 2];
-				continue;
+		if (c.mesh.geometry !== c.geo) continue; // replaced by its owner
+		const P = c.geo.attributes.position.array, n = c.len.length;
+		for (let k = 0; k < n; k++) {
+			const i = k * 3;
+			if (c.len[k] < 0) {
+				// held: hips to torso
+				_Q.set(c.bh[i], c.bh[i + 1], c.bh[i + 2]);
+				const w = c.wt[k];
+				if (w > 0) _Q.lerp(_T.copy(_Q).applyQuaternion(_qT), w);
+			} else {
+				const w = c.wta[k];
+				_A.set(c.a0[i], c.a0[i + 1], c.a0[i + 2]);
+				if (w > 0) _A.lerp(_T.copy(_A).applyQuaternion(_qT), w);
+				collide(_A, c.clear, c.gap);
+				// the rest direction, turned with the waist; then turned to where down is now
+				const r = tw * w, cs = Math.cos(r), sn = Math.sin(r), dx = c.d0[i], dz = c.d0[i + 2];
+				_DR.set(dx * cs + dz * sn, c.d0[i + 1], -dx * sn + dz * cs);
+				_DP.copy(_DR).applyQuaternion(_qG);
+				_P.copy(_A);
+				_D.copy(_DP);
+				let left = c.len[k];
+				while (left > 1e-6) {
+					const st = Math.min(DS, left);
+					_Q.copy(_P).addScaledVector(_D, st);
+					for (let it = 0; it < 2; it++) {
+						if (!collide(_Q, c.clear, c.gap)) break;
+						_U.subVectors(_Q, _P);
+						// along the ground the cloth carries on the way it hangs from the body, not just where it fell
+						if (CS.fh) _U.addScaledVector(_T.copy(_DR).addScaledVector(CS.up, -_DR.dot(CS.up)), st * 1.5);
+						let l = _U.length();
+						if (l < st * 0.3) {
+							// blocked head on: slide the way the cloth lies on the body
+							_U.copy(_DR).addScaledVector(_N, -_DR.dot(_N));
+							l = _U.length();
+							if (l < 1e-4) break;
+						}
+						_Q.copy(_P).addScaledVector(_U, st / l);
+					}
+					collide(_Q, c.clear, c.gap);
+					_U.subVectors(_Q, _P);
+					const l = _U.length();
+					if (l > 1e-6) _D.copy(_U).multiplyScalar(1 / l);
+					_P.copy(_Q);
+					left -= st;
+					_D.lerp(_DP, BEND).normalize();
+				}
+				_Q.copy(_P);
 			}
-			const dir = z / (Math.hypot(x, z) || 1);
-			const a = (fF * sstep(-0.35, 0.6, dir) + fB * sstep(-0.35, 0.6, -dir)) * sstep(0, c.ramp, dy);
-			const ca = Math.cos(a), sa = Math.sin(a), yy = y - c.py;
-			P[i + 1] = c.py + yy * ca - z * sa;
-			P[i + 2] = yy * sa + z * ca;
-			N[i + 1] = nb[i + 1] * ca - nb[i + 2] * sa;
-			N[i + 2] = nb[i + 1] * sa + nb[i + 2] * ca;
+			if (c.frame === "torso") _Q.applyQuaternion(_qTi);
+			_Q.applyMatrix4(c.Mi);
+			P[i] = _Q.x;
+			P[i + 1] = _Q.y;
+			P[i + 2] = _Q.z;
 		}
-		g.attributes.position.needsUpdate = true;
-		g.attributes.normal.needsUpdate = true;
+		c.geo.attributes.position.needsUpdate = true;
+		c.geo.computeVertexNormals();
+		// smooth the normals across seams where two points sit together at rest
+		const N = c.geo.attributes.normal.array;
+		if (!c.seams) {
+			const m = new Map();
+			c.seams = [];
+			for (let k = 0; k < n; k++) {
+				const h = `${Math.round(c.bh[k * 3] * 2e4)},${Math.round(c.bh[k * 3 + 1] * 2e4)},${Math.round(c.bh[k * 3 + 2] * 2e4)}`;
+				if (m.has(h)) c.seams.push(m.get(h), k);
+				else m.set(h, k);
+			}
+		}
+		for (let s = 0; s < c.seams.length; s += 2) {
+			const a = c.seams[s] * 3, b = c.seams[s + 1] * 3;
+			const x = N[a] + N[b], y = N[a + 1] + N[b + 1], z = N[a + 2] + N[b + 2], l = Math.hypot(x, y, z) || 1;
+			N[a] = N[b] = x / l;
+			N[a + 1] = N[b + 1] = y / l;
+			N[a + 2] = N[b + 2] = z / l;
+		}
+		c.geo.attributes.normal.needsUpdate = true;
 	}
 }
 const NAMASTE = { shL: -0.55, shLz: 0.25, shLy: 0.5, elL: -1.55, elLy: 0, shR: -0.55, shRz: -0.25, shRy: -0.5, elR: -1.55, nod: 0.18 };
@@ -1307,6 +1545,59 @@ function footLow(hip, knee, pitch) {
 	const ay = ky - 0.4 * Math.cos(hip + knee), az = kz - 0.4 * Math.sin(hip + knee);
 	const c = Math.cos(pitch), s = Math.sin(pitch), yb = SOLE_Y - 0.012;
 	return Math.min(ay + yb * c - -0.062 * s, ay + yb * c - 0.19 * s, ay + yb * c - 0.125 * s);
+}
+
+// The legs through a stride at phase ph (one cycle every two steps), for figures walking on flat ground:
+// hips, knees, the feet's pitch to the ground, and the bob that keeps the lower foot on the ground.
+export function stride(ph) {
+	const L = legGait(ph), R = legGait(ph + Math.PI);
+	const low = Math.min(footLow(L.hip, L.knee, L.pitch), footLow(R.hip, R.knee, R.pitch));
+	return { hipL: L.hip, hipR: R.hip, kneeL: L.knee, kneeR: R.knee, footL: L.pitch, footR: R.pitch, bob: -0.95 - low + 0.003 };
+}
+
+// ---------- reaching ----------
+// Turns an arm (side "L" or "R") so the point pt of its hand (in the hand's frame; the middle of the palm by
+// default) reaches target (world). The rest of the pose must already be applied and the root's matrices current.
+// Returns { sh, shz, el, err }: the shoulder's swing forward and out, the elbow's bend, and the miss in metres.
+const PALM = V(0, -0.045, 0.004);
+const _rm = new THREE.Matrix4(), _rt = V(), _rf = V(), _rj = [V(), V(), V()], _rq = new THREE.Quaternion(), _rq2 = new THREE.Quaternion(), _re = new THREE.Euler(), _rh = V();
+export function reach(J, S, target, p = {}, pt = PALM) {
+	const sh = J["sh" + S], el = J["el" + S], hand = J["hand" + S];
+	sh.parent.updateWorldMatrix(true, false);
+	_rt.copy(target).applyMatrix4(_rm.copy(sh.parent.matrixWorld).invert()).sub(sh.position);
+	const shy = sh.rotation.y, ely = el.rotation.y, L1 = -el.position.y, L2 = -hand.position.y;
+	const fk = (x, z, e, o) => {
+		_rq2.setFromEuler(_re.set(e, ely, 0));
+		o.copy(pt).add(_rh.set(0, -L2, 0)).applyQuaternion(_rq2).add(_rh.set(0, -L1, 0));
+		return o.applyQuaternion(_rq.setFromEuler(_re.set(x, shy, z)));
+	};
+	const lim = S === "L" ? [-1.3, 1.1] : [-1.1, 1.3];
+	let x = p["sh" + S] ?? sh.rotation.x, z = p["sh" + S + "z"] ?? sh.rotation.z, e = Math.min(-0.05, p["el" + S] ?? el.rotation.x);
+	let err = 0;
+	for (let it = 0; it < 14; it++) {
+		const f0 = fk(x, z, e, _rf).clone();
+		const r = _rt.clone().sub(f0);
+		err = r.length();
+		if (err < 0.002) break;
+		const h = 1e-3;
+		fk(x + h, z, e, _rj[0]).sub(f0).multiplyScalar(1 / h);
+		fk(x, z + h, e, _rj[1]).sub(f0).multiplyScalar(1 / h);
+		fk(x, z, e + h, _rj[2]).sub(f0).multiplyScalar(1 / h);
+		// damped least squares: (A^T A + l I) d = A^T r
+		const A = _rj, l = 0.004;
+		const m = [[A[0].dot(A[0]) + l, A[0].dot(A[1]), A[0].dot(A[2])], [A[1].dot(A[0]), A[1].dot(A[1]) + l, A[1].dot(A[2])], [A[2].dot(A[0]), A[2].dot(A[1]), A[2].dot(A[2]) + l]];
+		const b = [A[0].dot(r), A[1].dot(r), A[2].dot(r)];
+		const det = (q) => q[0][0] * (q[1][1] * q[2][2] - q[1][2] * q[2][1]) - q[0][1] * (q[1][0] * q[2][2] - q[1][2] * q[2][0]) + q[0][2] * (q[1][0] * q[2][1] - q[1][1] * q[2][0]);
+		const D = det(m);
+		if (Math.abs(D) < 1e-12) break;
+		const col = (k) => m.map((row, i) => row.map((v, j) => (j === k ? b[i] : v)));
+		const dx = det(col(0)) / D, dz = det(col(1)) / D, de = det(col(2)) / D;
+		const s = Math.min(1, 0.6 / (Math.abs(dx) + Math.abs(dz) + Math.abs(de) + 1e-9));
+		x = clamp(x + dx * s, -3.3, 1.2);
+		z = clamp(z + dz * s, lim[0], lim[1]);
+		e = clamp(e + de * s, -2.55, -0.03);
+	}
+	return { sh: x, shz: z, el: e, err };
 }
 
 // ---------- the traveller ----------
@@ -1367,12 +1658,13 @@ export class Traveller {
 		};
 		// riding: seated, knees up to the foot pegs, both hands on the bars
 		const ride = {
-			hipL: -1.35, hipR: -1.35, hipLz: 0.12, hipRz: -0.12, kneeL: 1.25, kneeR: 1.25, ankleL: 0.22, ankleR: 0.22,
+			hipL: -1.35, hipR: -1.35, hipLz: 0.12, hipRz: -0.12, kneeL: 1.25, kneeR: 1.25, ankleL: 0.22, ankleR: 0.22, seat: 0.63,
 			shL: -1.0, shLz: 0.25, shR: -1.0, shRz: -0.25, elL: -0.35, elR: -0.35,
 			lean: 0.32, twist: 0, nod: -0.2, bob: -0.12 + Math.sin(t * 9) * 0.004,
 		};
 		const p = {};
 		for (const key of new Set([...Object.keys(walk), ...Object.keys(aarti), ...Object.keys(ride)])) p[key] = (walk[key] ?? 0) * w + (aarti[key] ?? 0) * this.w.aarti + (ride[key] ?? 0) * this.w.ride;
+		if (this.w.ride < 0.5) delete p.seat;
 		// breathing: the chest rises and the shoulders lift a little, more when still
 		const br = Math.sin(t * 1.55), bw = 1 - w * 0.6;
 		p.shLz += 0.012 * br * bw;
@@ -1380,8 +1672,7 @@ export class Traveller {
 		p.nod -= 0.008 * br * bw;
 		pose(J, p);
 		if (J.chest) J.chest.scale.set(1 + 0.006 * br * bw, 1, 1 + 0.014 * br * bw);
-		// the kurta swings with the hips, the shawl's end lags behind the body
-		if (J.hem) J.hem.rotation.set(0, 0, -p.pelvisZ * 1.4 - (p.sway ?? 0) * 0.8);
+		// the shawl's end lags behind the body (the kurta swings with the hips and legs in drape())
 		this.lag += ((w * (0.12 + 0.05 * Math.sin(ph * 2 - 1.2)) + this.w.ride * 0.5) - this.lag) * Math.min(1, dt * 6);
 		if (J.sashEnd) J.sashEnd.rotation.set(-this.lag * 0.6, 0, -yawP * 0.8 * w);
 		const riding = this.w.ride > 0.5;

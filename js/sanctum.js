@@ -27,7 +27,7 @@
 //   - Units are metres. Nothing here touches the map scene or main's camera.
 import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
-import { body, pose, SKIN, crowdFigure } from "./pilgrim.js";
+import { body, pose, SKIN, crowdFigure, stride, reach } from "./pilgrim.js";
 import { glowTexture } from "./landmarks.js";
 import { SHRINES } from "./geo.js";
 import { clamp, fbm, lerp, rand } from "./util.js";
@@ -528,7 +528,7 @@ const SOLE = 0x3a2a1e, HAIR = 0x1b1612, TILAK = 0xd23a1e;
 // body() with stand-in colours, then the real materials swapped in. mats: { skin, top, bottom, sash, head, sole, hair }
 // hair: null removes it (shaven or crowned); tilak: false removes the default red mark.
 function figure(opts, mats) {
-	const J = body({ skin: SENT.skin, top: SENT.top, bottom: SENT.bottom, sash: SENT.sash, headColor: SENT.head, head: opts.head ?? "hair", sari: opts.sari, beard: opts.beard });
+	const J = body({ skin: SENT.skin, top: SENT.top, bottom: SENT.bottom, sash: SENT.sash, headColor: SENT.head, head: opts.head ?? "hair", sari: opts.sari, beard: opts.beard, pujari: opts.pujari, dhoti: opts.dhoti, mark: opts.mark, janeu: opts.janeu });
 	const drop = [];
 	J.feet = [];
 	J.root.traverse((o) => {
@@ -624,19 +624,160 @@ function kireetam(M, h = 0.42, r = 0.12) {
 }
 
 // ---------- actors: smooth targets, gait on top ----------
-const KEYS = ["hipL", "hipR", "hipLz", "hipRz", "kneeL", "kneeR", "shL", "shLy", "shLz", "shR", "shRy", "shRz", "elL", "elLy", "elR", "elRy", "lean", "twist", "nod", "look", "bob"];
+// abs: 1 when the pose's bob and shift were worked out from where the feet touch the floor (the moves below);
+// otherwise the actor stands its feet on the floor itself (with or without sandals).
+const KEYS = ["hipL", "hipR", "hipLy", "hipRy", "hipLz", "hipRz", "kneeL", "kneeR", "footL", "footR", "shL", "shLy", "shLz", "shR", "shRy", "shRz", "elL", "elLy", "elR", "elRy", "lean", "twist", "tilt", "nod", "look", "headTilt", "bob", "shift", "pelvisX", "abs"];
 const ARMS = new Set(["shL", "shLy", "shLz", "shR", "shRy", "shRz", "elL", "elLy", "elR", "elRy"]);
 const BASE = { shLz: -0.06, shRz: 0.06, nod: 0.05 };
 // Ritual poses. Positive lean is forward; negative sh raises the arm forward; negative elbow bends it up.
 const STAND = { shL: 0.04, shR: 0.04, shLz: -0.07, shRz: 0.07, elL: -0.12, elR: -0.12, kneeL: 0.03, kneeR: 0.03, nod: 0.06 };
 const NAMASTE = { shL: -0.55, shLz: 0.25, shLy: 0.5, elL: -1.55, shR: -0.55, shRz: -0.25, shRy: -0.5, elR: -1.55, nod: 0.18, kneeL: 0.03, kneeR: 0.03 };
 const BOWED = Object.assign({}, NAMASTE, { lean: 0.22, nod: 0.4 });
-const KNEEL = { kneeL: 1.62, kneeR: 1.62, hipL: -0.05, hipR: -0.05, bob: -0.45 };
-const PRANAM = { hipL: -1.3, hipR: -1.3, kneeL: 2.85, kneeR: 2.85, bob: -0.78, lean: 1.42, nod: 0.45, shL: -2.75, shLz: 0.15, shR: -2.75, shRz: -0.15, elL: -0.15, elR: -0.15 };
 const STAFF = { shR: -0.32, shRz: 0.08, elR: -0.5 };
-// sitting cross-legged on the sanctum floor, as pilgrims do for abhishek at Bhimashankar
-const SIT = { hipL: -1.45, hipR: -1.45, hipLz: 0.75, hipRz: -0.75, kneeL: 2.35, kneeR: 2.35, bob: -0.8, lean: 0.12 };
 const P = (...a) => Object.assign({}, ...a);
+// Only the arms (and the nod) of a pose, to lay over kneeling or sitting legs.
+const HANDS = (p) => Object.fromEntries(Object.entries(p).filter(([k]) => ARMS.has(k) || k === "nod"));
+const NA = HANDS(NAMASTE);
+
+// ---------- whole-body moves, worked out from where the toes, knees and seat touch the floor ----------
+// In the body's own frame: z forward from the spot where the feet stood, y up from the floor. The traveller is
+// barefoot inside, so the foot's sole is its skin.
+const THIGH = 0.46, SHIN = 0.4, ARM = 0.62;
+const KNEE_Y = 0.1; // the knee's height when kneeling, on the dhoti folded under it
+const TOE = [-0.076, 0.19]; // the tip of the big toe, in the ankle's frame (y, z)
+const TOE_A = 1.25; // the foot's pitch standing on tucked toes
+const PRONE_Y = 0.14; // the hips' height lying face down
+const dirA = (dz, dy) => Math.atan2(-dz, -dy); // a direction's angle from straight down, positive backwards
+const sst = (a, b, x) => ease((x - a) / (b - a));
+// The ankle (z, y) of a foot pitched a whose toe tip rests on the floor at tz.
+function onToe(tz, a) {
+	const c = Math.cos(a), s = Math.sin(a);
+	return [tz - (TOE[0] * s + TOE[1] * c), -(TOE[0] * c - TOE[1] * s)];
+}
+// Leg angles for hips, knee and ankle at the given points; the pelvis pitched forward by px.
+function legs(h, k, a, foot, px = 0) {
+	const th = dirA(k[0] - h[0], k[1] - h[1]), sh = dirA(a[0] - k[0], a[1] - k[1]);
+	return { hipL: th - px, hipR: th - px, kneeL: sh - th, kneeR: sh - th, footL: foot, footR: foot, bob: h[1] - 0.95, shift: h[0], pelvisX: px, abs: 1 };
+}
+// The knee for hips h and ankle a (bending forward).
+function kneeFor(h, a) {
+	const dz = a[0] - h[0], dy = a[1] - h[1], D = clamp(Math.hypot(dz, dy), 0.07, THIGH + SHIN - 1e-4);
+	const al = Math.acos(clamp((THIGH * THIGH + D * D - SHIN * SHIN) / (2 * THIGH * D), -1, 1));
+	const t = dirA(dz, dy) - al;
+	return [h[0] - THIGH * Math.sin(t), h[1] - THIGH * Math.cos(t)];
+}
+const TOE_Z = 0.19; // standing flat, the toes' tip is this far ahead of the ankle
+const KNEEL_END = (() => {
+	const a = onToe(TOE_Z, TOE_A);
+	const phi = Math.acos(clamp((KNEE_Y - a[1]) / SHIN, -1, 1));
+	return { a, k: [a[0] + SHIN * Math.sin(phi), KNEE_Y], phi };
+})();
+// Standing (f = 0) to kneeling upright (f = 1) with the toes planted: the heels lift, the knees swing forward
+// and down round the ankles while the hips sink behind them, then come forward over the knees.
+function kneelDown(f) {
+	f = clamp(f, 0, 1);
+	const fa = sst(0.1, 0.6, f), a = TOE_A * fa;
+	const an = onToe(TOE_Z, a);
+	const phi = KNEEL_END.phi * ease(f);
+	const k = [an[0] + SHIN * Math.sin(phi), an[1] + SHIN * Math.cos(phi)];
+	const psi = 0.8 * Math.sin(Math.PI * f) ** 1.3;
+	const h = [k[0] - THIGH * Math.sin(psi), k[1] + THIGH * Math.cos(psi)];
+	return Object.assign(legs(h, k, an, a), { lean: 0.45 * psi });
+}
+const KNEEL = kneelDown(1);
+// Kneeling upright (f = 0) to lying face down (f = 1), the knees and toes where they are: the body bends
+// forward and the hands go down to the floor ahead; then the hips go forward and down, the hands slide on
+// until the arms lie stretched out beyond the head. Returns the pose and the hands' targets (body frame).
+function prostrate(f) {
+	f = clamp(f, 0, 1);
+	const { a: an, k } = KNEEL_END;
+	const a1 = sst(0, 0.4, f), b = sst(0.32, 1, f);
+	const psiE = Math.acos((PRONE_Y - KNEE_Y) / THIGH), psi = psiE * b;
+	const h = [k[0] + THIGH * Math.sin(psi), k[1] + THIGH * Math.cos(psi)];
+	const px = (Math.PI / 2 - 0.035) * b;
+	const tau = lerp(1.42 * a1, Math.PI / 2 - 0.035, b);
+	const p = legs(h, k, an, TOE_A, px);
+	p.lean = tau - px;
+	p.nod = lerp(0.18 + 0.25 * a1, 0.34, b);
+	const s = [h[0] + 0.47 * Math.sin(tau), h[1] + 0.47 * Math.cos(tau)];
+	const hz = lerp(k[0] + 0.48, s[0] + ARM + 0.03, b);
+	const w = sst(0.06, 0.32, f);
+	return { pose: p, hands: { L: { p: [-0.055, 0.045, hz], w, local: true }, R: { p: [0.055, 0.045, hz], w, local: true } } };
+}
+// A leg's hip (pitch, turn, swing out) and knee angles that put its knee and ankle at K and A (hips frame, the
+// hip joint at x = side * 0.095), and the ankle's bend that lays the foot flattest above the floor at floorY.
+function legIK(side, K, A, floorY) {
+	const H = V(side * 0.095, 0, 0), q = new THREE.Quaternion(), e = new THREE.Euler(), v = V(), w = V();
+	const fk = (x) => {
+		q.setFromEuler(e.set(x[0], x[1], x[2]));
+		const k = v.set(0, -THIGH, 0).applyQuaternion(q).add(H).clone();
+		q.multiply(new THREE.Quaternion().setFromEuler(e.set(x[3], 0, 0)));
+		return [k, w.set(0, -SHIN, 0).applyQuaternion(q).add(k).clone(), q.clone()];
+	};
+	const cost = (x) => {
+		const [k, a] = fk(x);
+		return k.distanceToSquared(K) + a.distanceToSquared(A);
+	};
+	let x = [-1.3, 0, side * -0.6, 2.2];
+	for (let it = 0; it < 400; it++) {
+		const c0 = cost(x), g = [0, 0, 0, 0];
+		for (let i = 0; i < 4; i++) {
+			const y = x.slice();
+			y[i] += 1e-4;
+			g[i] = (cost(y) - c0) / 1e-4;
+		}
+		let st = 0.5;
+		while (st > 1e-5) {
+			const y = x.map((xi, i) => xi - g[i] * st);
+			if (cost(y) < c0) {
+				x = y;
+				break;
+			}
+			st *= 0.5;
+		}
+	}
+	const [, a, qs] = fk(x);
+	// the foot: the bend that keeps its heel and toes nearest level, above the floor
+	let best = 0, bc = 1e9;
+	for (let b = -1.2; b <= 1.2; b += 0.02) {
+		const qf = qs.clone().multiply(new THREE.Quaternion().setFromEuler(e.set(b, 0, 0)));
+		const heel = V(0, -0.066, -0.06).applyQuaternion(qf).add(a), toe = V(0, -0.062, 0.18).applyQuaternion(qf).add(a);
+		const c = Math.abs(heel.y - toe.y) + 4 * Math.max(0, floorY - Math.min(heel.y, toe.y));
+		if (c < bc) (bc = c), (best = b);
+	}
+	return { hip: x[0], hipy: x[1], hipz: x[2], knee: x[3], ankle: best };
+}
+// Standing (f = 0) to sitting cross-legged (f = 1): a flat-footed squat, the seat lowered just behind the heels,
+// then the legs folded and crossed, each foot under the other knee. SIT_BACK: how far behind the feet the seat
+// comes down.
+const SIT_Y = 0.2, SIT_BACK = 0.16;
+const SIT = (() => {
+	const o = { bob: SIT_Y - 0.95, shift: -SIT_BACK, lean: 0.12, abs: 1 };
+	for (const [S, side, fz, fy] of [["L", -1, 0.33, -0.105], ["R", 1, 0.2, -0.09]]) {
+		const H = V(side * 0.095, 0, 0), K = V(side * 0.245, -0.075, 0.3).normalize().multiplyScalar(THIGH).add(H);
+		const r = legIK(side, K, V(-side * 0.015 + 0.0, fy, fz), -SIT_Y + 0.005);
+		o["hip" + S] = r.hip;
+		o["hip" + S + "y"] = r.hipy;
+		o["hip" + S + "z"] = r.hipz;
+		o["knee" + S] = r.knee;
+		// footL is the foot's pitch to the ground: the ankle's bend plus the leg's pitch
+		o["foot" + S] = r.ankle + r.hip + r.knee;
+	}
+	return o;
+})();
+function sitDown(f) {
+	f = clamp(f, 0, 1);
+	const s = sst(0, 0.62, f), an = [0, -TOE[0]];
+	const h = [-SIT_BACK * s, lerp(an[1] + 0.86, SIT_Y + 0.13, s)];
+	const squat = Object.assign(legs(h, kneeFor(h, an), an, 0), { lean: 0.5 * Math.sin(Math.PI * s * 0.9) });
+	return f <= 0.62 ? squat : mix(squat, SIT, sst(0.62, 1, f));
+}
+// Up on the toes (k = 0 flat, 1 high), to reach something overhead.
+function tiptoe(k) {
+	const a = 0.55 * k, an = onToe(TOE_Z, a);
+	const h = [an[0], an[1] + THIGH + SHIN - 0.004];
+	return legs(h, kneeFor(h, an), an, a);
+}
 
 function fill(p) {
 	const o = {};
@@ -659,14 +800,13 @@ const num = (t, keys) => {
 	for (let i = 1; i < keys.length; i++) if (t < keys[i][0]) return lerp(keys[i - 1][1], keys[i][1], ease((t - keys[i - 1][0]) / (keys[i][0] - keys[i - 1][0])));
 	return keys[keys.length - 1][1];
 };
+// The legs from the shared stride (feet on the ground, heel strike and toe-off), arms swinging against them.
 function gait(ph) {
-	const s = Math.sin(ph), c = Math.cos(ph);
-	return {
-		hipL: s * 0.4, hipR: -s * 0.4, hipLz: 0, hipRz: 0,
-		kneeL: Math.max(0, -Math.sin(ph - 0.9)) * 0.8 + 0.05, kneeR: Math.max(0, Math.sin(ph - 0.9)) * 0.8 + 0.05,
-		shL: -s * 0.26, shR: s * 0.26, shLz: -0.08, shRz: 0.08, shLy: 0, shRy: 0, elL: -0.25, elR: -0.25, elLy: 0, elRy: 0,
-		lean: 0.07, twist: s * 0.05, nod: 0.07, look: 0, bob: Math.abs(c) * 0.03 - 0.015,
-	};
+	const L = stride(ph), d = L.hipR - L.hipL;
+	return Object.assign(L, {
+		hipLz: 0, hipRz: 0, shL: -(L.hipL + 0.06) * 0.7, shR: -(L.hipR + 0.06) * 0.7, shLz: -0.08, shRz: 0.08, shLy: 0, shRy: 0, elL: -0.25 + Math.min(0, L.hipL) * 0.3, elR: -0.25 + Math.min(0, L.hipR) * 0.3, elLy: 0, elRy: 0,
+		lean: 0.07, twist: d * 0.06, tilt: 0, nod: 0.07, look: 0, headTilt: 0, shift: 0, pelvisX: 0, abs: 1,
+	});
 }
 const plen = (pts) => pts.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
 function along(pts, d) {
@@ -701,7 +841,13 @@ class Actor {
 		this.w = 0;
 		this.ph = 0;
 		this.y = 0;
+		this.bare = false;
+		this.rw = { L: 0, R: 0 };
+		this.rp = { L: V(), R: V() };
+		this.rset = { L: false, R: false };
 	}
+	// T: { pose, x, z, face, arms, rate, noTurn, reach: { L, R: { p: [x, y, z] (world, or the body's frame with
+	// local), w, pt (the point of the hand, default the palm) } } }
 	drive(T, dt, snap) {
 		const k = snap ? 1 : 1 - Math.exp(-dt * (T.rate ?? 5));
 		for (const key of KEYS) this.cur[key] += ((T.pose[key] ?? BASE[key] ?? 0) - this.cur[key]) * k;
@@ -726,12 +872,72 @@ class Actor {
 		const g = gait(this.ph);
 		const p = {};
 		const aw = T.arms ?? 1;
-		for (const key of KEYS) p[key] = lerp(this.cur[key], g[key], this.w * (ARMS.has(key) ? aw : 1));
-		pose(this.J, p);
-		if (this.J.hem) this.J.hem.rotation.x = -p.lean * 0.75;
+		for (const key of KEYS) p[key] = lerp(this.cur[key], g[key] ?? BASE[key] ?? 0, this.w * (ARMS.has(key) ? aw : 1));
+		// stand the feet on the floor: the stride assumes sandals, the still poses neither
+		const sole = this.bare ? 0.066 : 0.078;
+		p.bob += (1 - this.w) * (1 - this.cur.abs) * (sole - 0.09) + this.w * (sole - 0.078);
 		this.root.position.set(this.pos.x, this.y, this.pos.z);
 		this.root.rotation.y = this.yaw;
+		pose(this.J, p);
+		if (this.cur.abs < 0.5 || this.w > 0.5) this.feetOnFloor(p);
+		// hands that reach for things
+		const R = T.reach || {};
+		if (R.L || R.R || this.rw.L > 1e-3 || this.rw.R > 1e-3) {
+			this.root.updateMatrixWorld(true);
+			let moved = false;
+			for (const S of ["L", "R"]) {
+				const r = R[S];
+				this.rw[S] += ((r ? r.w ?? 1 : 0) - this.rw[S]) * (snap ? 1 : 1 - Math.exp(-dt * (r && r.rate ? r.rate : 6)));
+				if (r) {
+					const q = typeof r.p === "function" ? r.p() : r.p;
+					const tg = q.isVector3 ? q.clone() : V(q[0], q[1], q[2]);
+					if (r.local) this.root.localToWorld(tg);
+					if (!this.rset[S] || snap) this.rp[S].copy(tg);
+					else this.rp[S].lerp(tg, 1 - Math.exp(-dt * 14));
+					this.rset[S] = true;
+					this.rpt = this.rpt || {};
+					this.rpt[S] = r.pt;
+				}
+				if (this.rw[S] < 1e-3) {
+					this.rset[S] = false;
+					continue;
+				}
+				const s = reach(this.J, S, this.rp[S], p, this.rpt && this.rpt[S]);
+				const w = this.rw[S];
+				p["sh" + S] = lerp(p["sh" + S], s.sh, w);
+				p["sh" + S + "z"] = lerp(p["sh" + S + "z"], s.shz, w);
+				p["el" + S] = lerp(p["el" + S], s.el, w);
+				moved = true;
+			}
+			if (moved) pose(this.J, p);
+		}
+		this.p = p;
 		this.root.updateMatrixWorld(true);
+	}
+	// On steps a stride or a stance meant for flat ground puts a foot into the stair: bend that leg to stand the
+	// foot on its tread instead.
+	feetOnFloor(p) {
+		const J = this.J;
+		this.root.updateMatrixWorld(true);
+		let moved = false;
+		for (const S of ["L", "R"]) {
+			const an = J["ankle" + S];
+			let pen = 0;
+			for (const z of [-0.06, 0.06, 0.18]) {
+				const q = an.localToWorld(V(0, -0.066, z));
+				pen = Math.max(pen, this.floor(q.x, q.z) - q.y);
+			}
+			if (pen < 0.004) continue;
+			const a = this.root.worldToLocal(an.getWorldPosition(V()));
+			const h = [p.shift, 0.95 + p.bob];
+			const tgt = [a.z, a.y + pen];
+			const k = kneeFor(h, tgt);
+			const th = dirA(k[0] - h[0], k[1] - h[1]), sh = dirA(tgt[0] - k[0], tgt[1] - k[1]);
+			p["hip" + S] = th - (p.pelvisX || 0);
+			p["knee" + S] = Math.max(0, sh - th);
+			moved = true;
+		}
+		if (moved) pose(J, p);
 	}
 }
 
@@ -740,14 +946,14 @@ class Kit {
 	constructor(ctx) {
 		this.c = ctx;
 	}
-	flame(parent, x, y, z, s = 1) {
+	flame(parent, x, y, z, s = 1, halo = 1) {
 		const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: FLAME_TEX(), color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
 		f.center.set(0.5, 0.08);
 		f.position.set(x, y, z);
 		f.scale.set(0.022 * s, 0.05 * s, 1);
 		const h = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow(), color: 0xff9a3a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.5 }));
 		h.position.set(x, y + 0.02 * s, z);
-		h.scale.setScalar(0.22 * s);
+		h.scale.setScalar(0.22 * s * halo);
 		parent.add(f, h);
 		const o = { f, h, s, seed: Math.random() * 100 };
 		this.c.flames.push(o);
@@ -803,7 +1009,7 @@ class Kit {
 		mesh(new THREE.CylinderGeometry(0.006, 0.006, chain, 5), M.brass, 0, -chain / 2, 0, pivot);
 		mesh(lathe([[0, 0.3], [0.05, 0.3], [0.09, 0.22], [0.11, 0.08], [0.16, 0], [0.15, 0.0], [0.1, 0.06], [0, 0.06]], 22, s), M.brass, 0, -chain - 0.3 * s, 0, pivot);
 		mesh(new THREE.SphereGeometry(0.035 * s, 8, 6), M.brass, 0, -chain - 0.27 * s, 0, pivot);
-		const b = { pivot, a: 0, v: 0, pos: V(x, y - chain - 0.18 * s, z) };
+		const b = { pivot, a: 0, v: 0, pos: V(x, y - chain - 0.18 * s, z), chain, s };
 		this.c.bells.push(b);
 		return b;
 	}
@@ -849,12 +1055,13 @@ function buildProps(ctx) {
 	const aarti = new THREE.Group();
 	mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.14, 8), M.brass, 0, -0.07, 0, aarti);
 	mesh(lathe([[0, 0], [0.07, 0.005], [0.09, 0.02], [0.085, 0.028], [0, 0.015]], 18), M.brass, 0, 0, 0, aarti);
+	// small wicks with a soft glow: the lamp is brought close to faces
 	for (let i = 0; i < 5; i++) {
 		const a = (i / 5) * Math.PI * 2;
-		K.flame(aarti, Math.cos(a) * 0.055, 0.025, Math.sin(a) * 0.055, 1.3);
+		K.flame(aarti, Math.cos(a) * 0.055, 0.025, Math.sin(a) * 0.055, 0.95, 0.5);
 	}
-	K.flame(aarti, 0, 0.03, 0, 1.5);
-	const al = K.light(0, 0.12, 0, ctx.low ? 3 : 2.5, 5, 0xffa040, aarti);
+	K.flame(aarti, 0, 0.03, 0, 1.05, 0.55);
+	const al = K.light(0, 0.12, 0, ctx.low ? 2.2 : 1.8, 4, 0xffa040, aarti);
 	add("aarti", aarti, { off: [0, 0.1, 0.03], light: al });
 	const ghanti = new THREE.Group();
 	mesh(lathe([[0, 0.09], [0.02, 0.09], [0.03, 0.06], [0.035, 0.02], [0.045, 0], [0, 0.0]], 14), M.brass, 0, -0.09, 0, ghanti);
@@ -1069,13 +1276,16 @@ function bhimashankar(ctx) {
 	for (const x of [-1.6, -0.8, 0.8, 1.6]) kit.diya(g, x, 0.05, -2.55);
 	box(g, -2.0, 2.0, -0.02, 0.05, -2.6, -2.42, wall, 1);
 	kit.incense(g, 1.75, -1, 1.3);
+	// a floor lamp by the steps, lighting the corner where pilgrims prostrate
+	kit.diya(g, 2.05, -1, 0.75);
+	kit.light(1.95, -0.55, 0.85, 3.2, 4.5);
 	kit.incense(g, -1.9, -1, -2.1);
 	kit.hanging(g, -2.0, 3.6, 5.6, 1.1);
 	kit.hanging(g, 2.0, 3.6, 5.6, 1.1);
 	kit.light(0, 2.4, 5.6, 9, 10);
 	kit.light(-2.0, 2.3, 8.2, 4, 6);
 	// the bell at the head of the steps, garlands over the door
-	kit.bell(g, 0.32, 2.75, 3.1, 1.3, 0.3);
+	kit.bell(g, 0.32, 2.75, 3.1, 1.3, 0.45);
 	garland(g, V(-0.75, 2.2, 2.9), V(0.75, 2.2, 2.9), 0.28, 0.03, M.marigold, M.rose);
 	garland(g, V(-0.7, 2.18, 2.93), V(0.7, 2.18, 2.93), 0.18, 0.022, M.jasmine);
 	for (const sx of [-1, 1]) hangingGarland(g, sx * 0.72, 2.2, 2.9, 0.9, M.marigold, M.rose);
@@ -1095,11 +1305,13 @@ function bhimashankar(ctx) {
 		start: [0.6, 11.2], enterPath: [[0.6, 11.2], [-1.9, 9.1]], staffRest: [-1.62, 8.74], staffTilt: [-0.08, 0], sandals: [-1.95, 9.55], washFace: [-2.55, 9.1],
 		bellSpot: [0.18, 3.42], bellFace: Math.PI, bellPath: [[-1.9, 9.1], [-0.8, 8.9], [-0.9, 5.4], [0.18, 3.42]],
 		toFront: [[0.18, 3.42], [0, 2.9], [0, 2.2], [0, 1.0]], front: [0, 1.0], target: [0, -0.3],
-		pour: [0, 0.3], pourTop: L0.y + 0.34,
+		// pour: where the feet stand before sitting down to pour (the seat comes down behind them)
+		pour: [0, 0.4], pourTop: L0.y + 0.34, offerAt: [0, 0.82], surf: () => V(0, L0.y + 0.34, L0.z),
 		priestHome: [-1.65, 0.55], priestFace: [0, -0.3], priestAarti: [-0.2, 0.42], aartiSpot: [0.6, 1.05],
-		markSpot: [0.15, 0.95], priestMarkSpot: [-0.45, 0.6],
+		markSpot: [0.15, 0.95], priestMarkSpot: [-0.55, 0.56],
 		circuit: arc(0, -0.3, 1.12, 1.12, 0, -Math.PI * 1.5 + 0.38), circuitBack: true,
-		bow: [0, 0.95],
+		// the prostration lies along a line from the Lord, clear of the steps, the spout and the incense
+		bowPath: [[0, 0.82], [1.0, 0.95], [1.53, 1.89]],
 		cams: {
 			enter: F(["T", "wash"], 125, 12, 1.25),
 			bell: F(["T", "bell"], 25, 8),
@@ -1110,7 +1322,7 @@ function bhimashankar(ctx) {
 			flame: F(["T", "P"], 139, 10),
 			mark: F(["T", "P"], 168, 8),
 			circuit: C([1.95, 1.15, 2.05], [0, -0.85, -0.3]),
-			bow: F(["T", "D"], 90, 12),
+			bow: F(["T", "D"], 118, 16),
 		},
 	};
 }
@@ -1140,7 +1352,7 @@ function kedarnath(ctx) {
 	for (let z = 4.2; z < 10.6; z += 1.6) box(g, -3.2, 3.2, 3.85, 4.1, z - 0.15, z + 0.15, ceil, 1);
 	wallZ(g, 10.9, -3.2 - t, 3.2 + t, 0, 4.1, 0.4, wall, [-0.8, 0.8, 0, 2.6]);
 	for (const [x, z] of [[-1.6, 5.4], [1.6, 5.4], [-1.6, 8.6], [1.6, 8.6]]) pillar(g, x, 0, z, 4.1, 0.2, wall);
-	daylight(ctx, 0, 1.4, 11.6, 4, 3.2, "snow", 16, [0, 0, 7]);
+	daylight(ctx, 0, 1.4, 12.8, 5, 3.6, "snow", 16, [0, 0, 7]);
 	// niches with the Pandavas and Draupadi in grey stone
 	const statue = std(0x9a958c, { map: grainTex(0x8a857c, 44), roughness: 0.7 });
 	const names = [0, 1, 2, 3, 4, 5];
@@ -1256,30 +1468,44 @@ function kedarnath(ctx) {
 	kit.incense(g, 2.25, 0, 1.9);
 	kit.hanging(g, 0, 4.1, 6.0, 1.3);
 	kit.light(0, 2.6, 6.0, 7, 10);
-	kit.bell(g, 0.45, 2.85, 3.5, 1.1, 0.25);
-	kit.bell(g, -0.45, 2.85, 3.5, 1.1, 0.25);
+	kit.bell(g, 0.45, 2.85, 3.5, 1.1, 0.5);
+	kit.bell(g, -0.45, 2.85, 3.5, 1.1, 0.5);
 	kit.bell(g, 0, 3.05, 3.55, 0.8, 0.15);
 	garland(g, V(-0.85, 2.5, 3.45), V(0.85, 2.5, 3.45), 0.3, 0.03, M.marigold, M.rose);
 	for (const sx of [-1, 1]) hangingGarland(g, sx * 0.84, 2.45, 3.45, 1.0, M.marigold, M.rose);
-	mesh(lathe([[0, 0], [0.14, 0], [0.2, 0.1], [0.19, 0.2], [0.13, 0.26], [0.15, 0.3], [0, 0.29]], 20), M.brass, 2.6, 0, 9.6, g);
+	mesh(lathe([[0, 0], [0.14, 0], [0.2, 0.1], [0.19, 0.2], [0.13, 0.26], [0.15, 0.3], [0, 0.29]], 20), M.brass, -0.5, 0, 11.78, g);
+	// points on the rock's face, for hands and the lota
+	const rcast = new THREE.Raycaster(), surfAt = new Map();
+	const surf = (x, y, off = 0) => {
+		const k = `${x.toFixed(3)},${y.toFixed(3)},${off}`;
+		if (!surfAt.has(k)) {
+			rcast.set(V(C0.x + x, y, 3), V(0, 0, -1));
+			const h = rcast.intersectObject(rock)[0];
+			surfAt.set(k, h ? h.point.clone().add(V(0, 0, off)) : V(C0.x + x, y, C0.z + 0.2));
+		}
+		return surfAt.get(k).clone();
+	};
 	common(ctx, 4.1);
 	const C = (p, l) => ({ p, l });
 	const F = (fit, az, el, pad = 1) => ({ fit, dir: [az, el], pad });
 	return {
-		rooms: [[-2.5, 2.5, 0.15, 3.2, -2.6, 2.7], [-2.95, 2.95, 0.15, 3.85, 3.5, 10.5]],
-		deityPts: [[0, 0, -0.4], [0, 1.1, -0.4], [-1.0, 0.3, -0.4], [1.0, 0.3, -0.4]], pts: { wash: [2.6, 0.3, 9.6], bell: [0.45, 2.3, 3.5], nandi: [0, 0.9, 7.4], niche: [2.7, 1.6, 6.4] },
-		floor: () => 0, shiva: true, mark: "tripundra", priestMark: "tripundra", ghee: true,
-		start: [0.2, 12.4], enterPath: [[0.2, 12.4], [0.3, 10.4], [2.0, 10.0]], staffRest: [2.98, 10.35], staffTilt: [0, -0.12], sandals: [2.1, 10.45], washFace: [2.6, 9.6],
-		nandiPath: [[2.0, 10.0], [1.05, 8.8], [0.55, 6.6]], nandiEar: [0.15, 7.0],
+		rooms: [[-2.5, 2.5, 0.15, 3.2, -2.6, 2.7], [-2.95, 2.95, 0.15, 3.85, 3.5, 10.5], [-2.9, 2.9, 0.15, 3.6, 11.2, 12.6]],
+		deityPts: [[0, 0, -0.4], [0, 1.1, -0.4], [-1.0, 0.3, -0.4], [1.0, 0.3, -0.4]], pts: { wash: [-0.5, 0.3, 11.78], bell: [0.45, 2.3, 3.5], nandi: [0, 0.9, 7.4], niche: [2.7, 1.6, 6.4] },
+		// the brass threshold strip in the sanctum door is a step up
+		floor: (x, z) => (Math.abs(x) < 0.7 && z > 2.9 && z < 3.32 ? 0.06 : 0), shiva: true, mark: "tripundra", priestMark: "tripundra", ghee: true,
+		// sandals, staff and the washing all on the porch, outside the door
+		start: [1.2, 12.5], enterPath: [[1.2, 12.5], [0.2, 11.62]], staffRest: [0.97, 11.2], staffTilt: [-0.07, 0], sandals: [0.42, 11.42], washFace: [-0.5, 11.78],
+		nandiPath: [[0.2, 11.62], [0.3, 10.4], [1.05, 8.8], [0.62, 6.42]], nandiEar: [0.15, 7.0],
 		bellSpot: [0.3, 3.85], bellFace: Math.PI, bellPath: [[0.55, 6.6], [0.9, 5.4], [0.3, 3.85]],
 		toFront: [[0.3, 3.85], [0, 3.0], [0, 1.65]], front: [0, 1.65], target: [0, -0.4],
-		pour: [0, 0.8], pourTop: 0.32, embrace: [0, 0.66],
+		pour: [0, 0.82], pourTop: 0.32, pourAt: surf(0, 0.86, 0.05).add(V(0, 0.2, 0)).toArray(), pourKill: surf(0, 0.86).y, surf, hugLean: 0.78,
+		// embrace: where the feet stand before kneeling, the knees coming down just short of the rim
+		embrace: [0, 1.24], bowPath: [[0, 1.1], [0, 2.72]],
 		priestHome: [-2.15, 1.35], priestFace: [0, -0.4], priestAarti: [-0.3, 1.0], aartiSpot: [0.6, 1.65],
-		markSpot: [0.3, 1.6], priestMarkSpot: [-0.3, 1.3],
+		markSpot: [0.3, 1.6], priestMarkSpot: [-0.42, 1.25],
 		circuit: arc(0, -0.4, 1.85, 1.5, 0, -Math.PI * 2, 40),
-		bow: [0, 1.6],
 		cams: {
-			enter: F(["T", "wash"], -135, 12, 1.25),
+			enter: Object.assign(F(["T", "wash"], 182, 12, 1.15), { room: [-2.9, 2.9, 0.15, 3.85, 3.5, 12.6] }),
 			nandi: F(["T", "nandi", "niche"], -88, 10),
 			bell: F(["T", "bell"], 15, 8),
 			darshan: F(["T", "D"], 50, 24),
@@ -1310,7 +1536,7 @@ function tirumala(ctx) {
 	box(g, -5.4, 5.4, 4.6, 4.9, -7, 9.2, ceil, 1);
 	for (const z of [3.4, 5.6, 7.8]) for (const x of [-3.4, 3.4]) pillar(g, x, 0, z, 4.6, 0.22, wall);
 	for (const z of [-2.2, -5.6]) for (const x of [-4.4, 4.4]) pillar(g, x, 0, z, 4.6, 0.2, wall);
-	daylight(ctx, 0, 1.6, 9.9, 3, 3.4, "court", 10, [0, 0, 5]);
+	daylight(ctx, 0, 1.6, 11.8, 4, 3.6, "court", 10, [0, 0, 5]);
 	// the sanctum block, gold-clad door in its face
 	wallX(g, -2.2, -4.6, 0.9, 0, 4.6, t, wall);
 	wallX(g, 2.2, -4.6, 0.9, 0, 4.6, t, wall);
@@ -1469,23 +1695,24 @@ function tirumala(ctx) {
 		m.rotation.y = ry;
 		g.add(m);
 	});
-	mesh(lathe([[0, 0], [0.14, 0], [0.2, 0.1], [0.19, 0.2], [0.13, 0.26], [0.15, 0.3], [0, 0.29]], 20), M.brass, 3.2, 0, 8.4, g);
+	mesh(lathe([[0, 0], [0.14, 0], [0.2, 0.1], [0.19, 0.2], [0.13, 0.26], [0.15, 0.3], [0, 0.29]], 20), M.brass, -0.55, 0, 10.05, g);
 	common(ctx, 4.6);
 	const C = (p, l) => ({ p, l });
 	const F = (fit, az, el, pad = 1) => ({ fit, dir: [az, el], pad });
 	return {
 		rooms: [[-1.85, 1.85, 0.15, 3.45, -4.2, 0.25], [-4.95, 4.95, 0.15, 4.4, 1.1, 9.0], [-4.95, -2.6, 0.15, 4.4, -6.6, 9.0], [2.6, 4.95, 0.15, 4.4, -6.6, 9.0], [-4.95, 4.95, 0.15, 4.4, -6.6, -5.0]],
-		deityPts: [[0, 0.3, -3.4], [0, 3.1, -3.4]], pts: { wash: [3.2, 0.3, 8.4], hundi: [-3.75, 1.0, -1.2], door: [0, 2.6, 0.9] },
+		deityPts: [[0, 0.3, -3.4], [0, 3.1, -3.4]], pts: { wash: [-0.55, 0.3, 10.05], hundi: [-3.75, 1.0, -1.2], door: [0, 2.6, 0.9] },
 		floor: (x, z) => (Math.abs(x) < 0.75 && z > 0.5 && z < 0.9 ? 0.07 : 0), noTouch: true, priestMark: "urdhva",
-		start: [0.6, 11.0], enterPath: [[0.6, 11.0], [0.6, 9.0], [2.5, 8.7]], staffRest: [2.6, 8.86], staffTilt: [0.08, 0], sandals: [2.1, 8.95], washFace: [3.2, 8.4],
-		queue: [[2.5, 8.7], [0.5, 8.1], [0.5, 2.7], [0.1, 1.9]], doorFace: [0, -3.4],
+		// sandals and staff left at the door, outside; then into the queue
+		start: [1.3, 11.2], enterPath: [[1.3, 11.2], [0.2, 9.9]], staffRest: [1.17, 9.47], staffTilt: [-0.07, 0], sandals: [0.45, 9.72], washFace: [-0.55, 10.05],
+		queue: [[0.2, 9.9], [0.5, 8.1], [0.5, 2.7], [0.1, 1.9]], doorFace: [0, -3.4],
 		toFront: [[0.1, 1.9], [0.15, 0.9], [0.32, -1.05]], front: [0.32, -1.05], target: [0, -3.4],
 		theertham: [[0.32, -1.05], [0.05, 0.55], [-0.9, 1.95], [-3.3, 1.95]], priestHome: [-4.0, 1.85], priestFace: [-3.3, 1.95],
-		hundiPath: [[-3.3, 1.95], [-3.1, 0.9], [-3.75, -0.35]], hundiFace: [-3.75, -1.2],
-		circuit: [[-3.75, -0.35], [-2.9, -0.8], [-2.9, -5.5], [2.9, -5.5], [2.9, 1.9], [1.6, 3.2]],
+		hundiPath: [[-3.3, 1.95], [-3.1, 0.9], [-3.75, -0.2]], hundiFace: [-3.75, -1.2], hundiDrop: [-3.72, 1.27, -0.8],
+		circuit: [[-3.75, -0.2], [-3.1, -0.3], [-2.9, -0.8], [-2.9, -5.5], [2.9, -5.5], [2.9, 1.9], [1.6, 3.2]],
 		laddu: [1.6, 3.2],
 		cams: {
-			enter: F(["T", "wash"], -140, 10, 1.25),
+			enter: Object.assign(F(["T", "wash"], 182, 12, 1.15), { room: [-4.9, 4.9, 0.15, 4.4, 7.75, 11.6] }),
 			queue: { orbit: [0, -3.4], back: 2.3, out: 0, side: 0.9, h: 1.65, lookH: 1.5, ahead: 2 },
 			darshan: Object.assign(F(["T", "D"], 4, 6, 0.62), { padP: 0.95, room: [-0.62, 0.62, 0.2, 2.5, -4.2, 2.6] }),
 			theertham: F(["T", "P"], -35, 10),
@@ -1514,7 +1741,7 @@ function badrinath(ctx) {
 		mesh(new THREE.CylinderGeometry(0.235, 0.235, 0.25, 8), green, x, 1.6, z, g);
 		mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.06, 8), M.gold, x, 1.75, z, g);
 	}
-	daylight(ctx, 0, 1.6, 9.5, 3.2, 3.4, "valley", 8, [0, 0, 5]);
+	daylight(ctx, 0, 1.6, 11.6, 4, 3.6, "valley", 8, [0, 0, 5]);
 	// the sanctum block, gilded frame and silver doors open
 	wallX(g, -2.2, -4.4, 1.0, 0, 4.2, t, paint);
 	wallX(g, 2.2, -4.4, 1.0, 0, 4.2, t, paint);
@@ -1629,7 +1856,7 @@ function badrinath(ctx) {
 	const kk = kireetam(M, 0.18, 0.1);
 	kk.position.y = 0.05;
 	kub.head.add(kk);
-	const gar = small({ head: "hair", tilak: false }, { skin: brass, top: brass, bottom: brass, sash: brass, hair: null, sole: brass }, P(NAMASTE, KNEEL, { kneeL: 1.62, kneeR: 1.5, hipR: -1.5, nod: 0.1 }), 0.95, 0.0, -2.45, Math.PI - 0.3, 0.5);
+	const gar = small({ head: "hair", tilak: false }, { skin: brass, top: brass, bottom: brass, sash: brass, hair: null, sole: brass }, P(NAMASTE, { kneeL: 1.62, kneeR: 1.5, hipL: -0.05, hipR: -1.5, bob: -0.45, nod: 0.1 }), 0.95, 0.0, -2.45, Math.PI - 0.3, 0.5);
 	for (const sx of [-1, 1]) {
 		const w = mesh(new THREE.SphereGeometry(0.22, 12, 8), brass, sx * 0.17, 0.32, -0.12, gar.torso);
 		w.scale.set(0.35, 1.0, 0.18);
@@ -1663,10 +1890,10 @@ function badrinath(ctx) {
 	kit.light(0, 2.8, -5.6, 3, 8);
 	kit.light(0, 2.6, 4.2, 3.5, 10);
 	kit.light(0, 2.4, 1.6, 1.5, 6, 0xffb060);
-	kit.bell(g, 0.38, 2.95, 1.3, 1.2, 0.25);
+	kit.bell(g, 0.38, 2.95, 1.3, 1.2, 0.6);
 	garland(g, V(-0.95, 2.82, 1.1), V(0.95, 2.82, 1.1), 0.3, 0.032, M.marigold, M.rose);
 	for (const sx of [-1, 1]) hangingGarland(g, sx * 0.95, 2.82, 1.12, 1.1, M.marigold, M.rose);
-	mesh(lathe([[0, 0], [0.14, 0], [0.2, 0.1], [0.19, 0.2], [0.13, 0.26], [0.15, 0.3], [0, 0.29]], 20), M.brass, 3.6, 0, 7.4, g);
+	mesh(lathe([[0, 0], [0.14, 0], [0.2, 0.1], [0.19, 0.2], [0.13, 0.26], [0.15, 0.3], [0, 0.29]], 20), M.brass, -0.6, 0, 9.65, g);
 	const crowdSpots = [[-1.7, 5.0, Math.PI - 0.2], [-2.3, 6.6, Math.PI + 0.3], [-3.6, -3.0, Math.PI / 2], [3.7, -1.5, -Math.PI / 2]];
 	crowdSpots.forEach(([x, z, ry], i) => {
 		const m = crowdFigure(501 + i * 13);
@@ -1682,17 +1909,18 @@ function badrinath(ctx) {
 	const F = (fit, az, el, pad = 1) => ({ fit, dir: [az, el], pad });
 	return {
 		rooms: [[-1.85, 1.85, 0.15, 3.25, -4.05, 0.3], [-4.55, 4.55, 0.15, 4.0, 1.2, 8.6], [-4.55, -2.65, 0.15, 4.0, -6.55, 8.6], [2.65, 4.55, 0.15, 4.0, -6.55, 8.6], [-4.55, 4.55, 0.15, 4.0, -6.55, -4.85]],
-		deityPts: [[0, 0.75, -3.2], [0, 1.75, -3.2]], pts: { wash: [3.6, 0.3, 7.4], bell: [0.38, 2.4, 1.3], door: [0, 2.0, 0.8] },
+		deityPts: [[0, 0.75, -3.2], [0, 1.75, -3.2]], pts: { wash: [-0.6, 0.3, 9.65], bell: [0.38, 2.4, 1.3], door: [0, 2.0, 0.8] },
 		floor: () => 0, priestMark: "urdhva", mark: "chandan", kund: true,
-		start: [0.6, 9.9], enterPath: [[0.6, 9.9], [0.6, 8.3], [2.7, 7.4]], staffRest: [4.45, 7.6], staffTilt: [0, -0.1], sandals: [3.1, 7.75], washFace: [3.6, 7.4],
-		bellSpot: [0.2, 1.75], bellFace: Math.PI, bellPath: [[2.7, 7.4], [1.4, 4.4], [0.2, 1.75]],
+		// up from the kund: sandals and staff left at the door, outside
+		start: [1.3, 11.0], enterPath: [[1.3, 11.0], [0.2, 9.5]], staffRest: [1.17, 9.07], staffTilt: [-0.07, 0], sandals: [0.45, 9.32], washFace: [-0.6, 9.65],
+		bellSpot: [0.2, 1.75], bellFace: Math.PI, bellPath: [[0.2, 9.5], [0.5, 7.6], [1.4, 4.4], [0.2, 1.75]],
 		toFront: [[0.2, 1.75], [0.2, 1.0], [0.36, -0.95]], front: [0.36, -0.95], target: [0, -3.25],
 		priestHome: [-1.45, -1.9], priestFace: [0, -0.95], priestTake: [-0.2, -1.6], priestPlace: [0, -2.2],
 		priestAarti: [-0.05, -1.95], aartiSpot: [-0.45, -0.95], markSpot: [0.25, -0.95], priestMarkSpot: [-0.3, -1.5],
 		circuit: [[0.36, -0.95], [0.3, 1.7], [-2.85, 1.75], [-2.85, -5.4], [2.85, -5.4], [2.85, 1.8], [0.5, 2.5]],
-		bow: [0.36, -0.95],
+		bowPath: [[0.5, 2.5], [0.2, 1.4], [0.1, -0.42]],
 		cams: {
-			enter: F(["T", "wash"], -140, 10, 1.25),
+			enter: Object.assign(F(["T", "wash"], 182, 12, 1.15), { room: [-4.5, 4.5, 0.15, 4.0, 1.2, 11.4] }),
 			bell: F(["T", "bell"], -55, 8),
 			darshan: Object.assign(F(["T", "D"], -4, 6, 0.8), { padP: 1, room: door }),
 			offer: F(["T", "P", "D"], 60, 14),
@@ -1721,6 +1949,17 @@ function stepsFor(key, L) {
 		S.P.face = L.priestFace;
 		S.P.pose = P(NAMASTE, { nod: 0.12 + Math.sin(t * 0.7) * 0.04 });
 	};
+	// the unit vector from (ax, az) towards (bx, bz)
+	const dir = (ax, az, bx, bz) => {
+		const dx = bx - ax, dz = bz - az, l = Math.hypot(dx, dz) || 1;
+		return [dx / l, dz / l];
+	};
+	// a world point d metres from the actor along its facing, s to its left, at height y above the floor
+	const ahead = (A, d, y, s = 0) => () => {
+		const fx = Math.sin(A.yaw), fz = Math.cos(A.yaw);
+		return V(A.pos.x + fx * d + fz * s, A.y + y, A.pos.z + fz * d - fx * s);
+	};
+	const headPt = (A, x, y, z) => () => A.J.head.localToWorld(V(x, y, z));
 	const enter = (text) => ({
 		...text, sets: ["barefoot", "staffDown"],
 		run(S, t) {
@@ -1731,12 +1970,14 @@ function stepsFor(key, L) {
 			S.T.arms = 0.3;
 			S.hold.tR = u < 1.0 ? "staff" : null;
 			if (u > 0.95) S.flag("staffDown");
-			if (u > 2.1) S.flag("barefoot");
+			if (u > 1.95) S.flag("barefoot");
 			S.T.face = u < 1.3 ? L.staffRest : L.washFace;
+			// lean the staff against the wall, step out of the sandals one foot at a time, then pour water over
+			// the hands and feet from the lota
 			const pour = P(STAND, { lean: 0.3, nod: 0.45, shR: -0.95, shRz: -0.25, shRy: -0.3, elR: -0.9, shL: -0.75, shLz: 0.15, shLy: 0.3, elL: -0.5 });
 			S.T.pose = kf(u, [
 				[0, P(STAND, STAFF)], [0.5, P(STAND, { lean: 0.3, shR: -0.7, shRz: 0.15, elR: -0.3, nod: 0.3 })], [1.0, P(STAND, { lean: 0.25, nod: 0.3 })],
-				[1.4, P(STAND, { hipL: -0.35, kneeL: 0.7, nod: 0.4 })], [1.75, P(STAND, { nod: 0.4 })], [2.1, P(STAND, { hipR: -0.35, kneeR: 0.7, nod: 0.4 })], [2.5, STAND],
+				[1.4, P(STAND, { hipL: -0.3, kneeL: 0.6, footL: 0.25, nod: 0.45 })], [1.75, P(STAND, { nod: 0.45 })], [2.1, P(STAND, { hipR: -0.3, kneeR: 0.6, footR: 0.25, nod: 0.45 })], [2.5, STAND],
 				[3.1, pour], [5.6, pour], [6.3, NAMASTE],
 			]);
 			if (L.kund) {
@@ -1759,8 +2000,11 @@ function stepsFor(key, L) {
 			const tw = walk(S.T, t, L.bellPath, 0, 0.8);
 			const u = t - tw;
 			S.T.face = L.bellFace;
-			const up = P(STAND, { shR: -2.75, shRz: 0.2, elR: -0.35, nod: -0.35, shL: -0.4, shLy: 0.4, elL: -1.4 });
-			S.T.pose = kf(u, [[0, STAND], [0.7, up], [1.0, P(up, { shR: -2.55 })], [1.25, up], [1.5, P(up, { shR: -2.55 })], [1.8, up], [2.6, NAMASTE]]);
+			// up on the toes, the right hand to the rim of the bell, swinging it twice
+			const up = P(STAND, tiptoe(1), { shR: -2.75, shRz: 0.2, elR: -0.35, nod: -0.35, shL: -0.4, shLy: 0.4, elL: -1.4 });
+			S.T.pose = kf(u, [[0, STAND], [0.7, up], [1.9, up], [2.6, NAMASTE]]);
+			const B = S.bell(0);
+			if (B && u > 0.2 && u < 2.0) S.T.reach = { R: { p: () => S.bellRim(0, S.TA), w: u < 1.85 ? 1 : 0, rate: 5 } };
 			if (u > 0.9) S.once("ring", () => S.ring(0, 2.8));
 			if (u > 1.4) S.once("ring2", () => S.ring(0, 2.2, false));
 		},
@@ -1806,42 +2050,74 @@ function stepsFor(key, L) {
 			if (u > 0) S.T.pose = kf(u, [[0, NAMASTE], [1, P(NAMASTE, { nod: -0.1 })]]);
 		},
 	});
+	// where the hand holding the lota must be for its spout to sit at p, the lota tipped by tilt, facing f
+	const lotaHand = (p, tilt, f) => {
+		const y = -0.01 + 0.03 * Math.cos(tilt) - 0.045 * Math.sin(tilt), z = 0.05 + 0.03 * Math.sin(tilt) + 0.045 * Math.cos(tilt);
+		return V(p[0] - f[0] * z, p[1] - y, p[2] - f[1] * z);
+	};
 	const pourStep = (text) => ({
 		...text, sets: L.ghee ? ["wet", "ghee"] : ["wet"],
 		run(S, t) {
 			idlePriest(S, t);
 			S.cam = cam("pour");
-			// seated, the pilgrim settles a little further back so the crossed knees clear the pitha
-			const sitting = !L.ghee;
-			const tw = walk(S.T, t, [L.front, sitting ? [L.pour[0], L.pour[1] + 0.32] : L.pour], 0, 0.5);
+			const tw = walk(S.T, t, [L.front, L.pour], 0, 0.5);
 			const u = t - tw;
 			S.T.face = L.target;
-			// at Bhimashankar the pilgrim sits down beside the low pitha before pouring; at Kedarnath they stand at the rock
-			const sit = !L.ghee;
-			const base = sit ? SIT : STAND, d = sit ? 1.6 : 0;
-			const hold = P(base, { lean: sit ? 0.3 : 0.15, nod: 0.3, shR: -0.75, shRz: -0.1, elR: -0.9, shL: -0.6, shLz: 0.2, shLy: 0.5, elL: -1.4 });
-			const tip = P(hold, { lean: sit ? 0.5 : 0.32, nod: 0.45, shR: -1.05, elR: -0.55 });
-			S.hold.tR = u < 6.4 + d ? "lota" : null;
-			S.T.pose = sit
-				? kf(u, [[0, P(STAND, { shR: -0.75, elR: -0.9, nod: 0.3 })], [0.6, P(KNEEL, { shR: -0.75, elR: -0.9 })], [1.6, hold], [2.6, tip], [6.2, tip], [7.0, P(SIT, NAMASTE)], [7.8, P(SIT, NAMASTE)], [8.8, NAMASTE]])
-				: kf(u, [[0, hold], [1.0, tip], [4.6, tip], [5.4, hold], [6.4, NAMASTE]]);
-			S.tilt.lota = num(u, [[0.6 + d, 0.1], [1.5 + d, 1.6], [4.4 + d, 1.8], [5.2 + d, 0.1]]);
-			if (u > 1.4 + d && u < 4.4 + d) {
-				S.emit.push({ from: S.spout("lota"), v: S.fwd(0.3, -0.05), spread: 0.008, rate: 140, color: 0xc8e0ee, size: 0.016, kill: L.pourTop });
+			const f = dir(L.pour[0], L.pour[1], L.target[0], L.target[1]);
+			// the stream lands on the top of the lingam (or the rock), a little on the pilgrim's side
+			const spoutAt = L.pourAt || [L.target[0] - f[0] * 0.05, L.pourTop + 0.09, L.target[1] - f[1] * 0.05];
+			const tilt = (v) => num(v, [[0, 0.1], [0.9, 1.6], [3.8, 1.8], [4.6, 0.1]]);
+			if (!L.ghee) {
+				// at Bhimashankar the pilgrim sits down before the low pitha to pour; then rises
+				const d = 1.6;
+				const hold = P(SIT, { lean: 0.42, nod: 0.38, shR: -0.75, shRz: -0.1, elR: -0.9, shL: -0.75, shLz: 0.3, shLy: 0.55, elL: -1.5 });
+				const carry = { shR: -0.4, elR: -0.8, shL: -0.3, elL: -0.9, nod: 0.3 };
+				let ps;
+				if (u < d) ps = P(sitDown(u / d), carry);
+				else if (u < 7.6) ps = kf(u, [[d, P(SIT, carry)], [2.4, hold], [6.6, hold], [7.6, P(SIT, NA)]]);
+				else if (u < 8.2) ps = P(SIT, NA);
+				else ps = P(sitDown(1 - (u - 8.2) / 1.8), NA, { nod: 0.2 });
+				S.T.pose = ps;
+				S.T.rate = 12;
+				S.hold.tR = u < 6.8 ? "lota" : null;
+				const v = u - d - 0.6;
+				S.tilt.lota = tilt(v);
+				if (v > -0.4 && v < 4.9) S.T.reach = { R: { p: () => lotaHand(spoutAt, S.tilt.lota, f), w: v < 4.6 ? 1 : 0, rate: 4 } };
+				if (v > 0.8 && v < 3.8) {
+					S.emit.push({ from: S.spout("lota"), v: S.fwd(0.15, -0.05), spread: 0.008, rate: 140, color: 0xc8e0ee, size: 0.016, kill: L.pourTop });
+					S.flag("wet");
+				}
+				return;
+			}
+			// at Kedarnath: standing at the rock, then down on the knees to rub ghee on it
+			const hold = P(STAND, { lean: 0.3, nod: 0.38, shR: -0.85, shRz: -0.1, elR: -0.9, shL: -0.6, shLz: 0.2, shLy: 0.5, elL: -1.4 });
+			S.T.pose = kf(u, [[0, NAMASTE], [0.6, hold], [4.8, hold], [5.6, NAMASTE]]);
+			S.hold.tR = u > 0.3 && u < 5.3 ? "lota" : null;
+			S.tilt.lota = tilt(u - 0.6);
+			if (u > 0.2 && u < 5.3) S.T.reach = { R: { p: () => lotaHand(spoutAt, S.tilt.lota, f), w: u < 5.0 ? 1 : 0, rate: 4 } };
+			if (u > 1.4 && u < 4.4) {
+				S.emit.push({ from: S.spout("lota"), v: S.fwd(0.2, -0.05), spread: 0.008, rate: 140, color: 0xc8e0ee, size: 0.016, kill: L.pourKill ?? L.pourTop });
 				S.flag("wet");
 			}
-			if (L.ghee && u > 6.4) {
-				// then ghee, rubbed onto the rock by hand
-				const v = u - 6.4;
-				S.hold.tL = v < 1.2 ? "ghee" : null;
-				const rub = (k) => P(KNEEL, { lean: 0.55, nod: 0.35, shL: -1.15, shLz: 0.25 + k, elL: -0.35, shR: -1.15, shRz: -0.25 - k, elR: -0.35 });
-				S.T.pose = kf(v, [[0, NAMASTE], [0.9, P(STAND, { lean: 0.3, shL: -0.8, elL: -1.0, nod: 0.3 })], [1.6, rub(0)], [2.0, rub(0.12)]]);
-				if (v > 2.0) S.T.pose = rub(Math.sin(v * 5) * 0.12);
-				if (v > 2.6) S.flag("ghee");
+			if (u > 5.6) {
+				const v = u - 5.6;
 				S.cam = cam("embrace");
-				S.T.x = L.embrace[0];
-				S.T.z = L.embrace[1];
+				// a step back, and down on the knees before the rock
+				const tb = walk(S.T, v, [L.pour, L.embrace], 0, 0.45);
 				S.T.noTurn = true;
+				const k = v - tb;
+				S.hold.tL = k > 0.6 && k < 2.0 ? "ghee" : null;
+				const rub = (s) => P(KNEEL, { lean: 0.62, nod: 0.35, shL: -1.15, shLz: 0.25, elL: -0.35, shR: -1.15, shRz: -0.25, elR: -0.35, twist: s * 0.05 });
+				if (k < 0) S.T.pose = NAMASTE;
+				else if (k < 1.3) S.T.pose = P(kneelDown(k / 1.3), NA);
+				else S.T.pose = kf(k, [[1.3, P(KNEEL, NA)], [2.2, rub(0)]]);
+				if (k > 2.2) S.T.pose = rub(Math.sin(k * 4));
+				S.T.rate = 12;
+				if (k > 1.6) {
+					const s = Math.sin(k * 4) * 0.09;
+					S.T.reach = { L: { p: L.surf(0.16 + s, 0.62, 0.06), w: 1, pt: V(0, -0.06, 0.02) }, R: { p: L.surf(-0.16 + s, 0.62, 0.06), w: 1, pt: V(0, -0.06, 0.02) } };
+				}
+				if (k > 2.6) S.flag("ghee");
 			}
 		},
 	});
@@ -1853,8 +2129,13 @@ function stepsFor(key, L) {
 			S.T.x = L.embrace[0];
 			S.T.z = L.embrace[1];
 			S.T.face = L.target;
-			const hug = P(KNEEL, { lean: 0.72, nod: 0.55, shL: -1.4, shLz: -0.55, elL: -0.7, elLy: 0.3, shR: -1.4, shRz: 0.55, elR: -0.7, elRy: -0.3 });
-			S.T.pose = kf(t, [[0, NAMASTE], [1.2, P(KNEEL, NAMASTE)], [2.4, hug], [6.0, hug], [7.0, P(KNEEL, NAMASTE)]]);
+			S.T.rate = 10;
+			// arms round the rock, the forehead resting on it; then up again
+			const hug = P(KNEEL, { lean: L.hugLean, nod: 0.5, shL: -1.4, shLz: -0.55, elL: -0.7, shR: -1.4, shRz: 0.55, elR: -0.7 });
+			const kneel = P(KNEEL, NA);
+			if (t < 6.8) S.T.pose = kf(t, [[0, kneel], [1.2, kneel], [2.4, hug], [5.6, hug], [6.8, kneel]]);
+			else S.T.pose = P(kneelDown(1 - (t - 6.8) / 1.4), NA);
+			if (t > 1.0 && t < 6.6) S.T.reach = { L: { p: L.surf(0.5, 0.72, 0.035), w: t < 6.0 ? 1 : 0, rate: 3 }, R: { p: L.surf(-0.5, 0.72, 0.035), w: t < 6.0 ? 1 : 0, rate: 3 } };
 		},
 	});
 	const offer = (text) => ({
@@ -1862,13 +2143,29 @@ function stepsFor(key, L) {
 		run(S, t) {
 			idlePriest(S, t);
 			S.cam = cam("offer");
-			S.T.x = L.pour[0];
-			S.T.z = L.pour[1];
+			const at = L.offerAt || L.pour;
+			const tw = walk(S.T, t, [L.pour, at], 0, 0.45);
+			S.T.noTurn = true;
+			const u = t - tw;
 			S.T.face = L.target;
-			const reach = P(STAND, { lean: 0.35, nod: 0.45, shR: -1.25, shRz: 0.05, elR: -0.25, shL: -0.6, shLy: 0.5, shLz: 0.2, elL: -1.4 });
-			S.T.pose = kf(t, [[0, NAMASTE], [0.8, P(STAND, { shR: -0.6, elR: -1.4, shL: -0.6, elL: -1.4 })], [2.0, reach], [2.8, reach], [3.8, NAMASTE], [5, BOWED]]);
-			S.hold.tR = t > 0.5 && t < 2.6 ? "bilva" : null;
-			if (t > 2.5) S.flag("leaves");
+			const f = dir(at[0], at[1], L.target[0], L.target[1]);
+			const leafAt = [L.target[0] - f[0] * 0.1, L.pourTop + 0.07, L.target[1] - f[1] * 0.1];
+			S.hold.tR = u > 0.3 && u < 2.9 ? "bilva" : null;
+			if (L.lowDeity) {
+				// down on the knees to lay the leaves on the low lingam
+				S.T.rate = 12;
+				const lay = P(KNEEL, { lean: 0.75, nod: 0.45, shL: -0.55, shLz: 0.25, shLy: 0.5, elL: -1.55, shR: -0.9, elR: -0.4 });
+				if (u < 1.4) S.T.pose = P(kneelDown(u / 1.4), { shR: -0.5, elR: -1.0, shL: -0.5, elL: -1.2 });
+				else if (u < 4.2) S.T.pose = kf(u, [[1.4, P(KNEEL, { shR: -0.5, elR: -1.0, shL: -0.5, elL: -1.2 })], [2.2, lay], [2.9, lay], [3.6, P(KNEEL, NA)], [4.2, P(KNEEL, NA)]]);
+				else if (u < 5.6) S.T.pose = P(kneelDown(1 - (u - 4.2) / 1.4), NA);
+				else S.T.pose = kf(u, [[5.6, NAMASTE], [6.4, BOWED], [7.4, NAMASTE]]);
+				if (u > 1.4 && u < 3.3) S.T.reach = { R: { p: V(...leafAt), w: u < 2.95 ? 1 : 0, rate: 4, pt: V(0, -0.03, 0.01) } };
+			} else {
+				const reachP = P(STAND, { lean: 0.35, nod: 0.45, shR: -1.25, shRz: 0.05, elR: -0.25, shL: -0.6, shLy: 0.5, shLz: 0.2, elL: -1.4 });
+				S.T.pose = kf(u, [[0, NAMASTE], [0.8, P(STAND, { shR: -0.6, elR: -1.4, shL: -0.6, elL: -1.4 })], [2.0, reachP], [2.8, reachP], [3.8, NAMASTE], [5, BOWED], [6, NAMASTE]]);
+				if (u > 0.9 && u < 3.3) S.T.reach = { R: { p: L.surf(0.0, 0.92, 0.04), w: u < 2.95 ? 1 : 0, rate: 4, pt: V(0, -0.02, 0.05) } };
+			}
+			if (u > 2.8) S.flag("leaves");
 		},
 	});
 	const offerPlate = (text) => ({
@@ -1878,15 +2175,26 @@ function stepsFor(key, L) {
 			S.T.x = L.front[0];
 			S.T.z = L.front[1];
 			S.T.face = L.target;
-			const give = P(STAND, { lean: 0.2, nod: 0.35, shL: -1.0, shLy: 0.3, elL: -0.6, shR: -1.0, shRy: -0.3, elR: -0.6 });
+			// the plate passes from hand to hand halfway between them
+			const c0 = [lerp(L.front[0], L.priestTake[0], 0.5), lerp(L.front[1], L.priestTake[1], 0.5)];
+			const f = dir(L.front[0], L.front[1], L.priestTake[0], L.priestTake[1]), side = [f[1], -f[0]];
+			const C = (k, s, y = 1.0) => V(c0[0] + side[0] * s - f[0] * k, y, c0[1] + side[1] * s - f[1] * k);
+			const give = P(STAND, { lean: 0.15, nod: 0.35, shL: -1.0, shLy: 0.3, elL: -0.6, shR: -1.0, shRy: -0.3, elR: -0.6 });
 			S.T.pose = kf(t, [[0, P(STAND, { shL: -0.7, shLy: 0.3, elL: -1.2, shR: -0.7, shRy: -0.3, elR: -1.2 })], [1.6, give], [2.6, give], [3.4, NAMASTE]]);
 			S.hold.tR = t < 2.5 ? "thali" : null;
+			const pt = V(0, -0.05, 0.03);
+			if (t < 2.9) {
+				// before that the traveller carries the plate close: the same grip, nearer the chest
+				const k = 0.25 * (1 - ease((t - 0.4) / 1.2));
+				S.T.reach = { L: { p: C(k, -0.14, 1.0 + k * 0.2), w: t < 2.6 ? 1 : 0, pt }, R: { p: C(k, 0.14, 1.0 + k * 0.2), w: t < 2.6 ? 1 : 0, pt } };
+			}
 			// the pujari takes it and lays it at the Lord's feet
 			const pw = walk(S.P, t, [L.priestHome, L.priestTake], 0, 0.8);
 			const takeP = P(STAND, { shL: -1.0, shLy: 0.3, elL: -0.6, shR: -1.0, shRy: -0.3, elR: -0.6, lean: 0.1 });
 			const carry = P(STAND, { shL: -0.7, shLy: 0.3, elL: -1.2, shR: -0.7, shRy: -0.3, elR: -1.2 });
 			S.P.face = L.front;
 			S.P.pose = kf(t, [[0, NAMASTE], [1.6, takeP], [2.6, carry]]);
+			if (t > 1.5 && t < 2.6) S.P.reach = { L: { p: C(-0.09, 0.08), w: 1, pt }, R: { p: C(-0.09, -0.08), w: 1, pt } };
 			if (t > 2.5) S.hold.pR = "thali";
 			if (t > 3.0) {
 				const tw = walk(S.P, t, [L.priestTake, L.priestPlace], 3.0, 0.7);
@@ -1934,21 +2242,36 @@ function stepsFor(key, L) {
 			S.cam = cam("flame");
 			S.T.x = L.aartiSpot[0];
 			S.T.z = L.aartiSpot[1];
-			S.P.x = L.priestAarti[0];
-			S.P.z = L.priestAarti[1];
 			S.hold.pR = "aarti";
-			const pt = [lerp(L.priestAarti[0], L.aartiSpot[0], 0.55), lerp(L.priestAarti[1], L.aartiSpot[1], 0.55)];
-			S.P.x = lerp(L.priestAarti[0], pt[0], ease(t / 1.5) * 0.6);
-			S.P.z = lerp(L.priestAarti[1], pt[1], ease(t / 1.5) * 0.6);
+			S.close = 1;
+			// the pujari comes to stand a little over an arm's length away, the lamp held out at chest height
+			// about 35 cm in front of the traveller
+			const f = dir(L.aartiSpot[0], L.aartiSpot[1], L.priestAarti[0], L.priestAarti[1]);
+			const stand = [L.aartiSpot[0] + f[0] * 0.8, L.aartiSpot[1] + f[1] * 0.8];
+			const e = ease(t / 1.5);
+			S.P.x = lerp(L.priestAarti[0], stand[0], e);
+			S.P.z = lerp(L.priestAarti[1], stand[1], e);
 			S.P.face = L.aartiSpot;
-			S.P.pose = P(STAND, { shR: -0.85, shRz: -0.05, elR: -0.95, shL: -0.4, shLz: 0.2, elL: -1.2, nod: 0.25 });
-			S.T.face = [S.P.x, S.P.z];
-			const over = P(STAND, { lean: 0.25, nod: 0.45, shL: -0.85, shLz: 0.2, shLy: 0.35, elL: -0.55, shR: -0.85, shRz: -0.2, shRy: -0.35, elR: -0.55 });
+			S.T.face = stand;
+			S.P.pose = P(STAND, { shR: -0.85, shRz: -0.05, elR: -1.1, shL: -0.4, shLz: 0.2, elL: -1.2, nod: 0.3, lean: 0.05 });
+			const lamp = (y) => () => V(S.TA.pos.x + f[0] * 0.36, S.TA.y + y, S.TA.pos.z + f[1] * 0.36);
+			S.P.reach = { R: { p: lamp(1.12 - 0.1), w: ease((t - 0.3) / 1.2), rate: 4 } };
+			// the traveller's cupped hands pass over the flames, then are drawn to the eyes
+			const over = P(STAND, { lean: 0.12, nod: 0.4, shL: -0.85, shLz: 0.2, shLy: 0.35, elL: -0.75, shR: -0.85, shRz: -0.2, shRy: -0.35, elR: -0.75 });
 			const eyes = P(STAND, { lean: 0.05, nod: 0.25, shL: -0.6, shLz: 0.4, shLy: 0.7, elL: -2.35, shR: -0.6, shRz: -0.4, shRy: -0.7, elR: -2.35 });
+			const pt = V(0, -0.05, 0.015);
 			if (t < 1.6) S.T.pose = kf(t, [[0, NAMASTE], [1.6, over]]);
 			else if (t < 9.4) {
-				const c = ((t - 1.6) % 2.6) / 2.6;
-				S.T.pose = c < 0.5 ? mix(over, eyes, ease(c * 2)) : mix(eyes, over, ease((c - 0.5) * 2));
+				const c = ((t - 1.6) % 2.6) / 2.6, k = c < 0.5 ? ease(c * 2) : ease((1 - c) * 2);
+				S.T.pose = mix(over, eyes, k);
+				// over the flame (the lamp's flames stand 12 cm above the hand; the palms pass 16 cm above them)
+				const ov = (s) => () => lamp(1.12 + 0.18)().add(V(f[1] * s, 0, -f[0] * s));
+				const ey = (s) => headPt(S.TA, s, 0.02, 0.15);
+				const w = (q) => () => {
+					const a = ov(q)(), b = ey(q > 0 ? 0.035 : -0.035)();
+					return a.lerp(b, k);
+				};
+				S.T.reach = { L: { p: w(-0.06), w: 1, pt, rate: 8 }, R: { p: w(0.06), w: 1, pt, rate: 8 } };
 			} else S.T.pose = kf(t, [[9.4, over], [10.4, NAMASTE]]);
 		},
 	});
@@ -1964,9 +2287,19 @@ function stepsFor(key, L) {
 			const apply = P(STAND, { shR: -1.55, shRz: -0.15, shRy: -0.2, elR: -1.0, shL: -0.3, elL: -1.4, nod: 0.1 });
 			const give = P(STAND, { shR: -0.8, shRz: -0.1, elR: -0.7, shL: -0.3, elL: -1.4, nod: 0.25, lean: 0.1 });
 			S.P.pose = kf(t, [[0, STAND], [1.6, STAND], [2.4, apply], [3.4, apply], [4.0, STAND], [4.8, give], [5.8, give], [6.4, NAMASTE]]);
+			// the ring finger to the forehead, three strokes
+			if (t > 1.7 && t < 3.6) {
+				const s = Math.sin((t - 2.4) * 6) * 0.03;
+				S.P.reach = { R: { p: headPt(S.TA, s, 0.06, 0.14), w: t < 3.3 ? 1 : 0, rate: 5, pt: V(0, -0.1, 0.01) } };
+			}
 			const cup = P(STAND, { shR: -0.75, shRz: -0.15, shRy: -0.25, elR: -0.8, shL: -0.6, shLz: 0.2, shLy: 0.35, elL: -0.9, nod: 0.25 });
 			const toHead = P(STAND, { shR: -0.9, shRy: -0.5, elR: -2.3, shL: -0.4, elL: -1.0, nod: 0.15 });
 			S.T.pose = kf(t, [[0, NAMASTE], [1.8, P(NAMASTE, { nod: -0.12, lean: 0.12 })], [3.6, P(NAMASTE, { nod: -0.05, lean: 0.12 })], [4.4, cup], [5.8, cup], [6.8, toHead], [7.6, toHead], [8.4, NAMASTE]]);
+			// the prasad passes between their hands, the traveller's right palm below the pujari's
+			const g = dir(L.markSpot[0], L.markSpot[1], L.priestMarkSpot[0], L.priestMarkSpot[1]);
+			const mid = (y) => () => V(lerp(S.TA.pos.x, S.PA.pos.x, 0.5), S.TA.y + y, lerp(S.TA.pos.z, S.PA.pos.z, 0.5));
+			if (t > 4.0 && t < 6.2) S.P.reach = { R: { p: mid(1.06), w: t < 5.8 ? 1 : 0, rate: 4 } };
+			if (t > 4.0 && t < 6.2) S.T.reach = { R: { p: () => mid(1.0)().add(V(-g[0] * 0.03, 0, -g[1] * 0.03)), w: t < 5.9 ? 1 : 0, rate: 4 } };
 			if (t > 3.0) S.flag("mark");
 			if (t > 4.5 && t < 5.6) S.hold.pR = "prasad";
 			if (t > 5.6 && t < 8.0) S.hold.tR = "prasad";
@@ -1981,13 +2314,26 @@ function stepsFor(key, L) {
 			S.T.face = L.priestHome;
 			S.P.x = L.priestHome[0];
 			S.P.z = L.priestHome[1];
-			S.P.face = L.priestFace;
+			S.P.face = L.theertham[L.theertham.length - 1];
 			S.hold.pL = u < 4.4 ? "vessel" : null;
 			S.hold.pR = u < 4.4 ? "spoon" : null;
 			const pourP = P(STAND, { shR: -1.0, shRz: -0.1, elR: -0.7, shL: -0.7, shLz: 0.2, elL: -0.9, nod: 0.35, lean: 0.1 });
 			const crown = P(STAND, { shL: -1.75, shLz: -0.1, elL: -0.65, shR: -0.2, elR: -0.3, nod: 0.15 });
 			S.P.pose = kf(u, [[0, P(STAND, { shL: -0.6, elL: -1.0, shR: -0.4, elR: -1.0 })], [0.8, pourP], [2.4, pourP], [3.0, STAND], [4.6, STAND], [5.4, crown], [6.6, crown], [7.4, NAMASTE]]);
-			if (u > 4.6 && u < 7.2) S.hold.pL = "shathari";
+			// the cupped right palm held out between them; the spoon's lip just above it
+			const end = L.theertham[L.theertham.length - 1];
+			const g = dir(end[0], end[1], L.priestHome[0], L.priestHome[1]);
+			const palm = () => V(S.TA.pos.x + g[0] * 0.3, S.TA.y + 1.02, S.TA.pos.z + g[1] * 0.3);
+			if (u > 0.2 && u < 3.0) {
+				S.T.reach = { R: { p: palm, w: u < 2.7 ? 1 : 0, rate: 5 } };
+				// the spoon is held 14 cm behind its lip
+				S.P.reach = { R: { p: () => palm().add(V(g[0] * 0.13, 0.1, g[1] * 0.13)), w: u < 2.6 ? 1 : 0, rate: 5, pt: V(0, -0.02, 0) } };
+			}
+			if (u > 4.6 && u < 7.2) {
+				S.hold.pL = "shathari";
+				// the crown, held by its base, touched to the top of the bowed head
+				S.P.reach = { L: { p: headPt(S.TA, 0, 0.145, -0.01), w: u < 6.9 ? 1 : 0, rate: 4, pt: V(0, 0, 0) } };
+			}
 			if (u > 1.0 && u < 2.2) S.emit.push({ from: S.spout("spoon"), v: [0, -0.1, 0], spread: 0.004, rate: 50, color: 0xb0ccd8, size: 0.01, kill: 1.0 });
 			const cup = P(STAND, { shR: -0.75, shRz: -0.15, shRy: -0.25, elR: -0.8, shL: -0.6, shLz: 0.2, shLy: 0.35, elL: -0.9, nod: 0.3 });
 			const sip = P(STAND, { shR: -0.55, shRy: -0.6, elR: -2.35, shL: -0.3, elL: -0.8, nod: 0.05 });
@@ -2005,7 +2351,8 @@ function stepsFor(key, L) {
 			S.T.face = L.hundiFace;
 			const drop = P(STAND, { lean: 0.3, nod: 0.45, shR: -1.25, shRz: 0.1, elR: -0.45, shL: -0.6, shLy: 0.5, shLz: 0.2, elL: -1.4 });
 			S.T.pose = kf(u, [[0, STAND], [0.9, drop], [2.6, drop], [3.4, NAMASTE], [4.4, BOWED]]);
-			if (u > 1.1 && u < 2.4) S.emit.push({ from: S.at("handR", 0, -0.02, 0.03), v: [0, -0.2, 0], spread: 0.01, rate: 10, color: 0xffd060, size: 0.03, kill: 1.0 });
+			if (u > 0.3 && u < 3.0) S.T.reach = { R: { p: V(...L.hundiDrop), w: u < 2.7 ? 1 : 0, rate: 4 } };
+			if (u > 1.1 && u < 2.4) S.emit.push({ from: S.at("handR", 0, -0.05, 0.02), v: [0, -0.2, 0], spread: 0.01, rate: 10, color: 0xffd060, size: 0.03, kill: 1.0 });
 		},
 	});
 	const pradakshina = (text) => ({
@@ -2023,10 +2370,8 @@ function stepsFor(key, L) {
 				const p = along(path, d);
 				S.T.x = p[0];
 				S.T.z = p[1];
-				if (t >= t1 && t < t1 + 2.0) {
-					S.T.face = L.target;
-					S.T.pose = NAMASTE;
-				} else S.T.pose = NAMASTE;
+				if (t >= t1 && t < t1 + 2.0) S.T.face = L.target;
+				S.T.pose = NAMASTE;
 				if (t > t1 + 2 + len / v) S.T.face = L.target;
 			} else {
 				walk(S.T, t, path, 0, v);
@@ -2037,17 +2382,33 @@ function stepsFor(key, L) {
 			S.cam = c;
 		},
 	});
+	// Sashtanga pranam: down on the knees, the hands to the floor, then the whole body laid face down towards
+	// the Lord with the arms stretched out beyond the head, the palms together; then back up the same way.
 	const bow = (text) => ({
 		...text,
 		run(S, t) {
 			idlePriest(S, t);
 			S.cam = cam("bow");
-			const at = L.bow;
-			S.T.x = at[0];
-			S.T.z = at[1];
+			const tw = walk(S.T, t, L.bowPath, 0, 0.6);
+			const u = t - tw;
 			S.T.face = L.target;
-			S.T.pose = kf(t, [[0, NAMASTE], [1.0, P(NAMASTE, KNEEL)], [2.2, PRANAM], [4.2, PRANAM], [5.2, P(NAMASTE, KNEEL)], [6.4, NAMASTE], [7.4, BOWED], [8.4, NAMASTE]]);
-			S.T.rate = 3.2;
+			S.T.rate = 14;
+			const arms = NA;
+			let pr = null;
+			if (u < 0.6) S.T.pose = NAMASTE;
+			else if (u < 2.1) S.T.pose = P(kneelDown((u - 0.6) / 1.5), arms);
+			else if (u < 2.5) S.T.pose = P(KNEEL, arms);
+			else if (u < 4.7) pr = prostrate((u - 2.5) / 2.2);
+			else if (u < 6.5) pr = prostrate(1);
+			else if (u < 8.5) pr = prostrate(1 - (u - 6.5) / 2.0);
+			else if (u < 8.9) S.T.pose = P(KNEEL, arms);
+			else if (u < 10.4) S.T.pose = P(kneelDown(1 - (u - 8.9) / 1.5), arms);
+			else S.T.pose = kf(u, [[10.4, NAMASTE], [11.2, BOWED], [12.2, NAMASTE]]);
+			if (pr) {
+				S.T.pose = P(arms, pr.pose);
+				if (u > 4.7 && u < 6.5) S.T.pose.nod += Math.sin((u - 4.7) * 1.6) * 0.015;
+				S.T.reach = pr.hands;
+			}
 		},
 	});
 	const laddu = (text) => ({
@@ -2061,6 +2422,9 @@ function stepsFor(key, L) {
 			const holdUp = P(STAND, { shL: -0.9, shLy: 0.4, elL: -1.5, shR: -0.9, shRy: -0.4, elR: -1.5, nod: 0.3 });
 			S.T.pose = kf(t, [[0, P(STAND, { shL: -0.6, shLy: 0.3, elL: -1.2, shR: -0.6, shRy: -0.3, elR: -1.2 })], [1.5, holdUp], [3.2, holdUp], [4.2, NAMASTE]]);
 			S.hold.tR = t < 3.8 ? "laddu" : null;
+			const y = num(t, [[0, 1.08], [1.5, 1.3]]);
+			const pt = V(0, -0.05, 0.025);
+			if (t < 3.9) S.T.reach = { L: { p: ahead(S.TA, 0.3, y, -0.045), w: t < 3.5 ? 1 : 0, pt }, R: { p: ahead(S.TA, 0.3, y, 0.045), w: t < 3.5 ? 1 : 0, pt } };
 		},
 	});
 
@@ -2081,7 +2445,7 @@ function stepsFor(key, L) {
 		takeFlame(txt.flame),
 		markStep(txt.vibhuti),
 		pradakshina({ title: "Pradakshina", note: "Walk around the lingam clockwise, keeping it on your right. At a Shiva shrine you turn back at the spout where the abhishek water runs out, rather than stepping over it." }),
-		bow({ title: "Bow and take leave", note: "Kneel and touch your forehead to the floor, then rise with folded hands. It is customary to sit a while in the hall before you go.", mantra: "हर हर महादेव", latin: "Har Har Mahadev" }),
+		bow({ title: "Bow and take leave", note: "Kneel, then lie face down before the Lord, arms stretched out beyond the head with the palms together, in sashtanga pranam. Rise again with folded hands. It is customary to sit a while in the hall before you go.", mantra: "हर हर महादेव", latin: "Har Har Mahadev" }),
 	];
 	if (key === "kedarnath") return [
 		enter({ title: "Leave sandals and staff", note: "Footwear stays outside. Lean the staff by the door, slip off your sandals and rinse your hands and feet in the icy water before stepping in." }),
@@ -2095,7 +2459,7 @@ function stepsFor(key, L) {
 		takeFlame(txt.flame),
 		markStep(txt.vibhuti),
 		pradakshina({ title: "Pradakshina", note: "Walk around the lingam clockwise, keeping it on your right. Outside, pilgrims also circle the whole temple, passing Adi Shankara's samadhi behind it." }),
-		bow({ title: "Bow and take leave", note: "Kneel and touch your forehead to the floor, then rise with folded hands and leave quietly.", mantra: "जय बाबा केदार", latin: "Jai Baba Kedar" }),
+		bow({ title: "Bow and take leave", note: "Kneel, then lie face down before the Lord, arms stretched out beyond the head with the palms together, in sashtanga pranam. Rise again with folded hands and leave quietly.", mantra: "जय बाबा केदार", latin: "Jai Baba Kedar" }),
 	];
 	if (key === "tirupati") return [
 		enter({ title: "Leave sandals and staff", note: "Footwear and bags are left at the counters outside. Rinse your hands and feet, then join the queue." }),
@@ -2115,7 +2479,7 @@ function stepsFor(key, L) {
 		takeFlame(txt.flame),
 		markStep({ title: "Chandan and prasad", note: "The pujari marks your forehead with chandan, sandalwood paste, and gives prasad of chana dal, mishri and tulsi." }),
 		pradakshina({ title: "Pradakshina", note: "Walk clockwise around the sanctum, keeping it on your right." }),
-		bow({ title: "Bow and take leave", note: "Kneel and touch your forehead to the floor, then rise with folded hands.", mantra: "जय बद्री विशाल", latin: "Jai Badri Vishal" }),
+		bow({ title: "Bow and take leave", note: "Kneel, then lie face down before the Lord, arms stretched out beyond the head with the palms together, in sashtanga pranam. Rise again with folded hands.", mantra: "जय बद्री विशाल", latin: "Jai Badri Vishal" }),
 	];
 }
 
@@ -2212,7 +2576,7 @@ export class Sanctum {
 		this.props = buildProps(ctx);
 		// the traveller: as outside, in saffron kurta, white dhoti, turban and shawl
 		const skinT = std(SKIN[0], { roughness: 0.65 });
-		const TJ = figure({ head: "turban", beard: 0x5d554e }, { skin: skinT, top: std(0xe2761b), bottom: std(0xf1ebdc), sash: std(0xb8261c), head: std(0xf08a1f), sole: std(SOLE) });
+		const TJ = figure({ head: "turban", beard: 0x5d554e }, { skin: skinT, top: std(0xe2761b), bottom: std(0xf1ebdc, { vertexColors: true }), sash: std(0xb8261c), head: std(0xf08a1f), sole: std(SOLE) });
 		eyes(TJ);
 		TJ.skinMat = skinT;
 		TJ.soleMat = TJ.feet[0].material;
@@ -2223,19 +2587,16 @@ export class Sanctum {
 		this.trav = new Actor(TJ, this.L.floor);
 		// the pujari: bare-chested, white dhoti, the sacred thread across the chest, shaven head with a tuft
 		const skinP = std(SKIN[2], { roughness: 0.6 });
-		const dhoti = std(0xf2eee2, { roughness: 0.9 });
-		const PJ = figure({ head: "hair", tilak: false }, { skin: skinP, top: skinP, bottom: dhoti, sash: std(0xf4efe0), hair: null, sole: skinP });
-		PJ.hem.material = dhoti;
-		PJ.sash.geometry.dispose();
-		PJ.sash.geometry = new THREE.TorusGeometry(0.205, 0.0045, 4, 48);
-		PJ.sash.scale.set(1, 0.74, 1.12);
-		const tuft = mesh(new THREE.SphereGeometry(0.025, 8, 6), std(0x15110e, { roughness: 0.7 }), 0, 0.09, -0.07, PJ.head);
-		tuft.scale.set(1, 1.3, 1);
-		mesh(new THREE.CylinderGeometry(0.008, 0.004, 0.08, 5), tuft.material, 0, 0.06, -0.11, PJ.head).rotation.x = 0.6;
+		const dhoti = std(0xf2eee2, { roughness: 0.9, vertexColors: true });
+		// (pujari: bare chest, the sacred thread, a long dhoti to the ankles, a shaven head with the shikha)
+		const PJ = figure({ head: "hair", tilak: false, pujari: true, mark: "none" }, { skin: skinP, top: skinP, bottom: dhoti, sash: std(0xf4efe0), hair: std(0x15110e, { roughness: 0.7 }), sole: skinP });
+		for (const f of PJ.feet) f.visible = false;
+		if (PJ.shawl) PJ.shawl.visible = false;
 		PJ.head.add(markPatch(this.L.priestMark || "tripundra"));
 		eyes(PJ);
 		g.add(PJ.root);
 		this.priest = new Actor(PJ, this.L.floor);
+		this.priest.bare = true;
 		// incense smoke and the streams of water, ghee and coins
 		this.smoke = [];
 		const ns = this.low ? 18 : 40;
@@ -2314,6 +2675,16 @@ export class Sanctum {
 			ghanti() { self._ghanti(); },
 			tx: () => self.trav.pos.x,
 			tz: () => self.trav.pos.z,
+			get TA() { return self.trav; },
+			get PA() { return self.priest; },
+			bell: (i) => self.ctx.bells[i],
+			// the near side of a bell's rim, seen from actor A, where a hand takes hold of it to swing it
+			bellRim(i, A) {
+				const b = self.ctx.bells[i];
+				const c = b.pivot.localToWorld(V(0, -b.chain - 0.3 * b.s + 0.035 * b.s, 0));
+				const dx = A.pos.x - c.x, dz = A.pos.z - c.z, l = Math.hypot(dx, dz) || 1;
+				return c.add(V((dx / l) * 0.13 * b.s, 0, (dz / l) * 0.13 * b.s));
+			},
 			// world-space emitters, evaluated after the actors move
 			at: (joint, x, y, z) => () => self.trav.J[joint].localToWorld(v.set(x, y, z)).clone(),
 			spout: (name) => () => {
@@ -2523,8 +2894,10 @@ export class Sanctum {
 		S.emit = [];
 		S.steam = 0;
 		S.camPush = 0;
+		S.close = 0;
 		this.steps[this.idx].run(S, this.st);
 		const snap = this.snap;
+		this.trav.bare = this.flags.has("barefoot");
 		this.trav.drive(S.T, dt, snap);
 		this.priest.drive(S.P, dt, snap);
 		if (this.auto && !this.leaving) this._autoStep(S, dt);
@@ -2581,21 +2954,14 @@ export class Sanctum {
 			P.sandals.o.rotation.y = 0.4;
 			P.sandals.o.visible = true;
 		}
-		const tj = this.trav.J;
-		for (const f of tj.feet) f.material = F.has("barefoot") ? tj.skinMat : tj.soleMat;
+		// the chappals stay outside with the staff: barefoot from then on
+		for (const f of this.trav.J.feet) f.visible = !F.has("barefoot");
 		if (H.tR && H.tR !== "staff") place(H.tR, this.trav, "handR");
 		if (H.tL) place(H.tL, this.trav, "handL");
 		if (H.pR) place(H.pR, this.priest, "handR");
 		if (H.pL) place(H.pL, this.priest, "handL");
-		if (H.pL === "shathari") {
-			// held over the traveller's bowed head
-			const tp = this.trav.J.head.getWorldPosition(v);
-			const hp = this.priest.J.handL.getWorldPosition(v2);
-			const k = clamp((this.st - 0) * 1, 0, 1);
-			P.shathari.o.position.copy(hp.lerp(tp.add(V(0, 0.17, 0)), 0.85 * k));
-			P.shathari.o.rotation.set(0, this.priest.yaw, 0);
-		}
-		if (P.aarti.light) P.aarti.light.intensity = P.aarti.o.visible ? (this.low ? 3 : 2.5) : 0;
+		// the lamp's own light: softer when it is brought up close to a face
+		if (P.aarti.light) P.aarti.light.intensity = P.aarti.o.visible ? (this.low ? 2.2 : 1.8) * (1 - 0.55 * (S.close || 0)) : 0;
 		this.markT.visible = F.has("mark");
 		if (this.ctx.offered) this.ctx.offered.visible = F.has("leaves");
 	}
@@ -2711,7 +3077,10 @@ export class Sanctum {
 			for (const f of c.fit) {
 				if (f === "T" || f === "P") {
 					const a = f === "T" ? this.trav : this.priest;
-					b.expandByPoint(v1.set(a.pos.x, a.y + 0.05, a.pos.z)).expandByPoint(v1.set(a.pos.x, a.y + 1.6 + (a.cur.bob || 0), a.pos.z));
+					// the figure as it is posed (kneeling, lying), but never framed shorter than standing height
+					const bb = (this._bb = this._bb || new THREE.Box3()).setFromObject(a.root);
+					bb.max.y = Math.max(bb.max.y, a.y + 0.5);
+					b.union(bb);
 				} else if (f === "D") for (const q of L.deityPts) b.expandByPoint(v1.set(...q));
 				else b.expandByPoint(v1.set(...L.pts[f]));
 			}
