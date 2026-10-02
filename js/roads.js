@@ -1412,7 +1412,7 @@ export class Roads {
 			const [cx, cz] = at(u, 0);
 			b.add(T.box, place(cx, yG, cz, fr.yaw, run / nSteps + 0.01, yP - (rise * (k + 1)) / nSteps - yG + 0.01, 1.4), 0xa8a196);
 		}
-		st.steps = { u0: B1, u1: B1 + run, rise };
+		st.steps = { u0: B1, u1: B1 + run, rise, n: nSteps, top: yP };
 		st.building = { u0: B0, u1: B1 };
 		// the forecourt, paved, with two autos waiting at the kerb
 		{

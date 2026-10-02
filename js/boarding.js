@@ -655,7 +655,17 @@ Object.assign(Journey.prototype, {
 		st.f(clamp(e.t / st.d, 0, 1));
 	},
 	// a walk along world points
-	walkTo(get, cam) {
+	// stairs are steps, not a ramp: on a flight the feet stand on the tread they have reached
+	treadY(st, p) {
+		const S = st && st.steps;
+		if (!S || !S.n) return p.y;
+		const dx = Math.sin(st.yaw), dz = Math.cos(st.yaw);
+		const u = (p.x - st.x) * dz - (p.z - st.z) * dx;
+		if (u < S.u0 - 0.02 || u > S.u1 + 0.02) return p.y;
+		const k = Math.min(S.n - 1, Math.max(0, Math.floor(((u - S.u0) / (S.u1 - S.u0)) * S.n)));
+		return S.top - (S.rise * (k + 1)) / S.n;
+	},
+	walkTo(get, cam, st0 = null) {
 		let pts = null;
 		const st = { d: 1, start: () => {
 			pts = get();
@@ -663,6 +673,7 @@ Object.assign(Journey.prototype, {
 		}, f: (k) => {
 			if (!pts) st.start();
 			const p = along(pts, k * pathLen(pts), new THREE.Vector3());
+			if (st0) p.y = this.treadY(st0, p);
 			this.tvSet(p, p.yaw, "walk");
 			if (cam) cam(p);
 		} };
@@ -891,7 +902,7 @@ Object.assign(Journey.prototype, {
 		let P5;
 		const cam = (p) => this.platformCam(st, p, 1);
 		return [
-			this.walkTo(() => (this.passengers(r, st), [this.traveller.group.position.clone(), ...stationPath(st, vD())]), (p) => this.platformCam(st, p, 1)),
+			this.walkTo(() => (this.passengers(r, st), [this.traveller.group.position.clone(), ...stationPath(st, vD())]), (p) => this.platformCam(st, p, 1), st),
 			{ d: 0.7, start: () => (P5 = this.traveller.group.position.clone()), f: (k) => (d.open(k), this.tvSet(P5, face(), "idle", STAND, 1), cam(P5)) },
 			{ d: 1.1, f: (k) => {
 				d.open(1);
@@ -930,7 +941,7 @@ Object.assign(Journey.prototype, {
 			wait();
 			const out = this.local(v, -(v.hull.x + 0.42), 0, dz);
 			return [...stationPath(st, vD()).reverse(), out];
-		}, (p) => (wait(), this.platformCam(st, p, -1)));
+		}, (p) => (wait(), this.platformCam(st, p, -1)), st);
 		const board = this.epBoard(T, kind, st);
 		return [
 			{ d: 0.7, start: () => ((P5 = stationPath(st, vD()).at(-1)), this.passengers(r, st)), f: (k) => (wait(), d.open(k), this.tvSet(inside(), face() + Math.PI, "idle", STAND, 1, { vis: k > 0.4 }), cam()) },

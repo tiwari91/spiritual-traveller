@@ -324,6 +324,13 @@ const angLerp = (a, b, t) => {
 	if (d < -Math.PI) d += Math.PI * 2;
 	return a + d * t;
 };
+// The point the camera follows: the traveller, or the vehicle they are in.
+function mover() {
+	const k = app.travelMode;
+	const v = ride && (k === "bike" || k === "car" || k === "jeep" || k === "auto") ? ride[k] : null;
+	if (v && v.group && v.group.visible) return v.group.position;
+	return traveller.group.position;
+}
 function cameraGoal() {
 	const g = { target: new THREE.Vector3(), yaw: 0, pitch: 0.8, dist: 80 };
 	if (app.state === "intro" || app.state === "loading") {
@@ -365,10 +372,16 @@ function cameraGoal() {
 	const vehicle = ["bike", "jeep", "car", "auto"].includes(app.travelMode);
 	const chase = vehicle ? smoothstep(7, 3, app.modeT || 0) : 0;
 	const close = Math.max(near, chase);
-	g.target.set(p.x, p.y + 0.6, p.z);
-	g.yaw = Math.atan2(-p.dx, -p.dz) + 0.55 * close;
-	g.pitch = lerp(app.leg === 1 || app.leg === 2 ? 0.62 : 0.72, 0.5, close);
-	g.dist = lerp(lerp(far, 16, near), 14, chase) * (innerWidth < innerHeight ? 1.35 : 1);
+	// always close on the traveller, a little behind and to one side, so you can see them moving and what
+	// they are doing: on foot, on the bike, or in the car; zoom out with the buttons or the wheel to see more
+	const me = mover();
+	const closeDist = { walk: 2.6, bike: 3.6, car: 5.2, jeep: 5.2, auto: 4.4, train: 9 }[app.travelMode] || 3.2;
+	g.target.set(me.x, me.y + (app.travelMode === "walk" ? 0.3 : 0.35), me.z);
+	g.yaw = Math.atan2(-p.dx, -p.dz) + 0.6;
+	g.pitch = app.travelMode === "walk" ? 0.24 : 0.3;
+	g.dist = closeDist * (innerWidth < innerHeight ? 1.45 : 1);
+	void far;
+	void close;
 	// getting on and off, close and low; on the train, alongside the line (boarding.js)
 	const jc = app.debugCam || journey.camera();
 	if (jc) {
@@ -399,9 +412,12 @@ function updateCamera(dt) {
 		let lift = 0;
 		for (let k = 0.15; k < 1; k += 0.085) {
 			const x = lerp(rig.target.x, camera.position.x, k), z = lerp(rig.target.z, camera.position.z, k);
-			const need = world.height(x, z) + (low ? 0.2 : 1.5) - lerp(rig.target.y, camera.position.y, k);
+			// the follow camera is close, so it only needs to clear the ground itself, not a margin for far views
+			const need = world.height(x, z) + (low || rig.dist < 12 ? 0.15 : 1.5) - lerp(rig.target.y, camera.position.y, k);
 			if (need > 0) lift = Math.max(lift, need / k);
 		}
+		// close in, never climb more than a little: better to look past a bank than from above the trees
+		if (rig.dist < 12) lift = Math.min(lift, 0.9);
 		rig.lift = lerp(rig.lift || 0, lift, 1 - Math.exp(-dt * 4));
 		camera.position.y += rig.lift;
 	} else rig.lift = 0;
