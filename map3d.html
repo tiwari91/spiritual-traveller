@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yatra Map Test</title>
+<meta name="description" content="Standalone test page for the Spiritual Traveller 3D satellite map (js/map3d.js).">
+<meta name="robots" content="noindex">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&family=Tiro+Devanagari+Hindi&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/map3d.css">
+<style>
+	:root { --ink: #f5eedf; --muted: #b8b2a4; --gold: #e8b64c; --line: rgba(232, 182, 76, 0.22); --panel: rgba(11, 21, 47, 0.74); }
+	html, body { margin: 0; height: 100%; background: #0a1430; color: var(--ink); font-family: "Inter", system-ui, sans-serif; }
+	main { padding: 24px 16px 160px; max-width: 640px; }
+	h1 { font-family: "Cormorant Garamond", Georgia, serif; font-weight: 600; font-size: 34px; margin: 0 0 8px; }
+	p { color: var(--muted); line-height: 1.55; font-size: 14px; }
+	.row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+	button.t { height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+	#map-wrap { position: fixed; left: 12px; bottom: 12px; width: 112px; height: 112px; border-radius: 18px; overflow: hidden; background: var(--panel); border: 1px solid var(--line); }
+	#minimap { width: 100%; height: 100%; display: block; }
+	#sim { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+	<h1>Yatra map test</h1>
+	<p>Click the minimap (bottom left), press G, or use the buttons. A simulated traveller moves along the route so the done line, heading and mode pill can be checked. Query parameters: <code>open=1</code>, <code>shrine=0..3</code>, <code>leg=0..4</code>, <code>f=0..1</code>, <code>follow=1</code>, <code>flat=1</code>, <code>still=1</code>.</p>
+	<div class="row">
+		<button class="t" id="b-open">Open map</button>
+		<button class="t" data-s="0">Bhimashankar</button>
+		<button class="t" data-s="1">Tirumala</button>
+		<button class="t" data-s="2">Kedarnath</button>
+		<button class="t" data-s="3">Badrinath</button>
+		<button class="t" id="b-sim">Pause sim</button>
+	</div>
+	<div id="sim"></div>
+</main>
+<div id="map-wrap"><canvas id="minimap" width="240" height="240"></canvas></div>
+<script type="module">
+import { ROUTE, INDIA, SHRINES, toWorld } from "./js/geo.js";
+import { MapView } from "./js/map3d.js";
+
+const q = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+let rendering = true;
+const mapView = new MapView({
+	opener: $("map-wrap"),
+	onOpen: () => { rendering = false; },
+	onClose: () => { rendering = true; },
+});
+window.mapView = mapView;
+
+// a stand-in minimap, so the opener looks like the real one
+const g = $("minimap").getContext("2d");
+const mx = (lon, lat) => [((lon - 67) / 31) * 240, ((37 - lat) / 31) * 240];
+function drawMini() {
+	g.fillStyle = "#0b1736";
+	g.fillRect(0, 0, 240, 240);
+	g.beginPath();
+	INDIA.forEach(([lo, la], i) => (i ? g.lineTo(...mx(lo, la)) : g.moveTo(...mx(lo, la))));
+	g.closePath();
+	g.fillStyle = "#1c2f5e";
+	g.fill();
+	g.strokeStyle = "rgba(232,182,76,0.55)";
+	g.stroke();
+	for (const s of SHRINES) {
+		g.beginPath();
+		g.arc(...mx(s.lon, s.lat), 6, 0, 7);
+		g.strokeStyle = "#e8b64c";
+		g.lineWidth = 2;
+		g.stroke();
+	}
+}
+drawMini();
+
+// simulated traveller along ROUTE waypoints, reported in world units like main.js would
+const MODES = [["car", "bike", "walk"], ["car", "train", "car"], ["train", "jeep", "walk"], ["walk", "jeep", "car"]];
+let leg = Math.min(4, +(q.get("leg") || 2)), f = +(q.get("f") || 0.55), running = !q.has("still");
+function legPoint(pts, t) {
+	const L = [];
+	let tot = 0;
+	for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); L.push(l); tot += l; }
+	let w = t * tot;
+	for (let i = 0; i < L.length; i++) {
+		if (w <= L[i] || i === L.length - 1) {
+			const k = L[i] ? Math.min(1, w / L[i]) : 0;
+			const a = pts[i], b = pts[i + 1];
+			return { lon: a[0] + (b[0] - a[0]) * k, lat: a[1] + (b[1] - a[1]) * k, dlon: b[0] - a[0], dlat: b[1] - a[1] };
+		}
+		w -= L[i];
+	}
+}
+function push() {
+	if (leg >= ROUTE.length) {
+		mapView.setProgress({ leg, mode: "darshan" });
+		$("sim").textContent = "yatra complete";
+		return;
+	}
+	const p = legPoint(ROUTE[leg].pts, f);
+	const w = toWorld(p.lon, p.lat), w2 = toWorld(p.lon + p.dlon * 0.01, p.lat + p.dlat * 0.01);
+	const mode = MODES[leg][Math.min(2, Math.floor(f * 3))];
+	mapView.setProgressWorld({ x: w.x, z: w.z, dx: w2.x - w.x, dz: w2.z - w.z, mode, leg, doneFraction: f });
+	$("sim").textContent = `leg ${leg} · ${(f * 100).toFixed(1)}% · ${mode} · ${p.lon.toFixed(3)}, ${p.lat.toFixed(3)} · three.js loop ${rendering ? "running" : "paused"}`;
+}
+let last = performance.now();
+function tick(now) {
+	const dt = Math.min(0.1, (now - last) / 1000);
+	last = now;
+	if (running && leg < ROUTE.length) {
+		f += dt * 0.01;
+		if (f >= 1) { f = 0; leg++; }
+	}
+	push();
+	requestAnimationFrame(tick);
+}
+push();
+requestAnimationFrame(tick);
+
+$("b-open").onclick = () => mapView.open();
+document.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => mapView.open(+b.dataset.s)));
+$("b-sim").onclick = (e) => { running = !running; e.target.textContent = running ? "Pause sim" : "Run sim"; };
+
+if (q.get("open")) {
+	mapView.open(q.has("shrine") ? +q.get("shrine") : undefined).then((ok) => {
+		window.mapReady = ok;
+		if (q.get("follow")) mapView.setFollow(true);
+		if (q.get("flat")) mapView.set3D(false);
+	});
+}
+</script>
+</body>
+</html>

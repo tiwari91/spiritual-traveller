@@ -52,6 +52,10 @@ After the aarti the traveller goes inside the lamp-lit sanctum by themselves and
 
 Each darshan card gives the deity, altitude, best season, how pilgrims usually get there (the Kedarnath trek and helicopters, the Alipiri and Srivari Mettu footpaths, and so on), a short note, and the greeting: Om Namah Shivaya at the two Jyotirlingas, Om Namo Venkatesaya at Tirumala and Om Namo Narayanaya at Badrinath.
 
+## The 3D map
+
+Click the minimap (or press G) for a full-screen satellite map with real 3D terrain: tilt, rotate and zoom from the whole of India down to the temple valleys, follow the traveller live, and fly to each shrine. 1 to 4 fly to the shrines, 0 shows all of India, F follows, D switches 3D/2D, Esc closes. It uses open data only: [MapLibre GL JS](https://maplibre.org/), Sentinel-2 cloudless imagery (s2maps.eu by EOX IT Services GmbH, contains modified Copernicus Sentinel data 2016, CC BY 4.0), Mapzen Terrain Tiles via AWS Open Data (SRTM, GMTED2010, ETOPO1), and roads and labels from OpenFreeMap (© OpenMapTiles, data © OpenStreetMap contributors, ODbL).
+
 ## Controls
 
 | Action | Keyboard | Touch |

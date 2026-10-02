@@ -13,6 +13,7 @@ import { Traffic } from "./traffic.js";
 import { Sanctum } from "./sanctum.js";
 import { Music } from "./music.js";
 import { Aarti } from "./aarti.js";
+import { MapView } from "./map3d.js";
 import { Audio } from "./audio.js";
 import { CITIES, GAURIKUND, INDIA, LANKA, SHRINES, toWorld } from "./geo.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
@@ -125,6 +126,8 @@ async function init() {
 		$("continue").focus();
 	} });
 	Object.assign(app, { sanctum, music, aarti });
+	// the 3D satellite map, opened from the minimap or with G
+	app.mapView = new MapView({ opener: $("map-wrap"), hotkey: "g", onOpen: () => (app.mapOpen = true), onClose: () => (app.mapOpen = false) });
 	buildUI();
 	app.ready = true;
 	$("start").disabled = false;
@@ -485,7 +488,11 @@ function loop(now) {
 	}
 	line.material.uniforms.uProg.value = app.state === "intro" ? -1 : app.s;
 	line.material.uniforms.uTime.value = app.t;
-	renderer.render(scene, camera);
+	if (!app.mapOpen) renderer.render(scene, camera);
+	if (app.frames % 6 === 0 && app.state !== "loading") {
+		const tp = traveller.group.position, p = route.at(app.s, {});
+		app.mapView.setProgressWorld({ x: tp.x, z: tp.z, dx: p.dx, dz: p.dz, mode: app.mode, leg: app.state === "finale" ? 4 : app.leg, doneFraction: progressFraction(), state: app.state === "intro" ? "intro" : undefined, label: $("where").textContent });
+	}
 	if (app.frames % 2 === 0) updateLabels();
 	if (app.frames % 4 === 0) updateHud(hour);
 }
@@ -965,6 +972,7 @@ function installInput() {
 	}, { passive: false });
 	canvas.addEventListener("dblclick", resetView);
 	addEventListener("keydown", (e) => {
+		if (app.mapView && app.mapView.isOpen) return;
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
 		if (!$("help").hidden) {
 			if (e.key === "Escape" || e.key === "Enter") $("help").hidden = true;
