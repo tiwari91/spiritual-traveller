@@ -5,6 +5,43 @@
 import * as THREE from "three";
 import { SHRINES, toWorld } from "./geo.js";
 import { fbm, rand } from "./util.js";
+import { TREE_STRIDE, Trees } from "./trees.js";
+import { haze, patch } from "./batch.js";
+import { groundDetail } from "./textures.js";
+
+// World-space detail for mountains and hills: rock strata and scree on peaks, mottled scrub, red earth
+// and outcrops on the Tirumala hills. Keeps the vertex/material colour as the base.
+function terrainDetail(mat, mode) {
+	const uDetail = { value: groundDetail() };
+	return haze(patch(mat, "tdetail" + mode, (sh) => {
+		sh.uniforms.uDetail = uDetail;
+		sh.vertexShader = "varying vec3 vTdW;\nvarying vec3 vTdN;\n" + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n\tvTdW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\n\tvTdN = normalize( mat3( modelMatrix ) * objectNormal );");
+		sh.fragmentShader = "uniform sampler2D uDetail;\nvarying vec3 vTdW;\nvarying vec3 vTdN;\n" + sh.fragmentShader.replace("#include <color_fragment>", mode === "peak" ? `#include <color_fragment>
+	{
+		vec4 a = texture2D( uDetail, vec2( vTdW.x * 0.02 + vTdW.z * 0.02, vTdW.y * 0.09 ) );
+		vec4 b = texture2D( uDetail, vTdW.xz * 0.11 );
+		vec4 c = texture2D( uDetail, vTdW.xz * 0.6 + vTdW.y * 0.1 );
+		float snow = smoothstep( 0.55, 0.8, dot( diffuseColor.rgb, vec3( 0.3, 0.59, 0.11 ) ) );
+		float steep = 1.0 - clamp( vTdN.y, 0.0, 1.0 );
+		// rock: banded strata and scree; snow: wind crust and bare rock showing through on steep faces
+		vec3 rock = diffuseColor.rgb * ( 0.62 + 0.55 * a.g ) * ( 0.8 + 0.4 * c.r );
+		vec3 sn = diffuseColor.rgb * ( 0.9 + 0.12 * b.a );
+		sn = mix( sn, vec3( 0.16, 0.15, 0.15 ) * ( 0.7 + 0.6 * a.g ), smoothstep( 0.62, 0.8, steep + ( b.r - 0.5 ) * 0.4 ) * 0.85 );
+		diffuseColor.rgb = mix( rock, sn, snow );
+	}` : `#include <color_fragment>
+	{
+		vec4 a = texture2D( uDetail, vTdW.xz * 0.07 );
+		vec4 b = texture2D( uDetail, vTdW.xz * 0.35 );
+		vec4 c = texture2D( uDetail, vTdW.xz * 1.6 );
+		float steep = 1.0 - clamp( vTdN.y, 0.0, 1.0 );
+		vec3 scrub = diffuseColor.rgb * ( 0.6 + 0.6 * b.a ) * ( 0.85 + 0.3 * c.g );
+		vec3 earth = vec3( 0.2, 0.09, 0.045 ) * ( 0.7 + 0.5 * c.r );
+		vec3 rk = vec3( 0.2, 0.18, 0.16 ) * ( 0.6 + 0.7 * b.r );
+		vec3 col = mix( earth, scrub, smoothstep( 0.12, 0.42, a.a + ( b.g - 0.5 ) * 0.3 ) );
+		diffuseColor.rgb = mix( col, rk, smoothstep( 0.35, 0.6, steep + ( a.r - 0.5 ) * 0.4 ) );
+	}`);
+	}));
+}
 
 const std = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.85, metalness: 0 }, o));
 export const GOLD = std(0xe0a83e, { metalness: 0.9, roughness: 0.3, emissive: 0x5a3a06, emissiveIntensity: 0.12 });
@@ -342,9 +379,13 @@ function peak(r, h, seed, snowLine = 0.45, rock = 0x6b6259) {
 	g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
 	g.computeVertexNormals();
 	g.translate(0, h / 2, 0);
-	const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }));
+	const m = new THREE.Mesh(g, peakMaterial());
 	m.receiveShadow = true;
 	return m;
+}
+let _peakMat;
+function peakMaterial() {
+	return (_peakMat ||= terrainDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }), "peak"));
 }
 // Broadleaf trees: a trunk and a lumpy crown of two or three masses, instanced.
 let _crown;
@@ -375,7 +416,35 @@ function crownGeometry() {
 	_crown.computeVertexNormals();
 	return _crown;
 }
+// Shrine forests go into the countryside's instanced tree system (real species, LOD and impostors):
+// monsoon evergreen round Bhimashankar, dry scrub forest of tamarind, neem and acacia on the Tirumala hills.
 function forest(world, c, n, r0, r1, seed, monsoon, clear) {
+	const T = Trees.instance;
+	if (!T) return forestBlobs(world, c, n, r0, r1, seed, monsoon, clear);
+	const R = rand(seed);
+	const mix = monsoon ? [["mango", 3], ["jamun", 3], ["banyan", 0.6], ["tamarind", 1], ["bush", 2.5]] : [["tamarind", 2.5], ["neem", 2], ["acacia", 2.5], ["bush", 3], ["banyan", 0.4], ["toddy", 0.6]];
+	let tot = 0;
+	for (const [, w] of mix) tot += w;
+	const data = [];
+	for (let i = 0; i < n * 3 && data.length / TREE_STRIDE < n; i++) {
+		const a = R() * Math.PI * 2, d = Math.sqrt(R() * (r1 * r1 - r0 * r0) + r0 * r0);
+		const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
+		if (clear(x, z)) continue;
+		let q = R() * tot, kind = mix[0][0];
+		for (const [k, w] of mix) if ((q -= w) <= 0) {
+			kind = k;
+			break;
+		}
+		// young trees, kept small so the shrine stays in view
+		const s = (kind === "bush" ? 0.7 : 0.3) * (0.8 + R() * 0.5);
+		const v = 0.8 + R() * 0.3;
+		const t = monsoon ? [0.85, 1.05, 0.85] : [1.0, 0.95, 0.8];
+		data.push(x, world.height(x, z) - 0.02, z, R() * 6.3, s, s * (0.9 + R() * 0.2), T.kind(kind, R), v * t[0], v * t[1], v * t[2], 0);
+	}
+	T.add("forest" + seed, new Float32Array(data), data.length / TREE_STRIDE);
+	return new THREE.Group();
+}
+function forestBlobs(world, c, n, r0, r1, seed, monsoon, clear) {
 	const R = rand(seed);
 	const crowns = new THREE.InstancedMesh(crownGeometry(), std(0xffffff, { flatShading: true, roughness: 0.9 }), n);
 	const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.1, 1, 6), std(0x4a3626, { roughness: 0.95 }), n);
@@ -1029,13 +1098,13 @@ export function buildLandmarks(world, scene, renderer, crowdFigure) {
 		if (spec.hills) {
 			// the seven hills of Tirumala, rounded and forested
 			const R = rand(77);
-			const hm = std(0x416f3a, { roughness: 0.95, flatShading: true });
+			const hm = terrainDetail(std(0x5d6f3c, { roughness: 0.95 }), "hill");
 			for (let i = 0; i < 7; i++) {
 				const a = Math.PI * 0.35 + (i / 6) * Math.PI * 1.3;
 				const d = 13 + R() * 6;
 				const p = toW(Math.cos(a) * d, -Math.sin(a) * d);
 				const r = 6 + R() * 3, h = 4 + R() * 2.5;
-				const geo = new THREE.IcosahedronGeometry(1, 4);
+				const geo = new THREE.SphereGeometry(1, 48, 24);
 				const gp = geo.attributes.position;
 				for (let k = 0; k < gp.count; k++) {
 					const n = 1 + (fbm(gp.getX(k) * 2 + i, gp.getZ(k) * 2 + gp.getY(k), 3) - 0.5) * 0.25;

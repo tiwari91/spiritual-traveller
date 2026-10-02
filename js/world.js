@@ -1,5 +1,7 @@
 // The stylised map of India: height field, land colours, sea and rivers.
 import * as THREE from "three";
+import { haze, patch } from "./batch.js";
+import { groundDetail } from "./textures.js";
 import { INDIA, LANKA, NEIGHBOURS, RIVERS, SHRINES, toWorld, toGeo } from "./geo.js";
 import { clamp, fbm, inPoly, lerp, polyDist, smoothstep } from "./util.js";
 
@@ -127,6 +129,79 @@ export function colourAt(lon, lat, h, coast, foreign) {
 	return base;
 }
 
+// What the ground is made of, for the close-up detail shader: x = red soil (laterite in the Sahyadri, the
+// red earth of Telangana and Rayalaseema), y = black cotton soil (the Deccan trap), z = how green the
+// cover is, w = how dry. Whatever is neither red nor black is the grey-brown alluvium of the plains.
+export function groundAt(lon, lat, h) {
+	const dN = lat - crestLat(lon);
+	const ghats = smoothstep(1.3, 0.2, polyDist(GHATS, lon, lat, false)) * smoothstep(8.5, 10, lat);
+	const deccan = smoothstep(23.2, 21.5, lat) * smoothstep(13.5, 15.2, lat) * smoothstep(73.6, 74.6, lon) * smoothstep(81.5, 79.5, lon);
+	const telangana = smoothstep(76.6, 77.6, lon) * smoothstep(19.8, 18.8, lat) * smoothstep(81.5, 80.5, lon);
+	const south = smoothstep(15.2, 13.8, lat) * smoothstep(73.5, 75.5, lon);
+	const central = smoothstep(19.0, 20.2, lat) * smoothstep(25.6, 24.4, lat);
+	const ganga = smoothstep(24.4, 25.6, lat) * smoothstep(-0.6, -1.8, dN);
+	const thar = smoothstep(75.5, 72.5, lon) * smoothstep(23.5, 25.5, lat) * smoothstep(31, 29, lat);
+	const hills = smoothstep(-2.4, -1.2, dN);
+	const n = fbm(lon * 3 + 7, lat * 3 + 1, 3);
+	let red = Math.max(ghats * 0.85, telangana * 0.75, south * 0.7) * (0.8 + 0.4 * n);
+	let black = Math.max(deccan * (1 - telangana * 0.8), central * 0.55) * (1 - ghats * 0.8) * (0.75 + 0.5 * n);
+	red *= 1 - hills;
+	black *= 1 - hills;
+	const sum = red + black;
+	if (sum > 0.95) {
+		red *= 0.95 / sum;
+		black *= 0.95 / sum;
+	}
+	// green: monsoon ghats and the Himalayan foothills; the Deccan and Rayalaseema stay dry
+	let green = 0.4 + ghats * 0.5 + ganga * 0.25 + hills * 0.35 - deccan * 0.12 - thar * 0.4 + smoothstep(14, 26, h) * 0.1;
+	let dry = 0.4 + deccan * 0.35 + telangana * 0.15 + south * 0.05 + thar * 0.5 - ghats * 0.4 - ganga * 0.1 - hills * 0.3;
+	return [clamp(red, 0, 1), clamp(black, 0, 1), clamp(green, 0, 1), clamp(dry, 0, 1)];
+}
+
+const GROUND_VS = `
+attribute vec4 aGround;
+varying vec4 vGround;
+varying vec3 vWPos;
+varying vec3 vWNrm;
+`;
+const GROUND_FS = `
+uniform sampler2D uDetail;
+uniform float uDetailFar;
+varying vec4 vGround;
+varying vec3 vWPos;
+varying vec3 vWNrm;
+vec3 groundDetailColor( vec3 macro ) {
+	vec2 p = vWPos.xz;
+	vec4 d0 = texture2D( uDetail, p * 0.031 + vec2( 0.71, 0.13 ) );
+	vec4 d1 = texture2D( uDetail, p * 0.29 + vec2( 0.2, 0.6 ) );
+	vec4 d2 = texture2D( uDetail, p * 1.37 + vec2( 0.37, 0.05 ) );
+	vec4 d3 = texture2D( uDetail, p * 5.3 );
+	float wr = vGround.x, wb = vGround.y, wa = max( 0.0, 1.0 - wr - wb );
+	// soils, in linear colour
+	vec3 soil = vec3( 0.21, 0.085, 0.04 ) * wr + vec3( 0.062, 0.052, 0.042 ) * wb + vec3( 0.19, 0.15, 0.095 ) * wa;
+	soil *= 0.72 + 0.42 * d2.r + 0.18 * ( d3.r - 0.5 );
+	// dried black soil cracks into plates
+	soil *= mix( 1.0, 0.82 + 0.18 * d2.b, wb * vGround.w );
+	// grass cover in patches
+	float cover = vGround.z + ( d0.a - 0.5 ) * 0.9 + ( d1.a - 0.5 ) * 0.45 + ( d2.g - 0.5 ) * 0.2;
+	cover = smoothstep( 0.12, 0.62, cover + 0.08 );
+	float dryness = clamp( vGround.w + ( d0.r - 0.5 ) * 0.5 + ( d1.g - 0.5 ) * 0.3, 0.0, 1.0 );
+	vec3 green = vec3( 0.06, 0.11, 0.025 ), olive = vec3( 0.12, 0.125, 0.045 ), straw = vec3( 0.24, 0.19, 0.09 );
+	vec3 grass = mix( mix( green, olive, smoothstep( 0.0, 0.55, dryness ) ), straw, smoothstep( 0.45, 1.0, dryness ) );
+	grass *= 0.62 + 0.55 * d3.g + 0.25 * ( d2.g - 0.5 );
+	vec3 col = mix( soil, grass, cover );
+	// bare rock on steep slopes: dark basalt in the ghats, grey granite and schist elsewhere
+	float slope = 1.0 - clamp( vWNrm.y, 0.0, 1.0 );
+	float rock = smoothstep( 0.3, 0.55, slope + ( d1.r - 0.5 ) * 0.25 );
+	vec3 rk = mix( vec3( 0.16, 0.15, 0.14 ), vec3( 0.07, 0.065, 0.06 ), wr ) * ( 0.65 + 0.7 * d1.r ) * ( 0.85 + 0.3 * d3.r );
+	col = mix( col, rk, rock );
+	// keep the regional hue of the map so the detail never strays far from it
+	float lm = dot( macro, vec3( 0.3, 0.59, 0.11 ) ), lc = dot( col, vec3( 0.3, 0.59, 0.11 ) );
+	col = mix( col, macro * ( lc / max( lm, 1e-3 ) ), 0.22 );
+	return col;
+}
+`;
+
 export class World {
 	constructor(opts) {
 		this.lon0 = 66;
@@ -190,7 +265,7 @@ export class World {
 	buildMeshes() {
 		const { nx, ny, step } = this;
 		const geo = new THREE.BufferGeometry();
-		const pos = new Float32Array(nx * ny * 3), col = new Float32Array(nx * ny * 3);
+		const pos = new Float32Array(nx * ny * 3), col = new Float32Array(nx * ny * 3), gnd = new Float32Array(nx * ny * 4);
 		for (let j = 0; j < ny; j++) {
 			const lat = this.lat0 + j * step;
 			for (let i = 0; i < nx; i++) {
@@ -215,6 +290,7 @@ export class World {
 					}
 				}
 				const c = colourAt(lon, lat, h, coast, this.land[k] === 2);
+				gnd.set(groundAt(lon, lat, h), k * 4);
 				// design colours are sRGB; the renderer works in linear
 				col[k * 3] = Math.pow(c[0], 2.2);
 				col[k * 3 + 1] = Math.pow(c[1], 2.2);
@@ -232,9 +308,25 @@ export class World {
 		}
 		geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
 		geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+		geo.setAttribute("aGround", new THREE.BufferAttribute(gnd, 4));
 		geo.setIndex(new THREE.BufferAttribute(idx, 1));
 		geo.computeVertexNormals();
-		const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, flatShading: false });
+		const mat = haze(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, flatShading: false }));
+		// Close up, the flat map colour gives way to soil, grass and rock: tiled detail, patchy noise and
+		// slope, blended by what the region's ground is made of, fading back to the map colour with distance.
+		const uDetail = { value: groundDetail() };
+		patch(mat, "ground", (sh) => {
+			sh.uniforms.uDetail = uDetail;
+			sh.vertexShader = GROUND_VS + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n\tvGround = aGround;\n\tvWPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\n\tvWNrm = normalize( mat3( modelMatrix ) * objectNormal );");
+			sh.fragmentShader = GROUND_FS + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
+	{
+		float camD = length( vWPos - cameraPosition );
+		float near = 1.0 - smoothstep( 110.0, 420.0, camD );
+		float snowy = smoothstep( 0.45, 0.7, dot( diffuseColor.rgb, vec3( 0.3, 0.59, 0.11 ) ) );
+		float land = step( 0.05, vWPos.y );
+		if ( near * land * ( 1.0 - snowy ) > 0.001 ) diffuseColor.rgb = mix( diffuseColor.rgb, groundDetailColor( diffuseColor.rgb ), near * land * ( 1.0 - snowy ) * 0.9 );
+	}`);
+		});
 		const mesh = new THREE.Mesh(geo, mat);
 		mesh.receiveShadow = true;
 		mesh.name = "terrain";
@@ -249,7 +341,14 @@ export class World {
 
 		// Rivers: flat ribbons laid slightly above the terrain.
 		const rg = new THREE.Group();
-		const rmat = new THREE.MeshStandardMaterial({ color: 0x3f8fc4, roughness: 0.4, metalness: 0.1, emissive: 0x0a2a44, emissiveIntensity: 0.3 });
+		// silty river water that catches the sun, on pale sandbanks
+		const rmat = haze(new THREE.MeshStandardMaterial({ color: 0x3e6a6c, roughness: 0.14, metalness: 0.05, emissive: 0x0a2228, emissiveIntensity: 0.25 }));
+		const bank = haze(new THREE.MeshStandardMaterial({ color: 0xa8956e, roughness: 1, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
+		const river = (pts, w) => {
+			const g = new THREE.Group();
+			g.add(ribbon(pts.map((p) => p.clone().setY(p.y - 0.03)), w * 1.55, bank), ribbon(pts, w, rmat));
+			return g;
+		};
 		for (const r of RIVERS) {
 			const pts = [];
 			for (let i = 0; i < r.pts.length - 1; i++) {
@@ -261,7 +360,7 @@ export class World {
 					const w = toWorld(lon, lat);
 					// the Himalayan shrines draw their own river; keep this one out of the courtyards
 					if (SHRINES.some((s) => s.weather !== "monsoon" && s.lat > 25 && Math.hypot(lon - s.lon, lat - s.lat) < 0.12)) {
-						if (pts.length > 1) rg.add(ribbon(pts.splice(0), r.w * 0.9, rmat));
+						if (pts.length > 1) rg.add(river(pts.splice(0), r.w * 0.9));
 						continue;
 					}
 					pts.push(new THREE.Vector3(w.x, this.height(w.x, w.z) + 0.25, w.z));
@@ -269,7 +368,7 @@ export class World {
 			}
 			const w = toWorld(r.pts[r.pts.length - 1][0], r.pts[r.pts.length - 1][1]);
 			if (pts.length) pts.push(new THREE.Vector3(w.x, this.height(w.x, w.z) + 0.25, w.z));
-			if (pts.length > 1) rg.add(ribbon(pts, r.w * 0.9, rmat));
+			if (pts.length > 1) rg.add(river(pts, r.w * 0.9));
 		}
 		this.rivers = rg;
 		return mesh;

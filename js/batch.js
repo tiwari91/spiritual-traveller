@@ -64,13 +64,35 @@ export class Batch {
 		return this.parts.length === 0;
 	}
 	build(material) {
+		const g = this.buildGen(material);
+		let r = g.next();
+		while (!r.done) r = g.next();
+		return r.value;
+	}
+	// The same, as a generator that yields every `slice` vertices so a big merge can span frames.
+	*buildGen(material, slice = 40000) {
 		const n = this.count;
+		let since = 0;
 		const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3);
 		const v = new THREE.Vector3(), nm = new THREE.Matrix3();
 		let o = 0;
-		for (const { geo, m, c } of this.parts) {
+		for (const part of this.parts) {
+			since += part.raw ? part.P.length / 3 : part.geo.attributes.position.count;
+			if (since > slice) {
+				since = 0;
+				yield;
+			}
+			if (part.raw) {
+				pos.set(part.P, o);
+				nor.set(part.N, o);
+				col.set(part.C, o);
+				o += part.P.length;
+				continue;
+			}
+			const { geo, m, c, vc } = part;
 			nm.getNormalMatrix(m);
 			const P = geo.attributes.position.array, N = geo.attributes.normal.array;
+			const VC = vc ? geo.attributes.color.array : null;
 			for (let i = 0; i < P.length; i += 3) {
 				v.set(P[i], P[i + 1], P[i + 2]).applyMatrix4(m);
 				pos[o] = v.x;
@@ -80,9 +102,15 @@ export class Batch {
 				nor[o] = v.x;
 				nor[o + 1] = v.y;
 				nor[o + 2] = v.z;
-				col[o] = c.r;
-				col[o + 1] = c.g;
-				col[o + 2] = c.b;
+				if (VC) {
+					col[o] = VC[i] * c.r;
+					col[o + 1] = VC[i + 1] * c.g;
+					col[o + 2] = VC[i + 2] * c.b;
+				} else {
+					col[o] = c.r;
+					col[o + 1] = c.g;
+					col[o + 2] = c.b;
+				}
 				o += 3;
 			}
 		}
@@ -99,4 +127,60 @@ export class Batch {
 		return mesh;
 	}
 }
-export const VCOL = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+// Raw triangles already in world space: flat arrays of positions, normals and colours.
+Batch.prototype.addTris = function (P, N, C) {
+	this.parts.push({ raw: true, P, N, C });
+	this.count += P.length / 3;
+};
+// Shapes that already carry vertex colours (figures, animals): merged in with an optional tint.
+Batch.prototype.addColored = function (geo, matrix, tint = 1) {
+	this.parts.push({ geo, m: matrix.clone(), c: tint instanceof THREE.Color ? tint.clone() : typeof tint === "number" && tint <= 4 ? new THREE.Color(tint, tint, tint) : new THREE.Color(tint), vc: true });
+	this.count += geo.attributes.position.count;
+};
+
+// ---------- shared shader patches ----------
+// Uniforms every countryside material shares: the clock (for wind) and the camera (for LOD fades).
+export const SHARED = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uWind: { value: 1 } };
+
+// Chain an onBeforeCompile patch onto a material, keeping any earlier one.
+export function patch(material, key, fn) {
+	const prev = material.onBeforeCompile;
+	const prevKey = material.customProgramCacheKey ? material.customProgramCacheKey() : "";
+	material.onBeforeCompile = (shader, r) => {
+		if (prev) prev(shader, r);
+		fn(shader, r);
+	};
+	material.customProgramCacheKey = () => prevKey + "|" + key;
+	return material;
+}
+
+// Aerial perspective: distant country fades towards the sky colour and loses saturation, linearly with
+// distance (exp), on top of the scene's exp-squared fog, which on its own leaves the middle distance crisp.
+export const HAZE_FOG = `
+#ifdef USE_FOG
+	#ifdef FOG_EXP2
+		float fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+		float aerial = ( 1.0 - exp( - fogDensity * 0.9 * vFogDepth ) ) * 0.66;
+	#else
+		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+		float aerial = fogFactor * 0.3;
+	#endif
+	float lumA = dot( gl_FragColor.rgb, vec3( 0.3, 0.59, 0.11 ) );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, vec3( lumA ), aerial * 0.4 );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, max( fogFactor, aerial ) );
+#endif`;
+export function haze(material) {
+	return patch(material, "haze", (s) => {
+		s.fragmentShader = s.fragmentShader.replace("#include <fog_fragment>", HAZE_FOG);
+	});
+}
+// Double-sided foliage keeps its outward-bent normals on both faces instead of flipping them.
+export const NO_FLIP = THREE.ShaderChunk.normal_fragment_begin.replace("normal *= faceDirection;", "");
+// Screen-door dither for LOD cross-fades.
+export const DITHER = `
+float stDither( vec2 p ) {
+	return fract( 52.9829189 * fract( dot( p, vec2( 0.06711056, 0.00583715 ) ) ) );
+}
+`;
+
+export const VCOL = haze(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }));
