@@ -1,6 +1,6 @@
 // The stylised map of India: height field, land colours, sea and rivers.
 import * as THREE from "three";
-import { INDIA, LANKA, NEIGHBOURS, RIVERS, toWorld, toGeo } from "./geo.js";
+import { INDIA, LANKA, NEIGHBOURS, RIVERS, SHRINES, toWorld, toGeo } from "./geo.js";
 import { clamp, fbm, inPoly, lerp, polyDist, smoothstep } from "./util.js";
 
 // Main Himalayan crest as lat = f(lon).
@@ -259,12 +259,17 @@ export class World {
 					const t = k / n;
 					const lon = lerp(a[0], b[0], t) + (Math.sin(t * 9 + i) * 0.03), lat = lerp(a[1], b[1], t) + Math.cos(t * 7 + i) * 0.03;
 					const w = toWorld(lon, lat);
+					// the Himalayan shrines draw their own river; keep this one out of the courtyards
+					if (SHRINES.some((s) => s.weather !== "monsoon" && s.lat > 25 && Math.hypot(lon - s.lon, lat - s.lat) < 0.12)) {
+						if (pts.length > 1) rg.add(ribbon(pts.splice(0), r.w * 0.9, rmat));
+						continue;
+					}
 					pts.push(new THREE.Vector3(w.x, this.height(w.x, w.z) + 0.25, w.z));
 				}
 			}
 			const w = toWorld(r.pts[r.pts.length - 1][0], r.pts[r.pts.length - 1][1]);
-			pts.push(new THREE.Vector3(w.x, this.height(w.x, w.z) + 0.25, w.z));
-			rg.add(ribbon(pts, r.w * 0.9, rmat));
+			if (pts.length) pts.push(new THREE.Vector3(w.x, this.height(w.x, w.z) + 0.25, w.z));
+			if (pts.length > 1) rg.add(ribbon(pts, r.w * 0.9, rmat));
 		}
 		this.rivers = rg;
 		return mesh;

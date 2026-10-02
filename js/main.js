@@ -4,10 +4,12 @@ import { World } from "./world.js";
 import { Route } from "./route.js";
 import { Sky } from "./sky.js";
 import { buildLandmarks, GOLD, LAMP, beaconMaterial } from "./landmarks.js";
-import { routeLine, pilgrimLamp, cityLights, Weather, Petals } from "./effects.js";
+import { routeLine, cityLights, Weather, Petals } from "./effects.js";
+import { Traveller, crowdFigure } from "./pilgrim.js";
+import { WINDOW_GLOW, jeep, motorbike, train } from "./vehicles.js";
 import { Audio } from "./audio.js";
 import { CITIES, GAURIKUND, INDIA, LANKA, SHRINES, toWorld } from "./geo.js";
-import { clamp, lerp, nextFrame, smoothstep, store } from "./util.js";
+import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -17,8 +19,12 @@ const LOW = params.get("q") === "low" || (params.get("q") !== "high" && (coarse 
 const SPEEDS = [1, 2, 4, 8];
 const TIMES = [["Auto", null], ["Dawn", 6.4], ["Noon", 12.5], ["Dusk", 18.2], ["Night", 22.5]];
 const WEATHERS = ["Auto", "Clear", "Monsoon", "Snow"];
-// Where the lamp rests in front of each shrine (local units in front of the door).
-const REST = { bhimashankar: 3.2, tirupati: 4.1, kedarnath: 3.4, badrinath: 2.85 };
+// Where the traveller stands for darshan, in each shrine's local frame (x across, z out from the door),
+// clear of Nandi and the crowd, and the floor height there.
+const REST = { bhimashankar: [0.5, 3.45], tirupati: [0.15, 4.1], kedarnath: [0.55, 3.75], badrinath: [0.25, 2.85] };
+const FLOOR = { bhimashankar: 0.03, tirupati: 0.15, kedarnath: 0.05, badrinath: 0 };
+// How each stretch is travelled, and what the HUD calls it.
+const MODES = { walk: "On foot", bike: "By motorbike", train: "By train", jeep: "By jeep", car: "By taxi" };
 
 const app = { ready: false, frames: 0, t: 0, state: "loading", s: 0, leg: 0, at: -1, playing: true, speed: 0, time: 0, weather: 0, visited: [false, false, false, false], params };
 window.app = app;
@@ -37,7 +43,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 5000);
 app.camera = camera;
 
-let world, route, sky, landmarks, line, lamp, lights, weather, petals;
+let world, route, sky, landmarks, line, traveller, ride, lights, weather, petals;
 const audio = new Audio();
 
 async function init() {
@@ -54,11 +60,17 @@ async function init() {
 	route = new Route(world);
 	msg.textContent = "Building the temples";
 	await nextFrame();
-	landmarks = buildLandmarks(world, scene);
+	landmarks = buildLandmarks(world, scene, renderer, crowdFigure);
 	line = routeLine(route);
 	scene.add(line);
-	lamp = pilgrimLamp();
-	scene.add(lamp);
+	traveller = new Traveller();
+	scene.add(traveller.group);
+	ride = { bike: motorbike(), jeep: jeep(), car: jeep(), train: train(4) };
+	ride.car.group.children[0].material = ride.car.group.children[0].material.clone();
+	ride.car.group.children[0].material.color.set(0xf2c230); // a yellow-roofed Tirupati taxi
+	ride.car.group.children[1].material = ride.car.group.children[0].material;
+	for (const k of ["bike", "jeep", "car"]) scene.add(ride[k].group);
+	for (const c of ride.train) scene.add(c.group);
 	lights = cityLights(world);
 	scene.add(lights);
 	weather = new Weather(scene);
@@ -74,6 +86,20 @@ async function init() {
 		const d = (p.x - gk.x) ** 2 + (p.z - gk.z) ** 2;
 		if (d < best) { best = d; app.sGauri = p.s; }
 	}
+	// where the traveller changes from one kind of transport to the next
+	const near = (lon, lat, c) => {
+		const t = toWorld(lon, lat);
+		let bs = 0, bd = Infinity;
+		for (const p of route.pts) if (p.s >= c.s0 && p.s <= c.s1) {
+			const d = (p.x - t.x) ** 2 + (p.z - t.z) ** 2;
+			if (d < bd) { bd = d; bs = p.s; }
+		}
+		return bs;
+	};
+	app.sPune = near(73.86, 18.52, route.chapters[1]);
+	app.sTirupatiIn = near(79.42, 13.63, route.chapters[1]);
+	app.sTirupatiOut = near(79.42, 13.63, route.chapters[2]);
+	app.sRishikesh = near(78.29, 30.09, route.chapters[2]);
 	buildUI();
 	app.ready = true;
 	$("start").disabled = false;
@@ -262,20 +288,27 @@ function cameraGoal() {
 		const l = landmarks[app.at];
 		const high = l.pos.y > 30;
 		// in the Himalaya the camera stands low and looks up the valley so the snow peaks fill the sky
-		g.target.copy(l.pos).add(new THREE.Vector3(0, high ? 3.4 : 1.5, 0));
-		g.yaw = l.shrine.facing + 0.25 + Math.sin(app.darshanT * 0.1) * 0.4;
-		g.pitch = high ? 0.05 : 0.3;
-		g.dist = innerWidth < innerHeight ? 18 : 10.5;
+		// look over the traveller's shoulder at the shrine
+		// aim between the traveller and the door, so the pilgrim stands in the foreground before the shrine
+		g.target.copy(l.pos).lerp(traveller.group.position, 0.55);
+		g.target.y = l.pos.y + (high ? 1.55 : 1.05);
+		g.yaw = l.shrine.facing + 0.32 + Math.sin(app.darshanT * 0.1) * 0.25;
+		g.pitch = high ? 0.16 : 0.26;
+		g.dist = innerWidth < innerHeight ? 12 : 6.2;
 		return g;
 	}
 	const p = route.at(app.s, tmp);
 	const c = route.chapters[app.leg];
 	const near = smoothstep(26, 3, Math.min(c.s1 - app.s, app.s - c.s0));
 	const far = [36, 190, 230, 50][app.leg];
+	// for a few seconds after the traveller changes transport, the camera comes down alongside
+	const vehicle = ["bike", "train", "jeep", "car"].includes(app.travelMode);
+	const chase = vehicle ? smoothstep(7, 3, app.modeT || 0) : 0;
+	const close = Math.max(near, chase);
 	g.target.set(p.x, p.y + 0.6, p.z);
-	g.yaw = Math.atan2(-p.dx, -p.dz);
-	g.pitch = lerp(app.leg === 1 || app.leg === 2 ? 0.72 : 0.8, 0.42, near);
-	g.dist = lerp(far, 16, near) * (innerWidth < innerHeight ? 1.35 : 1);
+	g.yaw = Math.atan2(-p.dx, -p.dz) + 0.55 * close;
+	g.pitch = lerp(app.leg === 1 || app.leg === 2 ? 0.72 : 0.8, 0.38, close);
+	g.dist = lerp(lerp(far, 16, near), app.travelMode === "train" ? 34 : 14, chase) * (innerWidth < innerHeight ? 1.35 : 1);
 	return g;
 }
 function updateCamera(dt) {
@@ -324,33 +357,17 @@ function loop(now) {
 		if (params.get("auto") === "1" && app.darshanT > 14) next();
 	}
 	updateCamera(dt);
-	// pilgrim lamp
-	const p = route.at(app.s, tmp);
-	lampPos.set(p.x, p.y + 0.15, p.z);
-	for (const l of landmarks) {
-		const d = Math.hypot(p.x - l.pos.x, p.z - l.pos.z);
-		const R = REST[l.shrine.key];
-		if (d < R) {
-			const f = l.shrine.facing;
-			let dx = Math.sin(f), dz = Math.cos(f);
-			if (d > 0.01) {
-				const t = d / R;
-				dx = lerp(dx, (p.x - l.pos.x) / d, t);
-				dz = lerp(dz, (p.z - l.pos.z) / d, t);
-				const n = Math.hypot(dx, dz) || 1;
-				dx /= n;
-				dz /= n;
-			}
-			lampPos.set(l.pos.x + dx * R, 0, l.pos.z + dz * R);
-			lampPos.y = world.height(lampPos.x, lampPos.z) + 0.12;
-		}
+	// a snow peak the camera has strayed into is hidden rather than filling the screen
+	for (const l of landmarks) for (const m of l.decor.children) {
+		const pk = m.userData.peak;
+		if (!pk) continue;
+		const dx = camera.position.x - m.position.x, dz = camera.position.z - m.position.z;
+		const r = pk.r * 1.25 * (1 - (camera.position.y - m.position.y) / pk.h);
+		// or stands between the camera and the traveller
+		const blocks = segDist(m.position.x, m.position.z, camera.position.x, camera.position.z, rig.target.x, rig.target.z) < pk.r * 0.9 && camera.position.y < m.position.y + pk.h * 0.85;
+		m.visible = app.state === "darshan" || (Math.hypot(dx, dz) > r && !blocks);
 	}
-	lamp.position.copy(lampPos);
-	lamp.visible = app.state !== "intro";
-	const ls = Math.max(1, camera.position.distanceTo(lampPos) * 0.028);
-	lamp.scale.setScalar(ls);
-	lamp.userData.flame.scale.set(1, 1 + Math.sin(app.t * 13) * 0.08 + Math.sin(app.t * 7.3) * 0.06, 1);
-	lamp.userData.halo.material.opacity = 0.75 + Math.sin(app.t * 5) * 0.1;
+	updateTraveller(dt);
 	// sky, light and weather
 	focus.copy(rig.target);
 	const hour = currentHour();
@@ -360,7 +377,8 @@ function loop(now) {
 	const night = smoothstep(4, -8, sky.elev);
 	app.night = night;
 	LAMP.emissiveIntensity = 0.25 + night * 4;
-	GOLD.emissiveIntensity = 0.45 + night * 1.1; // lamplight on the gilded roofs after dark
+	GOLD.emissiveIntensity = 0.12 + night * 1.0; // lamplight on the gilded roofs after dark
+	for (const m of WINDOW_GLOW) m.emissiveIntensity = night * 2.2;
 	lights.material.opacity = night * 0.8;
 	lights.material.size = clamp(rig.dist * 0.007, 0.35, 1.6);
 	line.material.uniforms.uWidth.value = clamp(rig.dist * 0.0055, 0.1, 1.1);
@@ -384,6 +402,97 @@ function loop(now) {
 	renderer.render(scene, camera);
 	if (app.frames % 2 === 0) updateLabels();
 	if (app.frames % 4 === 0) updateHud(hour);
+}
+
+// ---------- the traveller ----------
+// Motorbike up to Bhimashankar; a taxi back down to Pune station and between Tirupati and the hill; the train
+// across the Deccan, and across India to Rishikesh;
+// a jeep up the Garhwal valleys to Gaurikund and on to Badrinath; on foot up to Kedarnath and for the
+// last stretch to every temple door.
+function modeAt(s) {
+	const c = route.chapters[app.leg];
+	if (s > c.s1 - 2.6 || s < c.s0 + 1.2) return "walk";
+	if (app.leg === 0) return "bike";
+	if (app.leg === 1) return s < app.sPune ? "car" : s < app.sTirupatiIn ? "train" : "car";
+	if (app.leg === 2) return s < app.sTirupatiOut ? "car" : s < app.sRishikesh ? "train" : s < app.sGauri ? "jeep" : "walk";
+	return "jeep";
+}
+const travPos = new THREE.Vector3(), tp = {}, up = new THREE.Vector3(0, 1, 0);
+function placeOnRoute(obj, s, scale, lift = 0) {
+	const p = route.at(clamp(s, 0, route.length - 0.01), tp);
+	obj.position.set(p.x, world.height(p.x, p.z) + lift, p.z);
+	obj.rotation.set(0, Math.atan2(p.dx, p.dz), 0);
+	obj.scale.setScalar(scale);
+	return p;
+}
+function updateTraveller(dt) {
+	const p = route.at(app.s, tmp);
+	let yaw = Math.atan2(p.dx, p.dz);
+	travPos.set(p.x, world.height(p.x, p.z), p.z);
+	let atShrine = false;
+	for (const l of landmarks) {
+		const d = Math.hypot(p.x - l.pos.x, p.z - l.pos.z);
+		const [rx, rz] = REST[l.shrine.key];
+		const R = Math.hypot(rx, rz);
+		if (d > R + 2) continue;
+		// walk off the road to the spot before the door, then turn to face the shrine
+		const f = l.shrine.facing, c = Math.cos(f), sn = Math.sin(f);
+		const wx = l.pos.x + rx * c + rz * sn, wz = l.pos.z - rx * sn + rz * c;
+		const k = app.state === "darshan" ? 1 : smoothstep(R + 2, R * 0.55, d);
+		travPos.x = lerp(p.x, wx, k);
+		travPos.z = lerp(p.z, wz, k);
+		travPos.y = world.height(travPos.x, travPos.z) + FLOOR[l.shrine.key] * k;
+		// the door is at about z = 1.9 in front of the sanctum
+		const door = { x: l.pos.x + 1.9 * sn, z: l.pos.z + 1.9 * c };
+		const face = Math.atan2(door.x - travPos.x, door.z - travPos.z);
+		const tf = smoothstep(0.5, 0.95, k);
+		yaw = Math.atan2(lerp(Math.sin(yaw), Math.sin(face), tf), lerp(Math.cos(yaw), Math.cos(face), tf));
+		atShrine = k > 0.02;
+	}
+	const moving = app.state === "travel" && app.playing;
+	let mode = app.state === "darshan" ? "darshan" : app.state === "travel" ? modeAt(app.s) : "walk";
+	if (atShrine && mode !== "darshan") mode = "walk";
+	app.mode = mode;
+	const dist = camera.position.distanceTo(travPos);
+	const ls = Math.max(app.state === "darshan" ? 1.15 : 1, dist * 0.03);
+	// world units per metre for a vehicle: true to the figure up close, grown with distance so a bike or
+	// a jeep still reads from high above; the train is long already, so it grows less
+	const vs = clamp(dist * 0.03, 0.28, 2.6), vt = clamp(dist * 0.0065, 0.28, 0.7);
+	const speed = SPEEDS[app.speed];
+	const spin = moving ? dt * 22 * Math.sqrt(speed) : 0;
+	for (const k of ["bike", "jeep", "car"]) {
+		const v = ride[k];
+		v.group.visible = mode === k && app.state === "travel";
+		if (!v.group.visible) continue;
+		placeOnRoute(v.group, app.s, vs);
+		for (const w of v.wheels) w.rotation.x += spin;
+	}
+	const onTrain = mode === "train" && app.state === "travel";
+	let off = 0;
+	// the train leaves from Pune, or from Tirupati on the way north; carriages still in the station stay hidden
+	const station = app.leg === 1 ? app.sPune : app.sTirupatiOut;
+	ride.train.forEach((c) => {
+		const half = (c.len * vt) / 2;
+		c.group.visible = onTrain && app.s - off - half * 2 > station;
+		if (!c.group.visible) return;
+		// each carriage follows the line on its own, so the train bends through curves
+		placeOnRoute(c.group, app.s - off - half, vt);
+		off += half * 2 + 0.8 * vt;
+	});
+	traveller.group.visible = app.state !== "intro" && app.state !== "finale" && (mode === "walk" || mode === "darshan" || mode === "bike");
+	if (mode === "bike") {
+		const b = ride.bike;
+		traveller.group.position.copy(b.group.position).add(new THREE.Vector3(0, b.seat.y * vs - 0.85 * vs + 0.0, 0)).addScaledVector(new THREE.Vector3(Math.sin(b.group.rotation.y), 0, Math.cos(b.group.rotation.y)), b.seat.z * vs);
+		traveller.group.scale.setScalar(vs / 0.28);
+		traveller.update(dt, app.t, { mode: "ride", yaw: b.group.rotation.y, distance: dist });
+	} else {
+		traveller.group.position.copy(travPos);
+		traveller.group.scale.setScalar(ls);
+		traveller.update(dt, app.t, { mode: mode === "walk" && !moving ? "idle" : mode, rate: Math.min(2, 0.85 + Math.log2(speed) * 0.35), yaw, distance: dist });
+	}
+	if (mode !== app.travelMode) app.modeT = 0;
+	app.modeT = (app.modeT || 0) + dt;
+	app.travelMode = mode;
 }
 
 // ---------- UI ----------
@@ -566,9 +675,12 @@ function updateHud() {
 	else if (app.state === "finale") where = "Yatra complete";
 	else if (app.state === "travel") {
 		const c = route.chapters[app.leg];
-		let mode = c.mode;
+		let mode = MODES[app.mode] || c.mode;
 		if (app.leg === 2 && app.s > app.sGauri) mode = "On foot from Gaurikund, 16 km";
-		else if (app.leg === 2 && app.s > app.sGauri - 30) mode = "By road into the Garhwal hills";
+		else if (app.mode === "train") mode = app.leg === 2 ? "By train to Rishikesh" : "By train to Tirupati";
+		else if (app.mode === "jeep" && app.leg === 2) mode = "By jeep up the Mandakini to Gaurikund";
+		else if (app.mode === "bike") mode = "By motorbike, 110 km";
+		else if (app.mode === "car") mode = app.leg === 1 ? (app.s < app.sPune ? "By taxi down to Pune station" : "By taxi up the ghat road to Tirumala") : "By taxi down to Tirupati station";
 		where = `To ${c.shrine.name} · ${mode}${app.playing ? "" : " · paused"}`;
 	}
 	const we = $("where");

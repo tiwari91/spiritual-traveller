@@ -1,24 +1,24 @@
 # Spiritual Traveller
 
-A quiet pilgrimage across India in the browser. You set out from Pune with a small clay lamp and travel to four of the great shrines: Bhimashankar in the Sahyadri, Tirumala above Tirupati, and Kedarnath and Badrinath in the Garhwal Himalaya. At each one the journey pauses for darshan.
+A quiet pilgrimage across India in the browser. You set out from Pune as a pilgrim in a saffron kurta, with a staff and a lit clay diya, and travel to four of the great shrines: Bhimashankar in the Sahyadri, Tirumala above Tirupati, and Kedarnath and Badrinath in the Garhwal Himalaya. At each one you step off the road, walk up to the door among the other pilgrims, and the journey pauses for darshan while you offer aarti.
 
 **Travel it:** https://tiwari91.github.io/spiritual-traveller/
 
 ## The route
 
-1. **Pune to Bhimashankar** (by road, about 110 km): at dawn, up through Rajgurunagar into the monsoon forest on the crest of the Western Ghats.
-2. **Bhimashankar to Tirumala** (by rail and road): south across the Deccan via Solapur, Hyderabad and Kurnool to the seven hills of the Seshachalam range.
-3. **Tirumala to Kedarnath** (by rail and road, then on foot): north through the night across the Deccan and the Gangetic plain to Delhi, Haridwar and Rishikesh, up the Alaknanda and the Mandakini, and the last 16 km on foot from Gaurikund.
-4. **Kedarnath to Badrinath** (by road, about 220 km): back down the Mandakini to Rudraprayag, then up the Alaknanda past Chamoli and Joshimath.
+1. **Pune to Bhimashankar** (by motorbike, about 110 km): at dawn, up through Rajgurunagar into the monsoon forest on the crest of the Western Ghats.
+2. **Bhimashankar to Tirumala** (by taxi, train and taxi): down to Pune station, then the train south across the Deccan via Solapur, Hyderabad and Kurnool to Tirupati, and a taxi up the ghat road to the seven hills.
+3. **Tirumala to Kedarnath** (by train and jeep, then on foot): the train north through the night across the Deccan and the Gangetic plain to Delhi, Haridwar and Rishikesh, a jeep up the Alaknanda and the Mandakini to Gaurikund, and the last 16 km on foot.
+4. **Kedarnath to Badrinath** (by jeep, about 220 km): back down the Mandakini to Rudraprayag, then up the Alaknanda past Chamoli and Joshimath.
 
 The order starts with the shrine nearest Pune, takes Tirumala while still in the south (it is open all year), and ends in the Himalaya, where Kedarnath comes before Badrinath as in the Char Dham yatra. The two Himalayan temples are only open from about May until Diwali.
 
 ## The shrines
 
-- **Bhimashankar**: a black basalt Nagara temple with a curved, ribbed shikhara, an amalaka and a gold kalash, the great bell under its arch, all in a rain-soaked forest with mist on the ridge.
-- **Tirumala**: the gold vimana of the Ananda Nilayam inside the prakara wall, the white tiered gopuram of the Mahadwaram, the golden dhvajastambha and the seven forested hills around.
-- **Kedarnath**: a grey stone temple with a stepped shikhara and pyramidal mandapa roof, Nandi at the door and the Bhim Shila boulder behind, under a ring of snow peaks at dawn, with a little snow falling.
-- **Badrinath**: the bright painted facade in red, blue, green and yellow with three gilded cupolas, the gilded roof behind, the steaming Tapt Kund and a footbridge over the Alaknanda, with Neelkanth and the Nar and Narayan ranges above.
+- **Bhimashankar**: a black basalt Nagara temple in rain-streaked, mossy stone, its curved shikhara clustered with smaller spires (urushringas), a stepped hall roof and a pillared porch, Nandi at the door, the great bell in its pavilion and a stone deepmala, all in a monsoon forest.
+- **Tirumala**: the gilded Ananda Nilayam with its parapets of miniature shrines and round dome, inside an inner enclosure; the five-tier Mahadwaram gopuram on a granite base with its row of kalashas; red-and-white striped prakara walls, pillared colonnades, the golden dhvajastambha and balipitham, and the seven forested hills around.
+- **Kedarnath**: a coursed grey granite temple with a curved shikhara, a mandapa roofed in stepped stone slabs with snow on every ledge, a carved gable over a brass-framed door hung with bells and marigolds, a seated Nandi and the Bhim Shila boulder behind, under a ring of snow peaks at dawn.
+- **Badrinath**: the painted Singhdwar in red, blue, green and yellow with cusped arches, banded side towers and gilded onion domes, the gilded roof behind, steps down to the steaming Tapt Kund, a flag-hung footbridge over the Alaknanda and the bazaar's tin-roofed houses, with Neelkanth and the Nar and Narayan ranges above.
 
 Each darshan card gives the deity, altitude, best season, how pilgrims usually get there (the Kedarnath trek and helicopters, the Alipiri and Srivari Mettu footpaths, and so on), a short note, and the greeting: Om Namah Shivaya at the two Jyotirlingas, Om Namo Venkatesaya at Tirumala and Om Namo Narayanaya at Badrinath.
 
@@ -41,6 +41,8 @@ Time of day follows the journey (dawn at Pune, a monsoon morning at Bhimashankar
 
 ## Run it locally
 
+Stone, plaster, the painted facade and the gopuram tiers are all textured in the page from canvas drawings, so there are still no image assets.
+
 A static site with no build step. Serve the folder over HTTP (ES modules do not load from `file://`):
 
 ```sh
@@ -51,7 +53,7 @@ python3 -m http.server 8000
 
 URL parameters: `?shrine=1..4` opens at a darshan, `?h=18.5` fixes the hour, `?wx=clear|monsoon|snow` sets the weather, `?q=low|high` picks the quality preset (low is the default on phones), `?auto=1` moves on from each darshan by itself after a short pause.
 
-three.js r160 comes from jsDelivr through an import map; fonts come from Google Fonts. Everything else, including the map, is generated in the page.
+three.js r160 (and its BufferGeometryUtils addon) comes from jsDelivr through an import map; fonts come from Google Fonts. Everything else, including the map, is generated in the page.
 
 ## A note on accuracy
 
