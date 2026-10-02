@@ -4,8 +4,9 @@
 // stations and bridges. The road follows the route; the railway runs alongside it on the long legs.
 import * as THREE from "three";
 import { Batch, T, VCOL, beam, place } from "./batch.js";
-import { GAURIKUND, RIVERS, toGeo, toWorld } from "./geo.js";
+import { GAURIKUND, RIVERS, SHRINES, toGeo, toWorld } from "./geo.js";
 import { clamp, lerp, rand, segDist, smoothstep } from "./util.js";
+import { parkedVehicle } from "./traffic.js";
 
 export const M = 0.28; // world units per metre
 const STEP = 0.35;
@@ -36,6 +37,8 @@ function roadKind(lon, lat) {
 	return "nh";
 }
 const SOIL = { sahyadri: "#8a4a2c", deccan: "#9a7a52", south: "#8e6a48", central: "#8c7656", gangetic: "#9b8a68", doon: "#7d7360", garhwal: "#7c776e" };
+
+const pick = (R, a) => a[Math.floor(R() * a.length)];
 
 // ---------- textures ----------
 function canvasTex(w, h, draw, srgb = true) {
@@ -212,8 +215,14 @@ function riverLines() {
 			const n = Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.08));
 			for (let k = 0; k < n; k++) {
 				const t = k / n;
-				// the same meander world.js draws
-				pts.push(toWorld(lerp(a[0], b[0], t) + Math.sin(t * 9 + i) * 0.03, lerp(a[1], b[1], t) + Math.cos(t * 7 + i) * 0.03));
+				// the same meander world.js draws, with the same gaps where the Himalayan shrines draw their own river
+				const lon = lerp(a[0], b[0], t) + Math.sin(t * 9 + i) * 0.03, lat = lerp(a[1], b[1], t) + Math.cos(t * 7 + i) * 0.03;
+				if (SHRINES.some((sh) => sh.weather !== "monsoon" && sh.lat > 25 && Math.hypot(lon - sh.lon, lat - sh.lat) < 0.12)) {
+					if (pts.length > 1) out.push({ w: r.w * 0.9, pts: pts.splice(0) });
+					else pts.length = 0;
+					continue;
+				}
+				pts.push(toWorld(lon, lat));
 			}
 		}
 		out.push({ w: r.w * 0.9, pts });
@@ -434,16 +443,42 @@ export class Roads {
 		this.trekRun = [A.gauri, ch[2].s1 - 3.2];
 		this.railRuns = [[A.pune + 2.5, A.tirupatiIn], [A.tirupatiOut, A.rishikesh]];
 		this.rivers = riverLines();
-		this.roads = this.roadRuns.map(([a, b]) => bridges(samplePath(route, world, a, b, 0), this.rivers, world, 1.8));
+		// Roads stop well short of each temple, at a bus stand; the last stretch is a pilgrim path on foot.
+		this.shrinePos = route.chapters.map((c) => route.at(c.s1, {}));
+		this.clearR = [9, 10.5, 9, 9];
+		const offShrine = (p) => this.shrinePos.every((w, i) => Math.hypot(p.x - w.x, p.z - w.z) > this.clearR[i]);
+		this.roads = [];
+		for (const [a, b] of this.roadRuns) for (const run of split(samplePath(route, world, a, b, 0), offShrine)) this.roads.push(bridges(run, this.rivers, world, 1.8));
+		this.walks = [];
+		this.stands = [];
+		route.chapters.forEach((c, i) => {
+			const w = this.shrinePos[i];
+			let sA = c.s1;
+			for (let s = Math.max(c.s0, c.s1 - 40); s < c.s1; s += 0.25) {
+				const p = route.at(s, {});
+				if (Math.hypot(p.x - w.x, p.z - w.z) < this.clearR[i]) {
+					sA = s;
+					break;
+				}
+			}
+			// at Kedarnath the path from the bus stand joins the trek at Gaurikund
+			const end = i === 2 ? A.gauri : c.s1 - 3.0;
+			if (end - sA < 0.8) return;
+			const path = bridges(samplePath(route, world, sA - 0.3, end + 0.2, 0, { kind: "trek" }), this.rivers, world, 0.5);
+			if (path.length > 2) {
+				this.walks.push(path);
+				this.stands.push({ s: sA, shrine: i });
+			}
+		});
 		this.trek = bridges(samplePath(route, world, this.trekRun[0], this.trekRun[1], 0, { kind: "trek" }), this.rivers, world, 0.5);
 		// The railway: kept off the roads it runs beside, carried over the roads it crosses, and split
 		// wherever it would pass a shrine (Tirupati station is only a few units below Tirumala here).
 		const shrines = route.chapters.map((c) => route.at(c.s1, {}));
 		const clear = (p) => shrines.every((w) => Math.hypot(p.x - w.x, p.z - w.z) > 10);
-		const roadLines = [...this.roads, this.trek].map((pts) => ({ pts, w: (KIND[pts[0]?.kind || "nh"].paved + 2 * KIND[pts[0]?.kind || "nh"].shoulder) * M, over: true }));
+		const roadLines = [...this.roads, this.trek, ...this.walks].map((pts) => ({ pts, w: (KIND[pts[0]?.kind || "nh"].paved + 2 * KIND[pts[0]?.kind || "nh"].shoulder) * M, over: true }));
 		this.rails = [];
 		this.railRuns.forEach(([a, b], leg) => {
-			const pts = separate(samplePath(route, world, a, b, RAIL_OFFSET, { kind: "nh" }), [...this.roads, this.trek], (RAIL_BED / 2) * M + 2.2, world);
+			const pts = separate(samplePath(route, world, a, b, RAIL_OFFSET, { kind: "nh" }), [...this.roads, this.trek, ...this.walks], (RAIL_BED / 2) * M + 2.2, world);
 			for (const run of split(pts, clear)) {
 				const r = bridges(run, [...this.rivers, ...roadLines], world, 0.9, 5);
 				r.leg = leg;
@@ -458,6 +493,11 @@ export class Roads {
 		this.at.trainTo2 = ofLeg(1).at(-1)?.at(-1).s ?? A.rishikesh;
 		for (const p of this.roads) this.buildRoad(p);
 		this.buildRoad(this.trek);
+		for (const p of this.walks) {
+			this.buildRoad(p);
+			this.bazaar(p);
+		}
+		for (const st of this.stands) this.busStand(st);
 		for (const p of this.rails) this.buildRail(p);
 		this.buildStations();
 	}
@@ -481,7 +521,7 @@ export class Roads {
 	}
 	// A point on the road (lane in metres from the centre, positive to the right; India drives on the left).
 	road(s, lane = 0, out = {}) {
-		const p = Roads.lookup(this.roads, s) || Roads.lookup([this.trek], s);
+		const p = Roads.lookup(this.roads, s) || Roads.lookup([this.trek], s) || Roads.lookup(this.walks, s);
 		if (!p) return null;
 		const l = Math.hypot(p.dx, p.dz) || 1;
 		p.dx /= l;
@@ -521,6 +561,8 @@ export class Roads {
 		};
 		for (const pts of this.roads) for (const p of pts) put(p.x, p.z, ((KIND[p.kind].paved / 2 + KIND[p.kind].shoulder) * M) + 0.15);
 		for (const p of this.trek) put(p.x, p.z, 0.4);
+		for (const w of this.walks) for (const p of w) put(p.x, p.z, 1.3);
+		for (const st of this.stands || []) put(st.x, st.z, 3.2);
 		for (const pts of this.rails) for (const p of pts) put(p.x, p.z, (RAIL_BED / 2) * M + 0.3);
 		for (const r of this.rivers) for (let i = 0; i < r.pts.length - 1; i++) {
 			const a = r.pts[i], b = r.pts[i + 1];
@@ -565,7 +607,9 @@ export class Roads {
 				// concrete parapets, and piers down to the river bed
 				for (const sg of [-1, 1]) {
 					const q = side(p, sg * (outer - 0.06));
-					b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.3, STEP * 1.02), i % 6 < 3 ? 0xe8e4da : 0x2a2a2a);
+					// a footbridge has a low stone parapet; a road bridge the painted concrete one
+					if (p.kind === "trek") b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.05, 0.2, STEP * 1.02), 0x8a8378);
+					else b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.3, STEP * 1.02), i % 6 < 3 ? 0xe8e4da : 0x2a2a2a);
 				}
 				if (p.onDeck && i % 5 === 0) {
 					const g = world.height(p.x, p.z) - 0.5;
@@ -661,6 +705,82 @@ export class Roads {
 		g.position.set(q.x, y, q.z);
 		g.rotation.y = yaw + Math.PI / 2;
 		g.traverse((o) => (o.castShadow = o.receiveShadow = true));
+		this.group.add(g);
+	}
+	// Flower, coconut and prasad stalls under bright awnings, both sides of the path up to the temple.
+	bazaar(pts) {
+		const b = new Batch();
+		const R = rand(Math.round(pts[0].s * 7) + 3);
+		const awn = [0xe8541e, 0xd8261c, 0x2a6ac0, 0xf0c419, 0x2f8a4a, 0xe0457b];
+		for (let i = 3; i < pts.length - 3; i += 3) {
+			const p = pts[i];
+			const yaw = Math.atan2(p.dx, p.dz);
+			for (const sg of [-1, 1]) {
+				if (R() < 0.25) continue;
+				const off = sg * 0.95;
+				const x = p.x - p.dz * off, z = p.z + p.dx * off;
+				const y = this.world.height(x, z);
+				const fx = (u) => [x - p.dz * sg * u, z + p.dx * sg * u];
+				b.add(T.box, place(x, y, z, yaw, 0.55, 0.26, 0.85), pick(R, [0x8a6a4a, 0xb08a5a, 0x6a4a2e])); // counter
+				let [ax, az] = fx(0.12);
+				for (const [px, pz] of [[-0.24, -0.38], [0.24, -0.38], [-0.24, 0.38], [0.24, 0.38]]) {
+					const qx = ax + Math.cos(yaw) * px + Math.sin(yaw) * pz, qz = az - Math.sin(yaw) * px + Math.cos(yaw) * pz;
+					b.add(T.box, place(qx, y, qz, yaw, 0.025, 0.62, 0.025), 0x5a4434);
+				}
+				b.add(T.box, place(ax, y + 0.62, az, yaw, 0.68, 0.025, 0.95, 0, -sg * 0.18), pick(R, awn)); // tarp awning
+				// what's on the counter: marigold garlands, coconuts, prasad boxes, brass lotas
+				const goods = R();
+				for (let k = 0; k < 6; k++) {
+					const gx = x + Math.sin(yaw) * (k - 2.5) * 0.13, gz = z + Math.cos(yaw) * (k - 2.5) * 0.13;
+					if (goods < 0.4) b.add(T.ball, place(gx, y + 0.26, gz, 0, 0.09, 0.07, 0.09), k % 2 ? 0xff9a12 : 0xf0c419);
+					else if (goods < 0.65) b.add(T.ball, place(gx, y + 0.26, gz, 0, 0.08, 0.08, 0.08), 0x6a4a2e);
+					else if (goods < 0.85) b.add(T.box, place(gx, y + 0.26, gz, yaw, 0.08, 0.06, 0.1), pick(R, [0xd8261c, 0xf0c419, 0xe8e2d0]));
+					else b.add(T.cyl, place(gx, y + 0.26, gz, 0, 0.06, 0.07, 0.06), 0xc8902a);
+				}
+				// garlands strung from the awning
+				for (let k = 0; k < 3; k++) {
+					const gx = ax + Math.sin(yaw) * (k - 1) * 0.28, gz = az + Math.cos(yaw) * (k - 1) * 0.28;
+					b.add(T.cyl, place(gx - p.dz * sg * -0.28, y + 0.36, gz + p.dx * sg * -0.28, 0, 0.03, 0.24, 0.03), 0xff8a12);
+				}
+			}
+			// a bell or a saffron flag on a pole every so often
+			if (i % 12 === 0) {
+				const x = p.x - p.dz * 1.45, z = p.z + p.dx * 1.45, y = this.world.height(x, z);
+				b.add(T.box, place(x, y, z, 0, 0.02, 1.3, 0.02), 0x5a4434);
+				b.add(T.box, place(x + 0.11, y + 1.2, z, 0, 0.22, 0.13, 0.01), 0xff8a1e);
+			}
+		}
+		if (!b.empty) this.group.add(b.build(VCOL));
+	}
+	// The bus stand where the road ends: a paved yard with buses, pilgrim jeeps and autos parked in rows.
+	busStand(st) {
+		const r = Roads.lookup(this.roads, st.s - 0.6) || this.route.at(st.s - 0.6, {});
+		const l = Math.hypot(r.dx, r.dz) || 1;
+		const dx = r.dx / l, dz = r.dz / l;
+		const yaw = Math.atan2(dx, dz);
+		// the yard sits beside the end of the road, on the left
+		const cx = r.x + dz * 2.9 - dx * 0.8, cz = r.z - dx * 2.9 - dz * 0.8;
+		st.x = cx;
+		st.z = cz;
+		const y = this.world.height(cx, cz);
+		const b = new Batch();
+		b.add(T.box, place(cx, y - 0.1, cz, yaw, 3.6, 0.16, 5.2), 0x77736c);
+		for (const u of [-1.75, 1.75]) b.add(T.box, place(cx + Math.cos(yaw) * u, y, cz - Math.sin(yaw) * u, yaw, 0.06, 0.1, 5.2), 0xe8e4da);
+		const g = new THREE.Group();
+		g.add(b.build(VCOL));
+		const R = rand(st.shrine * 31 + 9);
+		const rows = [["bus", -1.05], ["bus", -0.1], ["car", 0.8], ["car", 1.4]];
+		for (const [type, u] of rows) {
+			for (let k = 0; k < (type === "bus" ? 1 : 2); k++) {
+				const t = type === "car" && R() < 0.4 ? "auto" : type;
+				const m = parkedVehicle(t, R).build(VCOL);
+				const v = (k - 0.5) * (type === "bus" ? 0 : 1.6) + (type === "bus" ? (R() - 0.5) * 0.6 : 0);
+				m.position.set(cx + Math.cos(yaw) * u + Math.sin(yaw) * v, y + 0.0, cz - Math.sin(yaw) * u + Math.cos(yaw) * v);
+				m.rotation.y = yaw + (R() < 0.5 ? 0 : Math.PI);
+				m.scale.setScalar(M);
+				g.add(m);
+			}
+		}
 		this.group.add(g);
 	}
 	buildRail(pts) {

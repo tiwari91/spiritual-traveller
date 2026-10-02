@@ -11,6 +11,8 @@ import { M, Roads } from "./roads.js";
 import { Scenery } from "./scenery.js";
 import { Traffic } from "./traffic.js";
 import { Sanctum } from "./sanctum.js";
+import { Music } from "./music.js";
+import { Aarti } from "./aarti.js";
 import { Audio } from "./audio.js";
 import { CITIES, GAURIKUND, INDIA, LANKA, SHRINES, toWorld } from "./geo.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
@@ -32,7 +34,7 @@ const FLOOR = { bhimashankar: 0.03, tirupati: 0.15, kedarnath: 0.05, badrinath: 
 // How each stretch is travelled, and what the HUD calls it.
 const MODES = { walk: "On foot", bike: "By motorbike", train: "By train", jeep: "By jeep", car: "By taxi" };
 
-const app = { transport: 0, ready: false, frames: 0, t: 0, state: "loading", s: 0, leg: 0, at: -1, playing: true, speed: 0, time: 0, weather: 0, visited: [false, false, false, false], params };
+const app = { transport: 0, inside: [false, false, false, false], ready: false, frames: 0, t: 0, state: "loading", s: 0, leg: 0, at: -1, playing: true, speed: 0, time: 0, weather: 0, visited: [false, false, false, false], params };
 window.app = app;
 
 // ---------- renderer ----------
@@ -49,7 +51,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 5000);
 app.camera = camera;
 
-let world, route, sky, landmarks, line, traveller, ride, lights, weather, petals, roads, scenery, traffic, sanctum;
+let world, route, sky, landmarks, line, traveller, ride, lights, weather, petals, roads, scenery, traffic, sanctum, music, aarti;
 const audio = new Audio();
 
 async function init() {
@@ -76,6 +78,9 @@ async function init() {
 	scene.add(line);
 	traveller = new Traveller();
 	scene.add(traveller.group);
+	// the aarti at the door, with each shrine's own music
+	music = new Music(audio);
+	aarti = new Aarti({ scene, landmarks, music, traveller, low: LOW });
 	ride = { bike: motorbike(), jeep: jeep(), car: jeep(), train: train(4) };
 	ride.car.group.children[0].material = ride.car.group.children[0].material.clone();
 	ride.car.group.children[0].material.color.set(0xf2c230); // a yellow-roofed Tirupati taxi
@@ -109,11 +114,17 @@ async function init() {
 	if (params.has("go")) app.transport = Math.max(0, TRANSPORT.findIndex((t) => t.toLowerCase() === params.get("go")));
 	scenery.prebuild(params.has("s") ? parseFloat(params.get("s")) || 0 : 0);
 	// inside each temple: the shrine's own rituals, step by step
-	sanctum = new Sanctum({ renderer, container: document.body, audio, low: LOW, onExit: () => {
+	sanctum = new Sanctum({ renderer, container: document.body, audio, low: LOW, onStep: (i, step, key) => {
+		// the music of the temple follows the rituals inside
+		if (/aarti/i.test(step.title) && !/take/i.test(step.title)) music.aarti(key);
+		else if (i === 0) music.ambient(key);
+	}, onExit: (key) => {
+		music.ambient(key);
 		renderer.setSize(innerWidth, innerHeight, false);
+		$("enter").innerHTML = "Go inside again <span>the rituals play by themselves (E)</span>";
 		$("continue").focus();
 	} });
-	app.sanctum = sanctum;
+	Object.assign(app, { sanctum, music, aarti });
 	buildUI();
 	app.ready = true;
 	$("start").disabled = false;
@@ -209,22 +220,31 @@ function arrive(i) {
 	$("d-note").textContent = s.note;
 	$("d-greet").textContent = s.greeting;
 	$("continue").textContent = i === 3 ? "Complete the yatra" : `Continue to ${SHRINES[i + 1].name}`;
+	$("enter").innerHTML = app.inside[i] ? "Go inside again <span>the rituals play by themselves (E)</span>" : "Enter the temple <span>the traveller goes in by themselves in a moment (E)</span>";
 	$("darshan").querySelector(".d-scroll").scrollTop = 0;
 	$("darshan").classList.add("show");
 	document.body.classList.add("darshan-open");
 	hideCard();
 	toast(`${s.mantraLatin}`);
 	audio.bell(3);
+	app.aartiDone = false;
+	aarti.start(i).then(() => {
+		if (app.state === "darshan" && app.at === i) app.aartiDone = true;
+	});
 	rig.userYaw = 0;
 	rig.userPitch = 0;
 	refreshMarks();
 }
-function enterTemple() {
+function enterTemple(auto = false) {
 	if (app.state !== "darshan" || sanctum.active) return;
-	sanctum.enter(SHRINES[app.at].key);
+	app.inside[app.at] = true;
+	aarti.stop();
+	sanctum.enter(SHRINES[app.at].key, { auto: auto === true });
 	sanctum.resize(innerWidth, innerHeight);
 }
 function closeDarshan() {
+	aarti.stop();
+	music.stop(1.2);
 	$("darshan").classList.remove("show");
 	document.body.classList.remove("darshan-open");
 }
@@ -256,6 +276,7 @@ function restart() {
 	closeDarshan();
 	closeMenu();
 	app.visited = [false, false, false, false];
+	app.inside = [false, false, false, false];
 	app.at = -1;
 	app.state = "restart";
 	begin();
@@ -310,6 +331,7 @@ function cameraGoal() {
 		// look over the traveller's shoulder at the shrine
 		// aim between the traveller and the door, so the pilgrim stands in the foreground before the shrine
 		g.target.copy(l.pos).lerp(traveller.group.position, 0.55);
+		if (aarti.active && aarti.focus) g.target.lerp(aarti.focus, 0.35);
 		g.target.y = l.pos.y + (high ? 1.55 : 1.05);
 		g.yaw = l.shrine.facing + 0.32 + Math.sin(app.darshanT * 0.1) * 0.25;
 		g.pitch = high ? 0.16 : 0.26;
@@ -326,6 +348,11 @@ function cameraGoal() {
 	const chase = vehicle ? smoothstep(7, 3, app.modeT || 0) : 0;
 	const close = Math.max(near, chase);
 	g.target.set(p.x, p.y + 0.6, p.z);
+	// on the train, follow the train on its own line beside the road
+	if (app.travelMode === "train") {
+		const r = roads.rail(app.s - 4, {});
+		if (r) g.target.set(r.x, r.y + 0.6, r.z);
+	}
 	g.yaw = Math.atan2(-p.dx, -p.dz) + 0.55 * close;
 	g.pitch = lerp(app.leg === 1 || app.leg === 2 ? 0.62 : 0.72, 0.5, close);
 	g.dist = lerp(lerp(far, 16, near), app.travelMode === "train" ? 34 : 14, chase) * (innerWidth < innerHeight ? 1.35 : 1);
@@ -384,12 +411,27 @@ function loop(now) {
 	}
 	if (app.state === "travel" && app.playing) {
 		const c = route.chapters[app.leg];
-		const ease = 0.22 + 0.78 * smoothstep(0, 10, Math.min(c.s1 - app.s, app.s - c.s0));
+		let ease = 0.22 + 0.78 * smoothstep(0, 10, Math.min(c.s1 - app.s, app.s - c.s0));
+		ease *= trainPace(dt);
+		const before = app.s;
 		app.s += route.legSpeed[app.leg] * SPEEDS[app.speed] * ease * dt;
+		if (app.travelMode === "train") for (const st of roads.stations) {
+			// the train halts at each station on the way
+			if (before < st.s && app.s >= st.s && st.s > trainSpan()[0] + 4 && st.s < trainSpan()[1] - 4) {
+				app.s = st.s;
+				app.dwell = 3.2;
+				toast(`${st.name.replace(/ JN$/, " JUNCTION").toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase())}: the train halts`);
+			}
+		}
 		if (app.s >= c.s1) arrive(app.leg);
 	}
 	if (app.state === "darshan") {
 		app.darshanT += dt;
+		// after a few moments at the door, the traveller goes in and does the rituals by themselves
+		if (!app.inside[app.at] && (app.aartiDone || !aarti.active) && app.darshanT > 6 && !sanctum.active && !app.params.has("noenter")) {
+			app.inside[app.at] = true;
+			enterTemple(true);
+		}
 		if (params.get("auto") === "1" && app.darshanT > 14) next();
 	}
 	updateCamera(dt);
@@ -397,13 +439,19 @@ function loop(now) {
 	for (const l of landmarks) for (const m of l.decor.children) {
 		const pk = m.userData.peak;
 		if (!pk) continue;
-		const dx = camera.position.x - m.position.x, dz = camera.position.z - m.position.z;
-		const r = pk.r * 1.5 * (1 - (camera.position.y - m.position.y) / pk.h);
-		// or stands between the camera and the traveller
-		const blocks = segDist(m.position.x, m.position.z, camera.position.x, camera.position.z, rig.target.x, rig.target.z) < pk.r * 1.4 && camera.position.y < m.position.y + pk.h * 0.9;
-		m.visible = app.state === "darshan" || (Math.hypot(dx, dz) > r && !blocks);
+		// hidden if any point on the line from the camera to the traveller passes inside the cone
+		// or if the camera stands over its slopes, where it would fill the foreground
+		const dc = Math.hypot(camera.position.x - m.position.x, camera.position.z - m.position.z) / (pk.r * 1.35);
+		let blocks = dc < 1 && camera.position.y < m.position.y + pk.h * 1.2;
+		for (let k = 0; k <= 1 && !blocks; k += 0.1) {
+			const x = lerp(camera.position.x, rig.target.x, k), y = lerp(camera.position.y, rig.target.y, k), z = lerp(camera.position.z, rig.target.z, k);
+			const d = Math.hypot(x - m.position.x, z - m.position.z) / (pk.r * 1.15);
+			if (d < 1 && y < m.position.y + pk.h * (1 - d)) blocks = true;
+		}
+		m.visible = app.state === "darshan" || !blocks;
 	}
 	updateTraveller(dt);
+	aarti.update(dt, app.t, camera);
 	// sky, light and weather
 	focus.copy(rig.target);
 	const hour = currentHour();
@@ -442,6 +490,27 @@ function loop(now) {
 	if (app.frames % 4 === 0) updateHud(hour);
 }
 
+// ---------- the train ----------
+function trainSpan() {
+	return app.leg === 1 ? [roads.at.trainFrom, roads.at.trainTo] : [roads.at.trainFrom2, roads.at.trainTo2];
+}
+// A train pulls out slowly, runs at line speed, brakes into each station and stands there a moment.
+function trainPace(dt) {
+	if (app.dwell > 0) {
+		app.dwell -= dt;
+		return 0;
+	}
+	if (app.travelMode !== "train") return 1;
+	const [a, b] = trainSpan();
+	let k = Math.min(0.06 + 0.94 * smoothstep(0, 16, app.s - a), 0.06 + 0.94 * smoothstep(0, 16, b - app.s));
+	for (const st of roads.stations) {
+		const d = st.s - app.s;
+		if (d > 0 && d < 16 && st.s > a + 4 && st.s < b - 4) k = Math.min(k, 0.05 + 0.95 * smoothstep(0, 16, d));
+		if (d <= 0 && d > -14) k = Math.min(k, 0.08 + 0.92 * smoothstep(0, 14, -d));
+	}
+	return k;
+}
+
 // ---------- the traveller ----------
 // Motorbike up to Bhimashankar; a taxi back down to Pune station and between Tirupati and the hill; the train
 // across the Deccan, and across India to Rishikesh;
@@ -450,6 +519,9 @@ function loop(now) {
 function modeAt(s) {
 	const c = route.chapters[app.leg];
 	if (s > c.s1 - 2.6 || s < c.s0 + 1.2) return "walk";
+	// no vehicle goes near a temple: from the bus stand it is the pilgrim path on foot
+	const here = route.at(s, {});
+	if (roads.shrinePos.some((w, i) => Math.hypot(here.x - w.x, here.z - w.z) < roads.clearR[i] + 0.3)) return "walk";
 	// the 16 km up to Kedarnath, and back down, are on foot whatever else you choose
 	if (app.leg === 2 && s > app.sGauri) return "walk";
 	if (app.leg === 3 && s < app.sGauriBack) return "walk";
@@ -515,7 +587,8 @@ function updateTraveller(dt) {
 	const ls = Math.max(app.state === "darshan" ? 1.15 : 1, dist * 0.03);
 	// world units per metre for a vehicle: true to the figure up close, grown with distance so a bike or
 	// a jeep still reads from high above; the train is long already, so it grows less
-	const vs = clamp(dist * 0.009, 0.28, 0.42), vt = clamp(dist * 0.004, 0.28, 0.4);
+	// the train is always life size, so it runs under its wires and between its masts
+	const vs = clamp(dist * 0.009, 0.28, 0.42), vt = M;
 	const speed = SPEEDS[app.speed];
 	const spin = moving ? dt * 22 * Math.sqrt(speed) : 0;
 	for (const k of ["bike", "jeep", "car"]) {
@@ -534,8 +607,11 @@ function updateTraveller(dt) {
 		const at = onTrain && app.s - off - half > station ? roads.rail(app.s - off - half, {}) : null;
 		c.group.visible = !!at;
 		off += half * 2 + 0.8 * vt;
-		// each carriage follows the line on its own, so the train bends through curves
-		if (at) setOn(c.group, at, vt);
+		// each carriage follows the line on its own, so the train bends through curves, with a slight rock
+		if (at) {
+			setOn(c.group, at, vt);
+			c.group.rotation.z = Math.sin(app.t * 2.3 + off * 0.7) * 0.012 * (moving ? 1 : 0);
+		}
 	});
 	traveller.group.visible = app.state !== "intro" && app.state !== "finale" && (mode === "walk" || mode === "darshan" || mode === "bike");
 	if (mode === "bike") {
@@ -612,12 +688,14 @@ function buildUI() {
 	// buttons
 	$("start").addEventListener("click", begin);
 	$("continue").addEventListener("click", next);
-	$("enter").addEventListener("click", enterTemple);
+	$("enter").addEventListener("click", () => enterTemple(true));
 	$("btn-play").addEventListener("click", togglePlay);
 	$("btn-speed").addEventListener("click", () => setSpeed((app.speed + 1) % SPEEDS.length));
 	$("btn-time").addEventListener("click", () => cycleTime());
 	$("btn-weather").addEventListener("click", () => cycleWeather());
 	$("btn-transport").addEventListener("click", () => cycleTransport());
+	$("btn-zin").addEventListener("click", () => zoomBy(0.7));
+	$("btn-zout").addEventListener("click", () => zoomBy(1.45));
 	$("transport-label").textContent = TRANSPORT[app.transport];
 	$("btn-sound").addEventListener("click", toggleSound);
 	$("btn-chapters").addEventListener("click", () => ($("chapters").hidden ? openMenu() : closeMenu()));
@@ -871,7 +949,7 @@ function installInput() {
 		} else if (ptrs.size === 2) {
 			const [a, b] = [...ptrs.values()];
 			const d = Math.hypot(a.x - b.x, a.y - b.y);
-			if (pinch > 0) rig.zoom = clamp(rig.zoom * (pinch / d), 0.3, 3);
+			if (pinch > 0) rig.zoom = clamp(rig.zoom * (pinch / d), ZMIN, ZMAX);
 			pinch = d;
 		}
 	});
@@ -883,7 +961,7 @@ function installInput() {
 	canvas.addEventListener("pointercancel", up);
 	canvas.addEventListener("wheel", (e) => {
 		e.preventDefault();
-		rig.zoom = clamp(rig.zoom * Math.exp(e.deltaY * 0.0012), 0.3, 3);
+		rig.zoom = clamp(rig.zoom * Math.exp(e.deltaY * 0.0012), ZMIN, ZMAX);
 	}, { passive: false });
 	canvas.addEventListener("dblclick", resetView);
 	addEventListener("keydown", (e) => {
@@ -906,7 +984,7 @@ function installInput() {
 		else if (k === "t" || k === "T") cycleTime();
 		else if (k === "w" || k === "W") cycleWeather();
 		else if (k === "v" || k === "V") cycleTransport();
-		else if ((k === "e" || k === "E") && app.state === "darshan") enterTemple();
+		else if ((k === "e" || k === "E") && app.state === "darshan") enterTemple(true);
 		else if (k === "m" || k === "M") toggleSound();
 		else if (k === "h" || k === "H") document.body.classList.toggle("hide-hud");
 		else if (k === "c" || k === "C") resetView();
@@ -916,8 +994,8 @@ function installInput() {
 		else if (k === "ArrowRight") rig.userYaw -= 0.12;
 		else if (k === "ArrowUp") rig.userPitch = clamp(rig.userPitch + 0.08, -1.2, 1.2);
 		else if (k === "ArrowDown") rig.userPitch = clamp(rig.userPitch - 0.08, -1.2, 1.2);
-		else if (k === "PageUp") rig.zoom = clamp(rig.zoom * 0.85, 0.3, 3);
-		else if (k === "PageDown") rig.zoom = clamp(rig.zoom / 0.85, 0.3, 3);
+		else if (k === "PageUp" || k === "]") zoomBy(0.8);
+		else if (k === "PageDown" || k === "[") zoomBy(1.25);
 		else return;
 	});
 	addEventListener("resize", () => {
@@ -927,12 +1005,18 @@ function installInput() {
 		camera.updateProjectionMatrix();
 	});
 }
+// from close enough to see faces to high enough to see half of India
+const ZMIN = 0.12, ZMAX = 8;
+function zoomBy(k) {
+	rig.zoom = clamp(rig.zoom * k, ZMIN, ZMAX);
+}
 function resetView() {
 	rig.userYaw = 0;
 	rig.userPitch = 0;
 	rig.zoom = 1;
 }
 
+app.THREE = THREE;
 Object.assign(app, { begin, next, jump, restart, setSpeed, cycleTime, cycleWeather, cycleTransport, enterTemple, rig });
 init().catch((e) => {
 	console.error(e);

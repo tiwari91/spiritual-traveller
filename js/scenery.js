@@ -14,9 +14,9 @@ const pick = (R, a) => a[Math.floor(R() * a.length)];
 // Crops by region: [colour, stripe strength]; the stripes are the furrows or rows.
 const CROPS = {
 	sahyadri: [[0x5f9d34, 0.25], [0x76ad3a, 0.25], [0x4f8a2e, 0.3], [0x8a5634, 0.5]],
-	deccan: [[0xa58a55, 0.45], [0xc9b46a, 0.35], [0xe6cf4a, 0.3], [0x7f9a48, 0.3], [0xece6d2, 0.35], [0x8e6a48, 0.5]],
+	deccan: [[0xa58a55, 0.45], [0xc9b46a, 0.35], [0xe6cf4a, 0.3], [0x7f9a48, 0.3], [0xc9ccb0, 0.35], [0x8e6a48, 0.5]],
 	south: [[0x6fa83a, 0.25], [0x86b347, 0.25], [0xa38458, 0.45]],
-	central: [[0x96a048, 0.35], [0xc6b05a, 0.35], [0xece6d2, 0.3], [0x8e7552, 0.5], [0x7f9a48, 0.3]],
+	central: [[0x96a048, 0.35], [0xc6b05a, 0.35], [0xc9ccb0, 0.3], [0x8e7552, 0.5], [0x7f9a48, 0.3]],
 	gangetic: [[0x7aa83e, 0.35], [0xe0c53a, 0.3], [0x9fb04c, 0.35], [0xc8a85a, 0.35], [0x3f7a35, 0.2], [0x8a7254, 0.5]],
 	doon: [[0x6f9e3a, 0.3], [0x9db04c, 0.3], [0x8a7254, 0.5]],
 	garhwal: [[0x88a042, 0.5], [0xc0a855, 0.5], [0x6f8f3a, 0.5], [0x9c7f55, 0.55]],
@@ -103,6 +103,7 @@ export class Scenery {
 		}
 		// ---------- fields ----------
 		const crops = CROPS[reg];
+		const placed = [];
 		const nf = Math.round((reg === "garhwal" ? 26 : plains ? 70 : 45) * dens);
 		for (let i = 0; i < nf; i++) {
 			const s = s0 + R() * (s1 - s0), side = R() < 0.5 ? -1 : 1, off = side * (2.6 + Math.pow(R(), 0.8) * 26);
@@ -110,6 +111,10 @@ export class Scenery {
 			const [col, stripe] = pick(R, crops);
 			const w = (reg === "garhwal" ? 1.2 : 2) + R() * 3.5, l = w * (0.8 + R() * 1.4);
 			if (!this.ok(c.x, c.z, Math.hypot(w, l) / 2 + 0.2)) continue;
+			// fields sit side by side, never on top of one another
+			const rad = Math.hypot(w, l) / 2;
+			if (placed.some((q) => Math.hypot(q[0] - c.x, q[1] - c.z) < (q[2] + rad) * 0.82)) continue;
+			placed.push([c.x, c.z, rad]);
 			// fields line up with the road, or with the slope in the hills
 			let yaw = c.yaw + (R() - 0.5) * 0.3;
 			if (reg === "garhwal") {

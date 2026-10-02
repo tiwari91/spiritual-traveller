@@ -1,8 +1,12 @@
 // Procedural temple sounds: a soft drone and a bell at each darshan. Muted until the visitor turns it on.
+// Also shared with music.js: onToggle(fn) hears every on/off change, and duck(v) lowers the drone (0..1)
+// while a shrine's own music plays.
 export class Audio {
 	constructor() {
 		this.on = false;
 		this.ctx = null;
+		this.listeners = [];
+		this.duckLevel = 1;
 	}
 	ensure() {
 		if (this.ctx) return;
@@ -18,7 +22,7 @@ export class Audio {
 		lp.frequency.value = 900;
 		lp.connect(this.master);
 		this.drone = this.ctx.createGain();
-		this.drone.gain.value = 0.035;
+		this.drone.gain.value = 0.035 * this.duckLevel;
 		this.drone.connect(lp);
 		for (const [f, d] of [[130.8, 0], [131.2, 0], [196.0, 0.3], [261.6, 0.6]]) {
 			const o = this.ctx.createOscillator();
@@ -46,7 +50,18 @@ export class Audio {
 			this.ctx.resume();
 		}
 		if (this.ctx) this.master.gain.setTargetAtTime(this.on ? 0.8 : 0, this.ctx.currentTime, 0.4);
+		for (const fn of this.listeners) fn(this.on);
 		return this.on;
+	}
+	// fn(on) runs after every toggle; returns a function that removes it
+	onToggle(fn) {
+		this.listeners.push(fn);
+		return () => (this.listeners = this.listeners.filter((f) => f !== fn));
+	}
+	// v: 1 is the usual drone, 0 silences it
+	duck(v, tc = 0.8) {
+		this.duckLevel = v;
+		if (this.drone) this.drone.gain.setTargetAtTime(0.035 * v, this.ctx.currentTime, tc);
 	}
 	bell(times = 3) {
 		if (!this.on || !this.ctx) return;

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spiritual Traveller · Aarti</title>
+<meta name="theme-color" content="#0a1430">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&family=Tiro+Devanagari+Hindi&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<style>
+	.bench { position: fixed; left: 16px; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10; display: flex; justify-content: center; pointer-events: none; }
+	.bench .dialog-card { pointer-events: auto; max-width: 460px; width: 100%; padding: 14px 16px; }
+	.bench h1 { font-family: var(--display); font-weight: 600; font-size: 26px; margin: 2px 0 8px; }
+	.bench .row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+	.bench .row button { flex: 1 1 auto; min-width: 0; }
+	.bench .shrines button { background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 12px; padding: 7px 10px; }
+	.bench .shrines button[aria-pressed="true"] { border-color: var(--gold); }
+	.bench .status { color: var(--muted); font-size: 13px; min-height: 1.3em; }
+	.bench.hide { display: none; }
+</style>
+</head>
+<body>
+<!-- Standalone page for the outdoor aarti: aarti.html?shrine=1..4. ?cam=close frames the door, ?h=19 fixes the hour,
+     ?q=low uses the low preset, ?ui=0 hides the panel, ?manual=1 stops the clock for scripted tests (window.bench). -->
+<canvas id="scene" aria-label="Aarti at the shrine"></canvas>
+<div class="bench" id="bench">
+	<div class="dialog-card panel">
+		<div class="kicker">Aarti at the door</div>
+		<h1 id="name">Kedarnath</h1>
+		<div class="row shrines" id="shrines"></div>
+		<div class="row">
+			<button class="primary" id="go" type="button" disabled>Perform the aarti</button>
+			<button class="ghost" id="amb" type="button" disabled>Darshan bed</button>
+			<button class="ghost" id="snd" type="button">Sound: off</button>
+		</div>
+		<div class="status" id="status" aria-live="polite">Building the shrine</div>
+	</div>
+</div>
+<script type="module">
+import * as THREE from "three";
+import { World } from "./js/world.js";
+import { Sky } from "./js/sky.js";
+import { buildLandmarks, GOLD, LAMP } from "./js/landmarks.js";
+import { Traveller, crowdFigure } from "./js/pilgrim.js";
+import { Audio } from "./js/audio.js";
+import { Music } from "./js/music.js";
+import { Aarti } from "./js/aarti.js";
+import { SHRINES } from "./js/geo.js";
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const LOW = params.get("q") === "low";
+const manual = params.get("manual") === "1";
+if (params.get("ui") === "0") $("bench").classList.add("hide");
+let at = Math.min(3, Math.max(0, (parseInt(params.get("shrine"), 10) || 3) - 1));
+// the traveller's darshan spot and floor, as in main.js
+const REST = { bhimashankar: [0.5, 3.45], tirupati: [0.15, 4.1], kedarnath: [0.55, 3.75], badrinath: [0.25, 2.85] };
+const FLOOR = { bhimashankar: 0.03, tirupati: 0.15, kedarnath: 0.05, badrinath: 0 };
+
+const canvas = $("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !LOW });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, LOW ? 1.5 : 2));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 5000);
+const audio = new Audio();
+const music = new Music(audio);
+window.music = music;
+window.audio = audio;
+window.Music = Music;
+let world, sky, landmarks, traveller, aarti;
+const clock = { t: 0 };
+
+function setStatus(s) {
+	$("status").textContent = s;
+}
+await new Promise((r) => requestAnimationFrame(r));
+world = new World({ step: LOW ? 0.12 : 0.09 });
+world.compute();
+world.buildMeshes();
+scene.add(world.mesh, world.sea, world.rivers);
+landmarks = buildLandmarks(world, scene, renderer, crowdFigure);
+for (const l of landmarks) l.beacon.visible = false;
+sky = new Sky(scene);
+traveller = new Traveller();
+scene.add(traveller.group);
+aarti = new Aarti({ scene, landmarks, music, traveller, low: LOW });
+window.aarti = aarti;
+
+function place() {
+	const l = landmarks[at], s = l.shrine, [rx, rz] = REST[s.key];
+	const f = s.facing, c = Math.cos(f), sn = Math.sin(f);
+	const x = l.pos.x + rx * c + rz * sn, z = l.pos.z - rx * sn + rz * c;
+	traveller.group.position.set(x, world.height(x, z) + FLOOR[s.key], z);
+	traveller.group.scale.setScalar(1.15);
+	const door = { x: l.pos.x + 1.9 * sn, z: l.pos.z + 1.9 * c };
+	traveller.face = Math.atan2(door.x - x, door.z - z);
+	traveller.yaw = traveller.face;
+	landmarks.forEach((m, i) => {
+		m.root.visible = i === at;
+		m.decor.visible = i === at;
+	});
+	$("name").textContent = s.name;
+	for (const b of $("shrines").children) b.setAttribute("aria-pressed", String(+b.dataset.i === at));
+}
+SHRINES.forEach((s, i) => {
+	const b = document.createElement("button");
+	b.type = "button";
+	b.textContent = s.name;
+	b.dataset.i = i;
+	b.addEventListener("click", () => {
+		aarti.stop();
+		music.stop(0.8);
+		at = i;
+		place();
+		setStatus("Ready");
+	});
+	$("shrines").append(b);
+});
+place();
+
+function sound(on) {
+	const v = audio.toggle(on);
+	$("snd").textContent = "Sound: " + (v ? "on" : "off");
+	return v;
+}
+$("snd").addEventListener("click", () => sound());
+$("go").addEventListener("click", async () => {
+	if (!audio.on) sound(true);
+	setStatus("The aarti has begun");
+	const ok = await aarti.start(at);
+	setStatus(ok ? "Aarti complete" : "Stopped");
+});
+$("amb").addEventListener("click", () => {
+	if (!audio.on) sound(true);
+	aarti.stop();
+	music.ambient(SHRINES[at].key);
+	setStatus("Darshan bed playing");
+});
+$("go").disabled = $("amb").disabled = false;
+setStatus("Ready: press Perform the aarti");
+
+// ---------- camera: the darshan framing from main.js, or close on the door ----------
+function frameCamera() {
+	const l = landmarks[at], high = l.pos.y > 30;
+	const target = new THREE.Vector3().copy(l.pos).lerp(traveller.group.position, 0.55);
+	let yaw = l.shrine.facing + 0.32, pitch = high ? 0.16 : 0.26, dist = innerWidth < innerHeight ? 12 : 6.2;
+	target.y = l.pos.y + (high ? 1.55 : 1.05);
+	if (params.get("cam") === "close") {
+		const f = l.shrine.facing, door = new THREE.Vector3(Math.sin(f) * 2.6, 0, Math.cos(f) * 2.6);
+		target.copy(l.pos).add(door).setY(l.pos.y + 0.5);
+		yaw = f + (params.has("yaw") ? parseFloat(params.get("yaw")) : 0.8);
+		pitch = 0.2;
+		dist = innerWidth < innerHeight ? 3.4 : 2.2;
+	}
+	if (params.get("cam") === "priest" && aarti.active) {
+		aarti.pj.fig.getWorldPosition(target);
+		target.y += 0.38;
+		yaw = l.shrine.facing + (params.has("yaw") ? parseFloat(params.get("yaw")) : 0.5);
+		pitch = 0.12;
+		dist = innerWidth < innerHeight ? 1.6 : 1.0;
+	}
+	if (params.get("cam") === "trav") {
+		traveller.group.getWorldPosition(target);
+		target.y += 0.45;
+		yaw = traveller.face + (params.has("yaw") ? parseFloat(params.get("yaw")) : 0.6);
+		pitch = 0.1;
+		dist = innerWidth < innerHeight ? 1.5 : 0.9;
+	}
+	const cp = Math.cos(pitch);
+	camera.position.set(target.x + Math.sin(yaw) * cp * dist, target.y + Math.sin(pitch) * dist, target.z + Math.cos(yaw) * cp * dist);
+	camera.lookAt(target);
+	return dist;
+}
+
+function step(dt) {
+	clock.t += dt;
+	const dist = frameCamera();
+	const s = SHRINES[at];
+	const hour = params.has("h") ? parseFloat(params.get("h")) : s.hour;
+	sky.update(hour, traveller.group.position, dt, { overcast: s.weather === "monsoon" ? 0.6 : 0, snow: false });
+	scene.fog.density *= Math.min(1.2, Math.max(0.12, 70 / dist));
+	const night = Math.min(1, Math.max(0, (4 - sky.elev) / 12));
+	LAMP.emissiveIntensity = 0.25 + night * 4;
+	GOLD.emissiveIntensity = 0.12 + night * 1.0;
+	traveller.update(dt, clock.t, { mode: "darshan", yaw: traveller.face, distance: camera.position.distanceTo(traveller.group.position) });
+	aarti.update(dt, clock.t, camera);
+	if (aarti.active) setStatus(`Aarti · ${aarti.phase} · ${aarti.p.toFixed(1)} s of ${aarti.sched.duration.toFixed(0)} s`);
+	renderer.render(scene, camera);
+}
+addEventListener("resize", () => {
+	renderer.setSize(innerWidth, innerHeight, false);
+	camera.aspect = innerWidth / innerHeight;
+	camera.updateProjectionMatrix();
+});
+
+// scripted tests: bench.start(), bench.seek(seconds), bench.frames(n, dt), bench.levels(seconds)
+window.bench = {
+	start: () => aarti.start(at),
+	seek(t) {
+		const d = t - aarti.p;
+		if (music.cur) music.cur.t0 -= d;
+		aarti.p = t;
+	},
+	frames(n = 1, dt = 1 / 30) {
+		for (let k = 0; k < n; k++) {
+			// in scripted runs the music's clock follows the frames, not the wall clock
+			if (music.cur && aarti.active) music.cur.t0 = performance.now() / 1000 - (aarti.p + dt);
+			step(dt);
+		}
+	},
+	async levels(seconds = 20, kind = "aarti", offset = 0) {
+		const out = {};
+		for (const s of SHRINES) {
+			const b = await Music.render(s.key, kind, seconds + offset);
+			let peak = 0, sum = 0, n = 0;
+			const i0 = Math.floor(offset * b.sampleRate);
+			for (let ch = 0; ch < b.numberOfChannels; ch++) {
+				const d = b.getChannelData(ch);
+				for (let i = i0; i < d.length; i++) {
+					const v = d[i];
+					if (!Number.isFinite(v)) return { error: "non-finite sample in " + s.key };
+					peak = Math.max(peak, Math.abs(v));
+					sum += v * v;
+					n++;
+				}
+			}
+			const rms = Math.sqrt(sum / n);
+			out[s.key] = { rms: +rms.toFixed(4), rmsDb: +(20 * Math.log10(rms)).toFixed(1), peak: +peak.toFixed(3), peakDb: +(20 * Math.log10(peak)).toFixed(1) };
+		}
+		return out;
+	},
+	get ready() {
+		return true;
+	},
+};
+if (!manual) {
+	let last = performance.now();
+	const loop = (now) => {
+		requestAnimationFrame(loop);
+		const dt = Math.min(0.1, (now - last) / 1000);
+		last = now;
+		step(dt);
+	};
+	requestAnimationFrame(loop);
+} else step(1 / 30);
+</script>
+</body>
+</html>

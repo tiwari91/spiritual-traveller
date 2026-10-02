@@ -31,9 +31,17 @@ The order starts with the shrine nearest Pune, takes Tirumala while still in the
 - **Kedarnath**: a coursed grey granite temple with a curved shikhara, a mandapa roofed in stepped stone slabs with snow on every ledge, a carved gable over a brass-framed door hung with bells and marigolds, a seated Nandi and the Bhim Shila boulder behind, under a ring of snow peaks at dawn.
 - **Badrinath**: the painted Singhdwar in red, blue, green and yellow with cusped arches, banded side towers and gilded onion domes, the gilded roof behind, steps down to the steaming Tapt Kund, a flag-hung footbridge over the Alaknanda and the bazaar's tin-roofed houses, with Neelkanth and the Nar and Narayan ranges above.
 
+## Aarti and temple music
+
+At each darshan the pujari comes to the door, blows the shankh and performs the aarti with a brass lamp and bell while the pilgrims raise their hands, and then offers the flame to the traveller. Each shrine has its own music, all synthesised in the page (no recordings): the Shaiva aarti with conch, damaru, bells, nagara and a harmonium drone at Bhimashankar (in the Maharashtrian style, with tal and pakhawaj) and at Kedarnath (with Garhwali dhol-damau and ransingha); the nadaswaram, thavil and jalra of the mangala vadyam at Tirumala; and harmonium, dholak and manjira for the Badrinath aarti. Turn sound on with M or the speaker button.
+
+## Getting to the door
+
+No vehicle goes into a temple. Each road ends at a bus stand short of the shrine, with buses, jeeps and autos parked in rows, and the traveller walks the last stretch up a paved path lined with flower, coconut and prasad stalls. The train runs on its own line beside the road, kept clear of every road and temple, carried over roads on overbridges; it pulls away slowly, runs at line speed and halts at each station.
+
 ## Inside the temples
 
-At each darshan, **Enter the temple** (or E) goes inside the lamp-lit sanctum, where the traveller performs that shrine's own rituals with a pujari, one step at a time (Space or → for the next, ← back, Esc to return outside):
+After the aarti the traveller goes inside the lamp-lit sanctum by themselves and performs that shrine's own rituals with a pujari, one after another, then comes back out. Press E (or the button) to go in again; Space or → skips ahead, ← goes back, Esc returns outside, and the wheel or a pinch zooms:
 
 - **Bhimashankar**: leave sandals and staff, ring the bell, go down into the sunken sanctum to the Jyotirlinga under its silver naga hood, abhishek with water, bilva leaves, aarti, take the aarti, vibhuti and prasad, pradakshina (turning back at the spout), and a bow.
 - **Kedarnath**: Nandi and the Pandava figures in the mandapa, the bell, darshan of the natural three-sided rock, water and then ghee rubbed on by hand, embracing the rock with the forehead, bilva, aarti, vibhuti and prasad, pradakshina, and a bow.
@@ -53,7 +61,7 @@ Each darshan card gives the deity, altitude, best season, how pilgrims usually g
 | Start again from Pune | 0 | pin menu |
 | Faster or slower | + and - | speed chip |
 | Look around | drag, arrow keys | drag |
-| Zoom | scroll, Page Up / Down | pinch |
+| Zoom | scroll, [ and ], magnifier buttons | pinch, magnifier buttons |
 | Reset the view | C or double-click | |
 | Time of day / weather | T / W | sun and cloud chips |
 | Mixed, train, bike or car | V | bike chip |

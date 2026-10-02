@@ -181,3 +181,5 @@ export class Traffic {
 	}
 }
 export { LEN };
+// A parked vehicle of the given type, as a Batch in metres, for bus stands and dhabas.
+export const parkedVehicle = (type, R) => MAKERS[type](R);

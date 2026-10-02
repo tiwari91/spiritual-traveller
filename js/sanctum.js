@@ -634,6 +634,8 @@ const BOWED = Object.assign({}, NAMASTE, { lean: 0.22, nod: 0.4 });
 const KNEEL = { kneeL: 1.62, kneeR: 1.62, hipL: -0.05, hipR: -0.05, bob: -0.45 };
 const PRANAM = { hipL: -1.3, hipR: -1.3, kneeL: 2.85, kneeR: 2.85, bob: -0.78, lean: 1.42, nod: 0.45, shL: -2.75, shLz: 0.15, shR: -2.75, shRz: -0.15, elL: -0.15, elR: -0.15 };
 const STAFF = { shR: -0.32, shRz: 0.08, elR: -0.5 };
+// sitting cross-legged on the sanctum floor, as pilgrims do for abhishek at Bhimashankar
+const SIT = { hipL: -1.45, hipR: -1.45, hipLz: 0.75, hipRz: -0.75, kneeL: 2.35, kneeR: 2.35, bob: -0.8, lean: 0.12 };
 const P = (...a) => Object.assign({}, ...a);
 
 function fill(p) {
@@ -1809,15 +1811,22 @@ function stepsFor(key, L) {
 		run(S, t) {
 			idlePriest(S, t);
 			S.cam = cam("pour");
-			const tw = walk(S.T, t, [L.front, L.pour], 0, 0.5);
+			// seated, the pilgrim settles a little further back so the crossed knees clear the pitha
+			const sitting = !L.ghee;
+			const tw = walk(S.T, t, [L.front, sitting ? [L.pour[0], L.pour[1] + 0.32] : L.pour], 0, 0.5);
 			const u = t - tw;
 			S.T.face = L.target;
-			const hold = P(STAND, { lean: 0.15, nod: 0.3, shR: -0.75, shRz: -0.1, elR: -0.9, shL: -0.6, shLz: 0.2, shLy: 0.5, elL: -1.4 });
-			const tip = P(hold, { lean: 0.32, nod: 0.45, shR: -1.05, elR: -0.55 });
-			S.hold.tR = u < 6.4 ? "lota" : null;
-			S.T.pose = kf(u, [[0, hold], [1.0, tip], [4.6, tip], [5.4, hold], [6.4, NAMASTE]]);
-			S.tilt.lota = num(u, [[0.6, 0.1], [1.5, 1.6], [4.4, 1.8], [5.2, 0.1]]);
-			if (u > 1.4 && u < 4.4) {
+			// at Bhimashankar the pilgrim sits down beside the low pitha before pouring; at Kedarnath they stand at the rock
+			const sit = !L.ghee;
+			const base = sit ? SIT : STAND, d = sit ? 1.6 : 0;
+			const hold = P(base, { lean: sit ? 0.3 : 0.15, nod: 0.3, shR: -0.75, shRz: -0.1, elR: -0.9, shL: -0.6, shLz: 0.2, shLy: 0.5, elL: -1.4 });
+			const tip = P(hold, { lean: sit ? 0.5 : 0.32, nod: 0.45, shR: -1.05, elR: -0.55 });
+			S.hold.tR = u < 6.4 + d ? "lota" : null;
+			S.T.pose = sit
+				? kf(u, [[0, P(STAND, { shR: -0.75, elR: -0.9, nod: 0.3 })], [0.6, P(KNEEL, { shR: -0.75, elR: -0.9 })], [1.6, hold], [2.6, tip], [6.2, tip], [7.0, P(SIT, NAMASTE)], [7.8, P(SIT, NAMASTE)], [8.8, NAMASTE]])
+				: kf(u, [[0, hold], [1.0, tip], [4.6, tip], [5.4, hold], [6.4, NAMASTE]]);
+			S.tilt.lota = num(u, [[0.6 + d, 0.1], [1.5 + d, 1.6], [4.4 + d, 1.8], [5.2 + d, 0.1]]);
+			if (u > 1.4 + d && u < 4.4 + d) {
 				S.emit.push({ from: S.spout("lota"), v: S.fwd(0.3, -0.05), spread: 0.008, rate: 140, color: 0xc8e0ee, size: 0.016, kill: L.pourTop });
 				S.flag("wet");
 			}
@@ -2126,7 +2135,10 @@ export class Sanctum {
 		this._cc = new THREE.Color();
 		this._onKey = this._onKey.bind(this);
 	}
-	enter(key) {
+	// auto: walk through every ritual by itself, moving on once the traveller and pujari have finished
+	// the step's actions and there has been time to read it, and leave after the last one.
+	enter(key, { auto = false } = {}) {
+		this.auto = auto;
 		if (this.active) this._teardown();
 		const shrine = SHRINES.find((s) => s.key === key);
 		if (!shrine) throw new Error(`Unknown shrine: ${key}`);
@@ -2381,7 +2393,39 @@ export class Sanctum {
 		};
 		root.addEventListener("pointerup", up);
 		root.addEventListener("pointercancel", up);
-		root.addEventListener("wheel", stop, { passive: true });
+		// zoom with the wheel or a pinch: a lens zoom, so the camera never passes through the sanctum walls
+		this.zoom = this.zoom || 1;
+		root.addEventListener("wheel", (e) => {
+			stop(e);
+			if (e.target.closest(".sn-panel")) return;
+			this.zoom = clamp(this.zoom * Math.exp(-e.deltaY * 0.0015), 0.6, 3.2);
+		}, { passive: true });
+		const touches = new Map();
+		let pinch = 0;
+		root.addEventListener("pointerdown", (e) => {
+			touches.set(e.pointerId, [e.clientX, e.clientY]);
+			if (touches.size === 2) {
+				const [a, b] = [...touches.values()];
+				pinch = Math.hypot(a[0] - b[0], a[1] - b[1]);
+			}
+		});
+		root.addEventListener("pointermove", (e) => {
+			if (!touches.has(e.pointerId)) return;
+			touches.set(e.pointerId, [e.clientX, e.clientY]);
+			if (touches.size === 2 && pinch > 0) {
+				const [a, b] = [...touches.values()];
+				const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+				this.zoom = clamp(this.zoom * (d / pinch), 0.6, 3.2);
+				pinch = d;
+				this.drag.on = false;
+			}
+		});
+		const lift = (e) => {
+			touches.delete(e.pointerId);
+			pinch = 0;
+		};
+		root.addEventListener("pointerup", lift);
+		root.addEventListener("pointercancel", lift);
 		root.addEventListener("dblclick", stop);
 		this.container.appendChild(root);
 		this._frame();
@@ -2483,10 +2527,27 @@ export class Sanctum {
 		const snap = this.snap;
 		this.trav.drive(S.T, dt, snap);
 		this.priest.drive(S.P, dt, snap);
+		if (this.auto && !this.leaving) this._autoStep(S, dt);
 		this._props(S);
 		this._effects(S, dt, this.time);
 		this._camera(S, dt, this.time, snap);
 		this.snap = false;
+	}
+	_autoStep(S, dt) {
+		// how much the actors' targets moved this frame; a step is done once both have been still a while
+		let d = Math.abs((S.T.x ?? 0) - (this._ax ?? 0)) + Math.abs((S.T.z ?? 0) - (this._az ?? 0));
+		const pose = S.T.pose || {}, prev = this._ap || {};
+		for (const k of KEYS) d += Math.abs((pose[k] ?? 0) - (prev[k] ?? 0));
+		this._ax = S.T.x;
+		this._az = S.T.z;
+		this._ap = Object.assign({}, pose);
+		this.quiet = d < 0.002 ? (this.quiet || 0) + dt : 0;
+		const text = (this.steps[this.idx].note || "").length;
+		const read = clamp(3 + text / 32, 5, 9);
+		if ((this.st > read && this.quiet > 1.6) || this.st > 22) {
+			this.quiet = 0;
+			this.next();
+		}
 	}
 	_props(S) {
 		const P = this.props, F = this.flags, L = this.L;
@@ -2706,6 +2767,11 @@ export class Sanctum {
 		this.camL.lerp(l, k);
 		this.camera.position.copy(this.camP);
 		this.camera.lookAt(this.camL);
+		const z = this.zoom || 1;
+		if (Math.abs(this.camera.zoom - z) > 1e-3) {
+			this.camera.zoom += (z - this.camera.zoom) * Math.min(1, dt * 8);
+			this.camera.updateProjectionMatrix();
+		}
 	}
 	render() {
 		if (!this.active || !this.scene) return;
