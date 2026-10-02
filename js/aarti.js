@@ -1,6 +1,6 @@
 // The aarti outside each shrine's door. A pujari steps out and blows the shankh, sets it down, takes up the lamp of
 // many wicks and the bell, and waves the flame in slow clockwise circles before the deity while the bell rings;
-// then he brings the flame to the traveller, who passes a palm over it and touches the eyes, and petals fall.
+// then he brings the flame to the traveller, who passes the right palm over it and touches the eyes, and petals fall.
 // Everything is built in the shrine's local frame (door toward +z at about z = 1.9) and follows music.aarti's clock.
 //
 //   const aarti = new Aarti({ scene, landmarks, music, traveller, low });
@@ -15,7 +15,7 @@
 //   aarti.dispose()     // when done with it for good: removes the light and the smoke texture
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { body, pose, SKIN } from "./pilgrim.js";
+import { body, crowdOpts, pose, RIGHT, LEFT, SKIN } from "./pilgrim.js";
 import { GOLD, glowTexture } from "./landmarks.js";
 import { aartiSchedule } from "./music.js";
 
@@ -73,13 +73,10 @@ function priest(o) {
 	return body({ skin: o.skin, top: o.top ?? o.skin, bottom: o.dhoti ?? 0xf5f1e6, sash: o.shawl, shawl: o.shawl, head: "hair", beard: o.beard || 0, pujari: !o.top, bare: !o.top, janeu: true, dhoti: "long", mark: o.mark || "tripundra", lod: 2 });
 }
 // A pilgrim merged into three meshes (body and two arms on shoulder pivots) so the arms can rise for the aarti.
-function devotee(seed, material) {
+function devotee(seed, material, place) {
 	const R = lcg(seed * 977 + 13);
-	const pick = (a) => a[Math.floor(R() * a.length)];
-	const woman = R() < 0.5, sari = pick([0xc0262d, 0xe0457b, 0xf2b01e, 0x2f8a4a, 0x7b2fa0, 0xe86a1c, 0x1f5fb0]);
-	const J = body(woman
-		? { skin: pick(SKIN), top: pick([0xb8261c, 0xf2c14e, 0x6a2a8a, 0x2a6aa0]), bottom: sari, sash: sari, head: R() < 0.7 ? "veil" : "hair", headColor: sari, sari: true }
-		: { skin: pick(SKIN), top: pick([0xf3efe6, 0xd9d2c0, 0xf0c050, 0x8fa0b8, 0x6f8f6a]), bottom: 0xf1ebdc, sash: pick([0xb8261c, 0xf3efe6, 0xd8b04a]), head: R() < 0.4 ? "turban" : "hair", headColor: pick([0xf3efe6, 0xd33a2c, 0xe8c85a]), beard: R() < 0.3 ? 0x3a3430 : 0 });
+	// dressed as the pilgrims of that place dress (see crowdOpts in pilgrim.js)
+	const J = body(crowdOpts(R, place));
 	pose(J, { elL: -0.75, elR: -0.75, shLz: 0, shRz: 0, nod: 0.08 });
 	J.root.updateMatrixWorld(true);
 	const parts = { body: [], L: [], R: [] };
@@ -91,9 +88,10 @@ function devotee(seed, material) {
 		for (let p = m; p; p = p.parent) if (p === J.shL || p === J.shR) side = p === J.shL ? "L" : "R";
 		const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
 		g.applyMatrix4(side === "body" ? m.matrixWorld : new THREE.Matrix4().multiplyMatrices(inv[side], m.matrixWorld));
+		// the material's colour times the part's own vertex colours (eyes, lips, borders, flowers)
+		const n = g.attributes.position.count, c = new Float32Array(n * 3), col = m.material.color, vc = g.attributes.color;
+		for (let i = 0; i < n; i++) c.set(vc ? [col.r * vc.getX(i), col.g * vc.getY(i), col.b * vc.getZ(i)] : [col.r, col.g, col.b], i * 3);
 		for (const k of Object.keys(g.attributes)) if (k !== "position" && k !== "normal") g.deleteAttribute(k);
-		const n = g.attributes.position.count, c = new Float32Array(n * 3), col = m.material.color;
-		for (let i = 0; i < n; i++) c.set([col.r, col.g, col.b], i * 3);
 		g.setAttribute("color", new THREE.BufferAttribute(c, 3));
 		parts[side].push(g);
 		m.geometry.dispose();
@@ -370,7 +368,7 @@ export class Aarti {
 		// pilgrims who join in
 		this.devMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
 		this.devotees = L.devotees.map(([x, z], k) => {
-			const d = devotee(i * 10 + k + 1, this.devMat);
+			const d = devotee(i * 10 + k + 1, this.devMat, key);
 			d.root.position.set(x, fl([x, z]), z);
 			d.root.rotation.y = Math.atan2(L.door[0] - x, L.door[1] - z) + Math.sin(k * 2.3) * 0.2;
 			root.add(d.root);
@@ -435,11 +433,14 @@ export class Aarti {
 		if (r) r(true);
 	}
 	// the traveller's staff, rested on the ground while a hand is busy, comes back
+	// (and the diya, moved to the left hand while the right takes the flame, goes back to the right)
 	handBack() {
+		const J = this.traveller && this.traveller.J;
+		if (J && J.diya && J.diya.parent !== J["hand" + RIGHT]) J["hand" + RIGHT].add(J.diya);
 		if (!this.restStaff) return;
 		this.restStaff.parent.remove(this.restStaff);
 		this.restStaff = null;
-		if (this.traveller && this.traveller.J.staff) this.traveller.J.staff.visible = true;
+		if (J && J.staff) J.staff.visible = true;
 	}
 	get focus() {
 		return this.active ? this.lamp.localToWorld(this.lamp.userData.top.clone()) : null;
@@ -548,14 +549,14 @@ export class Aarti {
 			lampT.lerp(st, reachK);
 			bellT.lerp(st, reachK);
 			if (p >= c.pick) {
-				// set the conch down; take up the lamp and the bell
+				// set the conch down; take up the lamp in the right hand and the bell in the left
 				this.held = true;
 				this.stand.add(this.conch);
 				this.conch.position.set(0.06, 0.53, -0.08);
 				this.conch.rotation.set(0, 0.6, Math.PI / 2);
-				J.handL.add(this.lamp);
+				J["hand" + RIGHT].add(this.lamp);
 				this.lamp.position.set(0, -0.01, 0.025);
-				J.handR.add(this.bell);
+				J["hand" + LEFT].add(this.bell);
 				this.bell.position.set(0, -0.005, 0.02);
 			}
 		} else if (this.phase === "aarti" || this.phase === "peal" || this.phase === "conch") {
@@ -573,8 +574,10 @@ export class Aarti {
 			const me = J.torso.getWorldPosition(new THREE.Vector3());
 			lampT = tw.clone().lerp(me, 0.5);
 			lampT.y = tw.y + 0.03;
+			// then the right hand rises and scatters the flowers over them in blessing
 			const up = p > c.petals - 0.5 && p < c.petals + 0.4;
-			bellT = up ? loc(0.25, 1.75, 0.25) : loc(0.22, 1.15, 0.22);
+			if (up) lampT = loc(-0.22, 1.72, 0.3);
+			bellT = loc(0.22, 1.15, 0.22);
 		} else {
 			lampT = loc(-0.1, 1.2, 0.34);
 			bellT = loc(0.22, 1.12, 0.22);
@@ -584,8 +587,8 @@ export class Aarti {
 		if (!this.lampH) this.lampH = lampT.clone(), (this.bellH = bellT.clone());
 		this.lampH.lerp(lampT, k);
 		this.bellH.lerp(bellT, k);
-		reach(J.shL, J.elL, this.lampH);
-		reach(J.shR, J.elR, this.bellH);
+		reach(J["sh" + RIGHT], J["el" + RIGHT], this.lampH);
+		reach(J["sh" + LEFT], J["el" + LEFT], this.bellH);
 		pj.fig.updateMatrixWorld(true);
 		if (this.held) {
 			level(this.lamp, pj.fig.parent);
@@ -661,7 +664,7 @@ export class Aarti {
 		const _o = new THREE.Object3D();
 		if (!pm.visible) {
 			pm.visible = true;
-			const hand = this.lm.root.worldToLocal(this.pj.J.handR.getWorldPosition(new THREE.Vector3()));
+			const hand = this.lm.root.worldToLocal(this.pj.J["hand" + RIGHT].getWorldPosition(new THREE.Vector3()));
 			const R = lcg(77);
 			this.petY = this.trav ? this.floor(this.lm, this.trav.x, this.trav.z) : this.y.spot;
 			for (const q of this.pet) {
@@ -696,7 +699,8 @@ export class Aarti {
 		}
 		pm.instanceMatrix.needsUpdate = true;
 	}
-	// The traveller rests the staff, passes a palm over the flame and touches the eyes, twice.
+	// The traveller rests the staff, takes the diya into the left hand, passes the right palm over the flame and
+	// touches the eyes, twice.
 	takeFlame(p, c, flame, offerWalk) {
 		const T = this.traveller, J = T.J;
 		const g0 = c.offer[0] + offerWalk + 0.4, g1 = c.petals - 0.6;
@@ -714,8 +718,9 @@ export class Aarti {
 			this.restStaff = s;
 		}
 		if (J.staff) J.staff.visible = false;
+		if (J.diya && J.diya.parent !== J["hand" + LEFT]) J["hand" + LEFT].add(J.diya);
 		const sc = T.group.getWorldScale(new THREE.Vector3()).x * 0.28;
-		const hand = J.handR.getWorldPosition(new THREE.Vector3());
+		const hand = J["hand" + RIGHT].getWorldPosition(new THREE.Vector3());
 		const head = J.head.getWorldPosition(new THREE.Vector3());
 		const fwd = new THREE.Vector3(Math.sin(T.yaw), 0, Math.cos(T.yaw)).applyQuaternion(T.group.getWorldQuaternion(new THREE.Quaternion()));
 		const eyes = head.addScaledVector(fwd, 0.13 * sc).add(new THREE.Vector3(0, -0.01 * sc, 0));
@@ -726,7 +731,10 @@ export class Aarti {
 		// over the flame, up to the eyes, and (but for the last pass) back down to the flame
 		const toEyes = p < g0 + 0.5 ? 0 : smooth(0.42, 0.62, f) * (pass === n - 1 ? 1 : 1 - smooth(0.9, 1, f));
 		const target = over.lerp(eyes, toEyes);
-		reach(J.shR, J.elR, hand.lerp(target, w));
+		reach(J["sh" + RIGHT], J["el" + RIGHT], hand.lerp(target, w));
+		// the diya held steady in the left hand, a little out from the waist
+		const lh = J["hand" + LEFT].getWorldPosition(new THREE.Vector3());
+		reach(J["sh" + LEFT], J["el" + LEFT], lh.lerp(J.root.localToWorld(new THREE.Vector3(0.16, 1.0, 0.24)), w));
 		J.head.rotation.x += 0.22 * toEyes * w;
 		if (this.onPose) this.onPose(J, w);
 	}

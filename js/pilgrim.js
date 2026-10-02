@@ -11,8 +11,9 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { glowTexture } from "./landmarks.js";
 import { rand } from "./util.js";
 
-// Indian skin tones, wheatish to deep; the first four are the ones the interiors use by index.
-const SKIN = [0x8d5a3b, 0x7a4a2f, 0xa06a46, 0x6b4029, 0xb37a55, 0x5a3523, 0x96603f];
+// South Asian skin tones, wheatish to deep brown, warm but not orange; the first four are the ones the
+// interiors use by index (the traveller, then pujaris and archakas).
+const SKIN = [0x96694e, 0x77523f, 0xa97d5f, 0x634433, 0xbb9172, 0x513628, 0x8b6148];
 const HAIR = 0x1b1612, SOLE = 0x3a2a1e, TILAK = 0xd23a1e;
 const GOLD = 0xd9a441;
 const TAU = Math.PI * 2;
@@ -261,14 +262,23 @@ function weave() {
 }
 
 // ---------- materials ----------
+// Skin: a warm undertone and a soft reddish sheen at grazing angles where light would scatter under it, a little
+// oily shine, and no orange cast.
 function skinMat(hex, lod, o = {}) {
-	if (!lod) return new THREE.MeshStandardMaterial({ color: hex, vertexColors: true });
+	if (!lod) return new THREE.MeshStandardMaterial({ color: hex, vertexColors: true, roughness: 0.7 });
 	const c = new THREE.Color(hex);
 	return new THREE.MeshPhysicalMaterial(Object.assign({
-		color: hex, roughness: 0.55, vertexColors: true, specularIntensity: 0.55,
-		sheen: 0.4, sheenRoughness: 0.45, sheenColor: c.clone().lerp(new THREE.Color(0xff8a66), 0.55),
-		emissive: c.clone().multiplyScalar(0.06),
+		color: hex, roughness: 0.52, vertexColors: true, specularIntensity: 0.5, specularColor: new THREE.Color(0xfff2ea),
+		sheen: 0.32, sheenRoughness: 0.5, sheenColor: c.clone().lerp(new THREE.Color(0xb84a3a), 0.4),
+		emissive: c.clone().lerp(new THREE.Color(0x8a2a1e), 0.35).multiplyScalar(0.035),
 	}, o));
+}
+// A skin tone with a little natural variation: lightness and warmth shifted slightly, never towards orange.
+function varySkin(hex, R) {
+	const c = new THREE.Color(hex), h = {};
+	c.getHSL(h, THREE.SRGBColorSpace);
+	c.setHSL(clamp(h.h + (R() - 0.5) * 0.012, 0.04, 0.08), clamp(h.s * (0.88 + R() * 0.2), 0.22, 0.42), clamp(h.l * (0.92 + R() * 0.16), 0.14, 0.64), THREE.SRGBColorSpace);
+	return c.getHex();
 }
 function clothMat(hex, lod, o = {}) {
 	if (!lod) return new THREE.MeshStandardMaterial({ color: hex, vertexColors: true, side: THREE.DoubleSide });
@@ -279,9 +289,10 @@ function clothMat(hex, lod, o = {}) {
 		map: weave(), bumpMap: weave(), bumpScale: 0.5,
 	}, o));
 }
+// Black hair, oiled and combed, with a soft shine.
 function hairMat(hex, lod) {
-	if (!lod) return new THREE.MeshStandardMaterial({ color: hex, vertexColors: true });
-	return new THREE.MeshPhysicalMaterial({ color: hex, roughness: 0.55, vertexColors: true, sheen: 0.7, sheenRoughness: 0.32, sheenColor: new THREE.Color(hex).lerp(new THREE.Color(0x8a6a50), 0.6), specularIntensity: 0.7 });
+	if (!lod) return new THREE.MeshStandardMaterial({ color: hex, vertexColors: true, roughness: 0.6 });
+	return new THREE.MeshPhysicalMaterial({ color: hex, roughness: 0.4, vertexColors: true, sheen: 0.7, sheenRoughness: 0.3, sheenColor: new THREE.Color(hex).lerp(new THREE.Color(0x7a6656), 0.6), specularIntensity: 0.9, clearcoat: 0.25, clearcoatRoughness: 0.35 });
 }
 
 // ---------- the head ----------
@@ -601,12 +612,14 @@ function body(opts) {
 	const J = { root, hips, cloth: [], lod, fem };
 	const surf = torsoShape(fem, opts.build);
 	const longDhoti = pujari || opts.dhoti === "long";
+	// a pyjama (or a woman's salwar) instead of the dhoti: trousers to the ankle, gathered there
+	const pyj = !opts.sari && !bare && (!!opts.pyjama || fem);
 	const k = fem ? 0.9 : 1; // limb girth
 	// ---- legs: dhoti over the thighs, bare shins, chappals ----
 	for (const side of [-1, 1]) {
 		const S = side < 0 ? "L" : "R";
 		const hip = joint(side * 0.095, 0, 0, hips);
-		const loose = fem ? 0.92 : 1.1;
+		const loose = fem ? 0.92 : pyj ? 0.95 : 1.1;
 		// soft folds round the leg, the hollows a little darker so the cloth reads as cloth
 		const fold = (p, th, r) => {
 			const a = 1 + (fem ? 0.01 : 0.05) * Math.sin(5 * th + r[0] * 11 + side * 2) + (fem ? 0 : 0.03) * Math.sin(8 * th - r[0] * 19 + side);
@@ -626,11 +639,23 @@ function body(opts) {
 			const k = 0.78 + 0.22 * clamp((a - 0.92 + 0.04 * (1 - f)) / (0.1 + 0.08 * f), 0, 1);
 			return [p[0] * a, y + hemDrop, p[2] * a, [k, k, k * 0.98]];
 		};
-		const kt = fem
+		let kt = fem
 			? [[0.075, 0, 0], [0.055, 0.07, 0.07], [0.0, 0.086 * loose, 0.084 * loose], [-dl * 0.5, 0.084, 0.083], [-dl, 0.09, 0.088], [-dl + 0.006, 0, 0]]
 			: [[0.08, 0, 0], [0.062, 0.066, 0.068], [0.03, 0.09, 0.094], [0.0, 0.096, 0.1, 0, 0.004], [-dl * 0.3, 0.094, 0.098, 0, 0.006], [-dl * 0.65, hw * 0.95, hw * 1.0, 0, 0.01], [-dl, hw, hw * 1.04, 0, 0.012], [-dl - 0.004, hw * 0.99, hw * 1.03, 0, 0.012], [-dl + 0.014, hw * 0.9, hw * 0.93, 0, 0.011]];
-		part(tube(kt, sg(fem ? 8 : 26), fem ? 1 : sg(4, 1), fem ? fold : fall), M.bottom, 0, 0, 0, knee);
-		J.legR = { thigh: fem ? 0.085 : 0.097, knee: fem ? 0.09 : hw * 0.9, dl };
+		let kf = fem ? fold : fall;
+		if (pyj) {
+			// down to the ankle, full over the calf and gathered at the cuff in small folds
+			const sl = fem ? 1.08 : 1;
+			kt = [[0.08, 0, 0], [0.062, 0.066, 0.068], [0.0, 0.088 * sl, 0.092 * sl], [-0.12, 0.084 * sl, 0.088 * sl], [-0.24, 0.075 * sl, 0.079 * sl, 0, -0.004], [-0.32, 0.064 * sl, 0.067 * sl], [-0.365, 0.05, 0.053], [-0.378, 0.044, 0.047], [-0.384, 0.041, 0.044], [-0.374, 0, 0]];
+			kf = (p, th, r) => {
+				const y = p[1], g = sstep(-0.26, -0.37, y);
+				const a = 1 + 0.035 * Math.sin(5 * th + side + y * 9) * (1 - g) + 0.06 * Math.abs(Math.sin(9 * th + y * 40)) * g;
+				const kk = 0.84 + 0.16 * clamp((a - 0.97) / 0.08, 0, 1);
+				return [p[0] * a, y, p[2] * a, [kk, kk, kk * 0.98]];
+			};
+		}
+		part(tube(kt, sg(fem && !pyj ? 8 : 22), fem && !pyj ? 1 : sg(4, 1), kf), M.bottom, 0, 0, 0, knee);
+		J.legR = pyj ? { thigh: 0.092, knee: 0.085, dl: 0.38 } : { thigh: fem ? 0.085 : 0.097, knee: fem ? 0.09 : hw * 0.9, dl };
 		// the shin, with the calf behind
 		part(tube([[0.032, 0, 0], [0.022, 0.04 * k, 0.04 * k], [0.0, 0.049 * k, 0.05 * k, 0, 0.003], [-0.06, 0.049 * k, 0.054 * k, 0, -0.004], [-0.13, 0.045 * k, 0.054 * k, 0, -0.011], [-0.24, 0.037 * k, 0.04 * k, 0, -0.005], [-0.34, 0.029 * k, 0.031 * k], [-0.39, 0.027 * k, 0.03 * k], [-0.41, 0.023, 0.026], [-0.425, 0, 0]], sg(fem ? 10 : 16), fem ? 1 : sg(3, 1)), M.skin, 0, 0, 0, knee);
 		const ankle = joint(0, -0.4, 0, knee);
@@ -654,20 +679,23 @@ function body(opts) {
 			const crease = 1 - 0.2 * gs(p[0], 0.028) * sstep(-0.08, -0.17, p[1]);
 			return [p[0] * fold, p[1], p[2] * fold * crease];
 		}), M.bottom, 0, 0, 0, hips);
-		const pbot = longDhoti ? -0.8 : -0.66, pnt = sg(14), pnu = sg(16, 6);
-		const plF = (t, u) => {
-			const y = lerp(0.08, pbot, t), th = u * TAU, s = Math.sin(th), c = Math.cos(th);
-			const w = lerp(0.034, 0.1, sstep(0.0, 0.85, t)), z0 = (bare ? 0.114 : 0.098) + 0.024 * sstep(0.25, 1, t);
-			const x = s * w, tri = Math.abs(frac((x / 0.0145) + 0.5) - 0.5) * 2;
-			return [x, y, z0 + 0.007 * tri * sstep(0, 0.25, t) + c * 0.003];
-		};
-		const panel = part(loft(pnt, pnu, plF), M.bottom, 0, 0, 0, hips);
-		const tA = (0.08 - 0.03) / (0.08 - pbot);
-		drapeable(J, panel, { frame: "hips", clear: 0.006, anchor: (v, k) => (v.y >= 0.03 ? null : V(...plF(tA, (k % (pnu + 1)) / pnu))) });
-		J.pleats = panel;
-		if (lod) {
-			const kc = ribbon([V(0, 0.09, -0.118), V(0, -0.02, -0.128), V(0, -0.12, -0.105), V(0, -0.19, -0.04)], { nt: sg(10), nth: 6, w: (t) => lerp(0.05, 0.03, t), th: 0.014, up: () => V(0, 0, -1), fold: (t, s) => 0.004 * Math.sin(s * 4 + t * 9) });
-			part(kc, M.bottom, 0, 0, 0, hips);
+		// (a pyjama has no pleats in front and no kachha)
+		if (!pyj) {
+			const pbot = longDhoti ? -0.8 : -0.66, pnt = sg(14), pnu = sg(16, 6);
+			const plF = (t, u) => {
+				const y = lerp(0.08, pbot, t), th = u * TAU, s = Math.sin(th), c = Math.cos(th);
+				const w = lerp(0.034, 0.1, sstep(0.0, 0.85, t)), z0 = (bare ? 0.114 : 0.098) + 0.024 * sstep(0.25, 1, t);
+				const x = s * w, tri = Math.abs(frac((x / 0.0145) + 0.5) - 0.5) * 2;
+				return [x, y, z0 + 0.007 * tri * sstep(0, 0.25, t) + c * 0.003];
+			};
+			const panel = part(loft(pnt, pnu, plF), M.bottom, 0, 0, 0, hips);
+			const tA = (0.08 - 0.03) / (0.08 - pbot);
+			drapeable(J, panel, { frame: "hips", clear: 0.006, anchor: (v, k) => (v.y >= 0.03 ? null : V(...plF(tA, (k % (pnu + 1)) / pnu))) });
+			J.pleats = panel;
+			if (lod) {
+				const kc = ribbon([V(0, 0.09, -0.118), V(0, -0.02, -0.128), V(0, -0.12, -0.105), V(0, -0.19, -0.04)], { nt: sg(10), nth: 6, w: (t) => lerp(0.05, 0.03, t), th: 0.014, up: () => V(0, 0, -1), fold: (t, s) => 0.004 * Math.sin(s * 4 + t * 9) });
+				part(kc, M.bottom, 0, 0, 0, hips);
+			}
 		}
 	}
 	// ---- the torso ----
@@ -709,7 +737,7 @@ function body(opts) {
 		part(outward(g), M.bottom, 0, 0, 0, torso);
 	} else {
 		// the kurta's skirt: flaring to above the knee, open in side slits, the hem rolled inside
-		const top = 0.1, slit = -0.2, bot = -0.42;
+		const top = 0.1, slit = -0.2, bot = fem ? -0.52 : -0.42; // a woman's kameez falls to the knee
 		const nth = sg(40, 10);
 		const ring = (y, th) => {
 			const p = surf(Math.max(y, -0.08), th, 0.02, 1), f = sstep(-0.06, bot, y);
@@ -735,7 +763,8 @@ function body(opts) {
 		drapeable(J, hem, { frame: "torso", clear: 0.024, gap: true, wT: (y) => sstep(-0.02, 0.1, y), anchor: (v, k) => (v.y >= 0.075 ? null : V(...ring(0.075, ths[k]))) });
 	}
 	// the chest: a kurta, or bare skin (also under the choli)
-	const skinTorso = bare || fem;
+	// (a woman in a salwar kameez wears the kameez like a kurta; the choli and bare midriff go with the sari)
+	const skinTorso = bare || (fem && !!opts.sari);
 	{
 		const tg = loft(sg(36, 10), sg(44, 12), (t, u) => {
 			const th = u * TAU, y = skinTorso ? lerp(0.568, -0.08, t ** 1.2) : lerp(0.568, 0.0, t ** 1.2);
@@ -815,7 +844,7 @@ function body(opts) {
 			return [p[0] * wr, p[1], p[2] * wr];
 		} : null);
 		part(ug, kurta ? M.top : M.skin, 0, 0, 0, sh);
-		if (fem && lod) {
+		if (fem && opts.sari && lod) {
 			// the choli's short sleeve
 			const cs = tube([[0.03, 0, 0, -side * 0.03], [0.025, 0.03, 0.034, -side * 0.026], [0.011, 0.047, 0.05, -side * 0.018], [-0.02, 0.051, 0.054, -side * 0.01], [-0.08, 0.046, 0.05, -side * 0.005], [-0.11, 0.045, 0.049, -side * 0.004], [-0.114, 0.038, 0.042, -side * 0.004], [-0.108, 0, 0, -side * 0.004]], sg(18), sg(2, 1));
 			part(cs, M.top, 0, 0, 0, sh);
@@ -848,7 +877,7 @@ function body(opts) {
 		J["hand" + S] = hand;
 	}
 	// ---- the rest of the dress ----
-	if (fem) {
+	if (fem && opts.sari) {
 		// the choli: over the chest and shoulders, a scooped neck, ending above the midriff
 		const g = loft(sg(16, 6), sg(44, 12), (t, u) => {
 			const th = u * TAU, a = Math.atan2(Math.sin(th), Math.cos(th));
@@ -930,7 +959,8 @@ function body(opts) {
 		part(ribbon(pts, { nt: sg(26, 10), sec: lod ? [-1, -0.72, -0.66, 0.66, 0.72, 1] : [-1, 1], w: () => 0.03, th: 0.004, up: (p) => (p.y < 0.1 ? V(-1, 0, 0) : up(p)), col: (t, s) => (Math.abs(s) > 0.7 ? st[1] : null) }), M.bag, 0, 0, 0, torso);
 	}
 	if (opts.staff) {
-		// the staff is held in the right hand, its foot near the ground
+		// the staff is held in the left hand (the +x arm, "R" in the skeleton), its foot near the ground: the right
+		// hand carries the diya, the sacred thing
 		const sg2 = tube([[0.875, 0, 0], [0.87, 0.021, 0.021], [0.85, 0.026, 0.026], [0.82, 0.019, 0.019], [0.6, 0.017, 0.017], [-0.6, 0.019, 0.019], [-0.84, 0.02, 0.02], [-0.86, 0.022, 0.022], [-0.875, 0.012, 0.012], [-0.878, 0, 0]], 10, 1, (p, th, r) => {
 			const y = p[1], knot = 1 + 0.12 * gs(y - 0.3, 0.02) + 0.1 * gs(y + 0.2, 0.025);
 			const c = y < -0.83 || (y > 0.79 && y < 0.81) ? ratio(0xb88a3e, 0x6b4a2a) : y > 0.81 ? [1.25, 1.2, 1.15] : null;
@@ -941,6 +971,7 @@ function body(opts) {
 		J.staff = st;
 	}
 	if (opts.diya) {
+		// the clay diya in the right hand (the -x arm, "L" in the skeleton)
 		const clay = mat(0xa9532a, { roughness: 0.8 });
 		const d = joint(0, 0.0, 0.045, J.handL);
 		const bowl = part(prim(new THREE.SphereGeometry(0.06, 16, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2)), clay, 0, 0.02, 0, d);
@@ -965,7 +996,10 @@ function body(opts) {
 // The face, hair and headdress, with the marks on the forehead.
 function buildHead(J, head, opts, M, c) {
 	const { lod, sg, fem, pujari, elder, hairHex, skinHex } = c;
-	const shaven = pujari;
+	const kind = opts.head || "hair";
+	// a head shaven at Tirumala, the hair given to the Lord, cooled with sandal paste
+	const tonsured = kind === "tonsured";
+	const shaven = pujari || tonsured;
 	const hairline = HAIRLINE[fem ? "f" : "m"];
 	// the skull and face; vertex colours warm the lips and cheeks and shade the sockets
 	{
@@ -974,6 +1008,7 @@ function buildHead(J, head, opts, M, c) {
 		const lipC = ratio(new THREE.Color(skinHex).lerp(new THREE.Color(0x7a2a2c), 0.3).multiplyScalar(0.82), skinHex);
 		const browC = ratio(hairHex, skinHex);
 		const stub = ratio(new THREE.Color(skinHex).lerp(new THREE.Color(0x2a2a30), 0.42), skinHex);
+		const chandan = ratio(0xe2c48a, skinHex);
 		for (let i = 0; i < a.count; i++) {
 			headPt(a.getX(i), a.getY(i), a.getZ(i), p);
 			a.setXYZ(i, p[0], p[1], p[2]);
@@ -994,7 +1029,9 @@ function buildHead(J, head, opts, M, c) {
 			}
 			if (shaven) {
 				const phi = Math.atan2(x, z), m = sstep(lineAt(hairline, phi) - 0.002, lineAt(hairline, phi) + 0.01, y);
-				col = mixc(col, stub, m * 0.8);
+				col = mixc(col, stub, m * (tonsured ? 0.35 : 0.8));
+				// the sandal paste, smeared over the crown
+				if (tonsured) col = mixc(col, chandan, m * sstep(0.02, 0.07, y) * (0.75 + 0.25 * Math.sin(x * 90 + z * 70)));
 			}
 			cl.setXYZ(i, col[0], col[1], col[2]);
 		}
@@ -1109,9 +1146,8 @@ function buildHead(J, head, opts, M, c) {
 			part(g, M.skin, f[0] - n.x * 0.0022, f[1], f[2] - n.z * 0.0022, head);
 		}
 	}
-	// hair, a turban or the sari's veil
-	const kind = opts.head || "hair";
-	if (kind === "turban") {
+	// hair (with a Gandhi topi or a hill cap over it), a turban or pheta, a shaven head or the sari's veil
+	if (kind === "turban" || kind === "pheta") {
 		const off = (p) => 0.017 + 0.024 * sstep(0.02, 0.112, p[1]);
 		const shade = (p, phi, m) => [1, 1, 1].map((v) => v * (0.82 + 0.18 * m));
 		part(headShell(sg(36, 12), sg(22, 8), Math.PI * 0.62, HAIRLINE.turban, off, shade), M.head, 0, 0, 0, head);
@@ -1134,6 +1170,14 @@ function buildHead(J, head, opts, M, c) {
 			return V(p[0], p[1], p[2]).addScaledVector(nn, off(p) + 0.01);
 		});
 		part(ribbon(fp, { nt: sg(10, 4), nth: 6, th: 0.01, w: () => 0.026, up: (p) => V(p.x, p.y * 0.5, p.z) }), M.head, 0, 0, 0, head);
+		if (kind === "pheta") {
+			// the Maharashtrian pheta: the cloth's free end (the shemla) falls from the back of the head to the shoulders
+			const b0 = headRing(Math.PI, 0.03), nb = headN(b0);
+			const top = V(b0[0], b0[1], b0[2]).addScaledVector(nb, off(b0) + 0.006);
+			const pts = [top, top.clone().add(V(0.004, -0.08, -0.025)), top.clone().add(V(0.012, -0.2, -0.03)), top.clone().add(V(0.02, -0.33, -0.012))];
+			const bc = ratio(c.border, opts.headColor ?? opts.sash);
+			part(ribbon(pts, { nt: sg(16, 6), th: 0.006, lod, up: () => V(0, 0.15, -1), w: (t) => lerp(0.05, 0.085, t), fold: (t, s) => 0.004 * Math.sin(s * 5 + t * 6), col: (t, s) => (t > 0.9 || Math.abs(s) > 0.84 ? bc : null) }), M.head, 0, 0, 0, head);
+		}
 	} else if (!shaven) {
 		const fhl = hairline;
 		const vol = fem ? (p) => 0.006 + 0.01 * sstep(0.0, 0.1, p[1]) - 0.003 * gs(p[0], 0.005) * (p[2] > 0 ? 1 : 0) * sstep(0.04, 0.09, p[1]) : (p) => 0.0045 + 0.008 * sstep(-0.02, 0.1, p[1]) + 0.002 * (p[2] < 0 ? 1 : 0);
@@ -1144,7 +1188,44 @@ function buildHead(J, head, opts, M, c) {
 			return [v * parting, v * parting, v * parting];
 		};
 		part(headShell(sg(40, 12), sg(26, 8), Math.PI * (fem ? 0.82 : 0.75), fhl, vol, strand), M.hair, 0, 0, 0, head);
-		if (fem && kind !== "veil") {
+		// a line along the top of the head, just above the hair at x: a man's side parting (the scalp showing),
+		// or the sindoor in a married woman's centre parting
+		const parting = (x, m, w) => {
+			const pts = [];
+			for (let i = 0; i <= 8; i++) {
+				const a = lerp(0.92, 1.75, i / 8), q = V(x / HR[0], Math.sin(a), Math.cos(a)).normalize();
+				const p = headPt(q.x, q.y, q.z), n = headN(p);
+				pts.push(V(p[0], p[1], p[2]).addScaledVector(n, vol(p) + 0.0009));
+			}
+			return part(ribbon(pts, { nt: sg(14, 6), w: (t) => w * (1 - 0.6 * t), th: 0.0012, sec: [-1, -0.4, 0.4, 1], up: (p) => headN([p.x, p.y, p.z]) }), m, 0, 0, 0, head);
+		};
+		if (!fem && lod && kind === "hair") parting(0.034, M.skin, 0.0032);
+		if (fem && opts.sindoor && lod && kind !== "veil") parting(0, mat(TILAK, { emissive: 0x400800, vertexColors: true }), 0.004);
+		if (fem && kind !== "veil" && opts.hairStyle === "braid") {
+			// the choti: a plait from the nape down the back, a string of jasmine at its top and a tassel at the end
+			const jas = ratio(0xf4f0e2, hairHex), leaf = ratio(0x4c7a32, hairHex), tas = ratio(opts.sash ?? 0xb8261c, hairHex);
+			const pts = [V(0, -0.02, -0.098), V(0, -0.1, -0.13), V(0, -0.22, -0.155), V(0, -0.36, -0.17), V(0, -0.48, -0.17)];
+			const cv = new THREE.CatmullRomCurve3(pts);
+			const n = lod ? 13 : 6;
+			for (let i = 0; i < n; i++) {
+				const t = (i + 0.5) / n, p = cv.getPointAt(t), tg = cv.getTangentAt(t);
+				const k = lerp(1, 0.62, t);
+				const g = prim(new THREE.SphereGeometry(1, sg(10, 5), sg(8, 4)));
+				g.scale(0.021 * k, 0.034 * k * (10 / n) * 1.25, 0.014 * k);
+				g.rotateY(i % 2 ? 0.45 : -0.45);
+				const s = part(g, M.hair, p.x, p.y, p.z, head);
+				s.quaternion.setFromUnitVectors(V(0, 1, 0), tg.clone().negate());
+			}
+			const end = cv.getPointAt(1);
+			part(prim(new THREE.ConeGeometry(0.012, 0.06, sg(8, 5)), tas), M.hair, end.x, end.y - 0.03, end.z, head).rotation.x = Math.PI;
+			if (lod) {
+				// the gajra, jasmine buds down the first part of the plait
+				for (let i = 0; i < 9; i++) {
+					const t = 0.03 + i * 0.035, p = cv.getPointAt(t);
+					for (const sx of [-1, 1]) part(prim(new THREE.SphereGeometry(0.0055, 5, 4), i % 4 === 3 ? leaf : jas), M.hair, p.x + sx * 0.018 * lerp(1, 0.8, t), p.y, p.z - 0.004, head);
+				}
+			}
+		} else if (fem && kind !== "veil") {
 			// a bun at the nape with a string of jasmine round it
 			const bun = part(prim(new THREE.SphereGeometry(0.036, sg(16, 6), sg(12, 5))), M.hair, 0, -0.03, -0.112, head);
 			bun.scale.set(1.08, 0.86, 0.78);
@@ -1157,7 +1238,28 @@ function buildHead(J, head, opts, M, c) {
 				ring.scale.set(1.05, 0.86, 1);
 			}
 		}
-	} else {
+		if (kind === "topi") {
+			// the Gandhi topi: white khadi folded into a boat, a crease along the top from front to back
+			const line = [[0, 0.058], [0.8, 0.06], [1.57, 0.05], [2.4, 0.044], [3.2, 0.036]];
+			const off = (p) => vol(p) + 0.004 + 0.034 * gs(p[0], 0.03) * sstep(0.05, 0.1, p[1]) + 0.01 * sstep(0.06, 0.1, p[1]);
+			const shade = (p, phi, m) => {
+				const k = 0.82 + 0.18 * m - 0.12 * gs(p[0], 0.004) * sstep(0.08, 0.11, p[1]);
+				return [k, k, k];
+			};
+			part(headShell(sg(36, 12), sg(20, 8), Math.PI * 0.6, line, off, shade, 0.006), M.head, 0, 0, 0, head);
+		} else if (kind === "cap") {
+			// a woollen hill cap, a band of another colour round its edge
+			const line = [[0, 0.07], [0.7, 0.064], [1.3, 0.04], [1.7, 0.032], [2.5, 0.01], [3.2, 0.0]];
+			const band = ratio(opts.capBand ?? 0x7a1d24, opts.headColor ?? opts.sash);
+			const off = (p) => vol(p) + 0.01 + 0.012 * sstep(0.05, 0.11, p[1]);
+			const knit = (p, phi, m, edge) => {
+				if (p[1] - edge < 0.024) return band;
+				const k = 0.9 + 0.1 * Math.sin(phi * 60);
+				return [k, k, k];
+			};
+			part(headShell(sg(40, 12), sg(22, 8), Math.PI * 0.7, line, off, knit, 0.008), M.head, 0, 0, 0, head);
+		}
+	} else if (pujari) {
 		// a shaven head with the shikha at the crown
 		const sp = headRing(Math.PI, 0.094), n = headN(sp);
 		const base = V(sp[0], sp[1], sp[2]).addScaledVector(n, 0.004);
@@ -1303,7 +1405,9 @@ function wrists(J) {
 		const pos = h.position.clone().applyQuaternion(_qe).add(el.position).applyQuaternion(_qs).add(sh.position);
 		H.push({ q, pos, el, m: J["palm" + S] });
 	}
-	const near = 1 - sstep(0.07, 0.16, H[0].pos.distanceTo(H[1].pos));
+	// (J.cupped: one hand held under the other or under a vessel, as when receiving prasad or pouring, so the palms
+	// are not turned together)
+	const near = J.cupped ? 0 : 1 - sstep(0.07, 0.16, H[0].pos.distanceTo(H[1].pos));
 	for (const h of H) {
 		const w = near * sstep(0.7, 1.3, -h.el.rotation.x);
 		if (w < 1e-3) {
@@ -1527,6 +1631,31 @@ function drape(J, p) {
 const NAMASTE = { shL: -0.55, shLz: 0.25, shLy: 0.5, elL: -1.55, elLy: 0, shR: -0.55, shRz: -0.25, shRy: -0.5, elR: -1.55, nod: 0.18 };
 const STAND = { shL: 0.05, shR: 0.05, nod: 0.05 };
 
+// ---------- the figure's own right and left ----------
+// The body faces +z, so its own right side is at -x. The skeleton names its limbs as seen from in front of the
+// figure: the "L" arm and leg (side -1, at -x) are on the viewer's left, which is the figure's own RIGHT. Every
+// ritual act is done with the right hand, so code that means "the right hand" should say J["hand" + RIGHT].
+const RIGHT = "L", LEFT = "R";
+const FLIP = new Set(["twist", "tilt", "look", "headTilt", "pelvisY", "pelvisZ", "sway"]);
+const LIMB = /^(sh|el|hip|knee|ankle|foot|hand|palm)([LR])([yz]?)$/;
+// A pose written in the figure's own terms ("R" keys for its right arm and leg, as a person would say it) turned
+// into the skeleton's names: the sides swapped and the turns about y and z mirrored, so the same numbers make the
+// same movement on the other side. Also turns a { L, R } map of the arms (a reach) round. own(own(p)) is p.
+function own(p) {
+	const o = {};
+	for (const k of Object.keys(p)) {
+		const v = p[k];
+		if (k === "L" || k === "R") {
+			o[k === "L" ? "R" : "L"] = v;
+			continue;
+		}
+		const m = LIMB.exec(k);
+		const neg = typeof v === "number" && (m ? m[3] !== "" : FLIP.has(k));
+		o[m ? m[1] + (m[2] === "L" ? "R" : "L") + m[3] : k] = neg ? -v : v;
+	}
+	return o;
+}
+
 // ---------- the gait ----------
 // One leg through a stride; u = 0 at heel strike. pitch is the foot's angle to the ground (toe down positive).
 const PITCH = [[0, -0.24], [0.08, 0], [0.4, 0], [0.6, 0.62], [0.72, 0.3], [0.88, -0.08], [1, -0.24]];
@@ -1603,7 +1732,7 @@ export function reach(J, S, target, p = {}, pt = PALM) {
 // ---------- the traveller ----------
 export class Traveller {
 	constructor() {
-		this.J = body({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "turban", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 });
+		this.J = body({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 });
 		this.group = new THREE.Group();
 		this.model = this.J.root;
 		this.model.scale.setScalar(0.28);
@@ -1636,7 +1765,8 @@ export class Traveller {
 		const ph = this.phase, s = Math.sin(ph);
 		const w = this.w.walk;
 		// walking: heel strike and toe-off, the pelvis turning and rolling over the standing leg, the shoulders
-		// turning against it; the staff arm swings and plants, the diya arm stays up and steady
+		// turning against it; the staff arm (the left, "R" here) swings and plants, the diya arm (the right, "L")
+		// stays up and steady
 		const L = legGait(ph), R = legGait(ph + Math.PI);
 		const yawP = (R.hip - L.hip) * 0.11, st = Math.cos(TAU * (L.u - 0.3));
 		const low = Math.min(footLow(L.hip, L.knee, L.pitch), footLow(R.hip, R.knee, R.pitch));
@@ -1709,22 +1839,84 @@ export class Traveller {
 
 // ---------- the crowd ----------
 // A pilgrim of many kinds, posed and merged into one geometry with vertex colours: one draw call each.
-export function crowdOpts(R) {
+// place: a shrine key ("bhimashankar", "kedarnath", "tirupati", "badrinath") or a region ("maharashtra",
+// "tirumala", "garhwal"), to dress the pilgrims as people there dress; anything else gives a mix from the plains.
+const PLACES = {
+	bhimashankar: ["maharashtra", "shaiva"], kedarnath: ["garhwal", "shaiva"], tirupati: ["tirumala", "vaishnava"], badrinath: ["garhwal", "vaishnava"],
+	maharashtra: ["maharashtra"], tirumala: ["tirumala", "vaishnava"], garhwal: ["garhwal"],
+};
+const WOOL = [0x6a2a2a, 0x5a4a3e, 0x8a7a6a, 0x3a3a48, 0x7a3a22, 0x4a5240, 0x9a8a72, 0x5a2034];
+export function crowdOpts(R, place) {
 	const pick = (a) => a[Math.floor(R() * a.length)];
+	const [region, sect] = PLACES[place] || [];
+	// (the generator's first draws barely change between neighbouring seeds; let it run on a little first)
+	R();
+	R();
 	const woman = R() < 0.5;
 	const age = R() < 0.22 ? "elder" : R() < 0.3 ? "young" : "adult";
 	const build = R() < 0.2 ? "slim" : R() < 0.25 ? "heavy" : "average";
+	const skin = varySkin(pick(region === "tirumala" ? [SKIN[1], SKIN[3], SKIN[5], SKIN[6], SKIN[0]] : region === "garhwal" ? [SKIN[0], SKIN[2], SKIN[4], SKIN[6], SKIN[1]] : SKIN), R);
 	if (woman) {
+		// married women wear sindoor in the parting; the hair oiled and plaited or put up in a bun, with jasmine
+		const base = { skin, age, build, gender: "f", mark: "bindi", sindoor: age !== "young" && R() < 0.75, hairStyle: R() < (region === "tirumala" ? 0.7 : 0.45) ? "braid" : "bun" };
+		if (region === "garhwal" && R() < 0.5) {
+			// a salwar kameez with a woollen shawl over the head and shoulders
+			const shawl = pick(WOOL), kameez = pick([0x8a1d3a, 0x2a5a8a, 0x6a2a6a, 0x2f6a4a, 0xb8462a, 0x7a6a2a]);
+			return Object.assign(base, { top: kameez, bottom: pick([0xe8e0cc, kameez, 0x3a3a48]), sash: shawl, shawl, head: R() < 0.75 ? "veil" : "hair", headColor: shawl, sleeve: 1, border: pick([0xd8b04a, 0xb8261c, 0xe8e0cc]) });
+		}
+		if (region === "tirumala") {
+			// a Kanjeevaram or Dharmavaram silk sari, the zari border broad and gold; the head uncovered, flowers in the hair
+			const sari = pick([0x8a1030, 0xb0102a, 0x6a1050, 0xc0306a, 0x0f6a5a, 0xd09a1a, 0x1a3a8a, 0x7a2010, 0x2a6a2a]);
+			return Object.assign(base, { top: pick([sari, 0xd09a1a, 0x1a3a8a, 0x8a1030]), bottom: sari, sash: sari, headColor: sari, sari: true, head: R() < 0.1 ? "tonsured" : "hair", border: pick([GOLD, GOLD, GOLD, 0xe8c060]) });
+		}
+		if (region === "maharashtra") {
+			// a nine-yard or an everyday sari in the colours of the Sahyadri villages, the pallu often over the head
+			const sari = pick([0x2f7a3a, 0x7b2fa0, 0xc0306a, 0xe0457b, 0x1f5fb0, 0x8a1538, 0xe86a1c, 0x0f7a7a]);
+			return Object.assign(base, { top: pick([0xb8261c, 0xf2c14e, 0x2a6aa0, 0x2f6a3a, sari]), bottom: sari, sash: sari, headColor: sari, sari: true, head: R() < (age === "elder" ? 0.85 : 0.45) ? "veil" : "hair", border: pick([GOLD, 0xb8261c, 0xf2c14e, 0x1f3f8a, 0xe86a1c]) });
+		}
+		if (region === "garhwal") {
+			// a sari with a shawl's warm colours drawn over the head
+			const sari = pick([0x8a1538, 0x6a2a6a, 0x2a5a8a, 0xb0402a, 0x2f6a3a]);
+			return Object.assign(base, { top: pick(WOOL), bottom: sari, sash: sari, headColor: pick(WOOL), sari: true, head: R() < 0.8 ? "veil" : "hair", border: pick([GOLD, 0xe8e0cc, 0xb8261c]) });
+		}
+		if (R() < 0.18) {
+			const k = pick([0x8a1d3a, 0x2a5a8a, 0xe0457b, 0x2f6a4a, 0xf2b01e]), d = pick([0xf2c14e, 0xe8e0cc, 0xb8261c]);
+			return Object.assign(base, { top: k, bottom: pick([0xe8e0cc, k]), sash: d, shawl: d, head: R() < 0.5 ? "veil" : "hair", headColor: d, sleeve: R() < 0.5 ? 1 : 0.5 });
+		}
 		const sari = pick([0xc0262d, 0xe0457b, 0xf2b01e, 0x2f8a4a, 0x7b2fa0, 0xe86a1c, 0x1f5fb0, 0x8a1538, 0x0f7a7a]);
-		return { skin: pick(SKIN), top: pick([0xb8261c, 0xf2c14e, 0x6a2a8a, 0x2a6aa0, 0x2f6a3a, sari]), bottom: sari, sash: sari, head: R() < (age === "elder" ? 0.85 : 0.55) ? "veil" : "hair", headColor: sari, sari: true, age, build, border: pick([GOLD, GOLD, 0xb8261c, 0x1f3f8a, 0xf2c14e]) };
+		return Object.assign(base, { top: pick([0xb8261c, 0xf2c14e, 0x6a2a8a, 0x2a6aa0, 0x2f6a3a, sari]), bottom: sari, sash: sari, head: R() < (age === "elder" ? 0.85 : 0.55) ? "veil" : "hair", headColor: sari, sari: true, border: pick([GOLD, GOLD, 0xb8261c, 0x1f3f8a, 0xf2c14e]) });
+	}
+	// men: moustaches are common, beards on some, grey for the elders
+	const beard = R() < (age === "elder" ? 0.5 : 0.2) ? (age === "elder" ? 0xcfcac2 : 0x2e2824) : 0;
+	const moustache = beard || (R() < 0.68 ? (age === "elder" ? 0xbab4ab : 0x221c18) : 0);
+	const mark = sect === "shaiva" ? (R() < 0.45 ? "tripundra" : "tilak") : sect === "vaishnava" ? (R() < (region === "tirumala" ? 0.65 : 0.4) ? (region === "tirumala" ? "namam" : "urdhva") : "tilak") : R() < 0.75 ? "tilak" : "none";
+	const base = { skin, age, build, beard, moustache, mark, glasses: age === "elder" && R() < 0.4 };
+	if (region === "tirumala") {
+		// a white veshti and an angavastram over the shoulders, the chest bare or in a shirt; many with the head
+		// tonsured after offering their hair
+		const shirt = R() < 0.45;
+		const ang = pick([0xf3efe6, 0xf0e6c8, 0xe8d7a0, 0xf3efe6]);
+		return Object.assign(base, { top: shirt ? pick([0xf3efe6, 0xe8e2d0, 0x9ab6c8, 0xd9d2c0]) : skin, bare: !shirt, janeu: !shirt && R() < 0.4, bottom: pick([0xf5f1e6, 0xf1ebdc]), dhoti: "long", sash: ang, shawl: ang, border: GOLD, head: R() < 0.45 ? "tonsured" : "hair", sleeve: 0.5, bag: R() < 0.15 });
+	}
+	if (region === "garhwal") {
+		// a kurta or shirt with a sweater, a pyjama, often a woollen shawl and a hill cap against the cold
+		const wool = pick(WOOL);
+		const shawl = R() < 0.45 ? pick(WOOL) : undefined;
+		const head = R() < 0.5 ? "cap" : R() < 0.15 ? "turban" : "hair";
+		return Object.assign(base, { top: wool, bottom: pick([0xe8e0cc, 0x8a8478, 0x3a3a48, 0xf1ebdc]), pyjama: R() < 0.7, sash: shawl ?? pick([0xb8261c, 0xd8b04a]), shawl, head, headColor: head === "cap" ? pick([0x3a3a48, 0x5a4a3e, 0x2a2a2a, 0xe8e0cc]) : pick([0xf3efe6, 0xd33a2c]), capBand: pick([0x7a1d24, 0x2a5a2a, 0x8a6a1a, 0x1a3a7a]), sleeve: 1, bag: R() < 0.35 });
+	}
+	if (region === "maharashtra") {
+		// a white kurta with a pyjama or a dhoti; a Gandhi topi or a pheta
+		const head = R() < 0.4 ? "topi" : R() < 0.35 ? "pheta" : "hair";
+		return Object.assign(base, { top: pick([0xf3efe6, 0xf3efe6, 0xe8e2d0, 0xd9d2c0, 0xf0c050, 0x9ab6c8]), bottom: pick([0xf5f1e6, 0xf1ebdc]), pyjama: R() < 0.5, sash: pick([0xb8261c, 0xf3efe6, 0xe2761b, 0xd8b04a]), head, headColor: head === "topi" ? 0xf6f3ea : pick([0xe2761b, 0xf3efe6, 0xd33a2c, 0xe0457b, 0xf2c14e]), border: GOLD, sleeve: R() < 0.6 ? 1 : 0.5, bag: R() < 0.3 });
 	}
 	const kurta = pick([0xf3efe6, 0xd9d2c0, 0xf0c050, 0x8fa0b8, 0x6f8f6a, 0xe8e2d0, 0xc8562a, 0x9ab6c8]);
-	const beard = R() < (age === "elder" ? 0.55 : 0.22) ? (age === "elder" ? 0xcfcac2 : 0x3a3430) : 0;
-	return { skin: pick(SKIN), top: kurta, bottom: pick([0xf1ebdc, 0xe8e0cc]), sash: pick([0xb8261c, 0xf3efe6, 0xd8b04a, 0xe2761b]), head: R() < 0.35 ? "turban" : "hair", headColor: pick([0xf3efe6, 0xd33a2c, 0xe8c85a, 0xe2761b]), beard, moustache: beard || (R() < 0.6 ? (age === "elder" ? 0xbab4ab : 0x2a2420) : 0), bag: R() < 0.3, age, build, sleeve: R() < 0.5 ? 1 : 0.5, glasses: age === "elder" && R() < 0.4 };
+	const head = R() < 0.3 ? "turban" : R() < 0.15 ? "topi" : "hair";
+	return Object.assign(base, { top: kurta, bottom: pick([0xf1ebdc, 0xe8e0cc]), pyjama: R() < 0.35, sash: pick([0xb8261c, 0xf3efe6, 0xd8b04a, 0xe2761b]), head, headColor: head === "topi" ? 0xf6f3ea : pick([0xf3efe6, 0xd33a2c, 0xe8c85a, 0xe2761b]), bag: R() < 0.3, sleeve: R() < 0.5 ? 1 : 0.5 });
 }
-export function crowdFigure(seed) {
-	const R = rand(seed);
-	const opts = Object.assign(crowdOpts(R), { lod: 0 });
+export function crowdFigure(seed, place) {
+	const R = rand(Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) >>> 0);
+	const opts = Object.assign(crowdOpts(R, place), { lod: 0 });
 	const J = body(opts);
 	pose(J, R() < 0.55 ? NAMASTE : Object.assign({}, STAND, { look: (R() - 0.5) * 0.6 }));
 	const merged = mergeFigure(J);
@@ -1762,4 +1954,4 @@ function mergeFigure(J) {
 const CROWD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
 
 // Shared with the temple interiors (sanctum.js) and the outdoor aarti (aarti.js), which pose their own figures.
-export { body, pose, SKIN, NAMASTE, STAND, mergeFigure };
+export { body, pose, SKIN, NAMASTE, STAND, mergeFigure, RIGHT, LEFT, own };

@@ -1035,7 +1035,7 @@ export function buildLandmarks(world, scene, renderer, crowdFigure) {
 		const spec = BUILDERS[s.key]();
 		if (crowdFigure && spec.crowd) {
 			spec.crowd.forEach(([x, z, fy], i) => {
-				const f = crowdFigure(s.key.length * 100 + i * 7 + 3);
+				const f = crowdFigure(s.key.length * 100 + i * 7 + 3, s.key);
 				f.position.set(x, fy - 0.0, z);
 				// pilgrims face the shrine, with a little variety
 				f.rotation.y = Math.atan2(-x, -z + (s.key === "tirupati" && z > 3 ? -2 : 0)) + Math.sin(i * 3.1) * 0.35;
