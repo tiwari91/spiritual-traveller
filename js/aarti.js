@@ -68,31 +68,9 @@ const PLACES = {
 // ---------- figures ----------
 // A pujari from the shared body: white dhoti, a bare chest (or a vest), the sacred thread, a shawl and the forehead marks.
 function priest(o) {
-	const J = body({ skin: o.skin, top: o.top ?? o.skin, bottom: o.dhoti ?? 0xf5f1e6, sash: o.shawl, head: "hair", beard: o.beard || 0 });
-	const torso = J.torso, head = J.head;
-	// with a bare chest the dhoti comes up to the waist instead of a kurta's hem
-	if (!o.top) torso.children[0].material = J.hipL.children[0].material;
-	// the angavastram over both shoulders
-	const shawl = torso.children[2];
-	shawl.position.set(0, 0.46, -0.01);
-	shawl.rotation.set(Math.PI / 2 + 0.22, 0, 0);
-	shawl.scale.set(1.04, 0.74, 1);
-	// the sacred thread from the left shoulder across the chest
-	const thread = mesh(new THREE.TorusGeometry(0.2, 0.0055, 4, 40), std(0xf2e6c4), 0, 0.3, 0, torso);
-	thread.rotation.set(Math.PI / 2, 0.75, 0);
-	thread.scale.set(1.05, 0.75, 1.16);
-	const white = std(0xf1ede4, { roughness: 0.9 });
-	const box = (w, h, x, y, m = white) => mesh(new THREE.BoxGeometry(w, h, 0.004), m, x, y, 0.097, head);
-	if (o.mark === "tripundra") {
-		// three lines of sacred ash
-		for (const y of [0.046, 0.058, 0.07]) box(0.07, 0.0045, 0, y).position.z = 0.094;
-	} else {
-		// the namam (or urdhva pundra): two upright lines joined below, the red line between them
-		const m = o.mark === "urdhva" ? std(0xf0d68a, { roughness: 0.9 }) : white;
-		for (const x of [-0.013, 0.013]) box(0.007, 0.05, x, 0.063, m);
-		box(0.033, 0.006, 0, 0.037, m);
-	}
-	return J;
+	// the shared body draws the bare chest, sacred thread, shawl and forehead mark itself;
+	// a priest in a vest or kurta (Kedarnath, Badrinath) keeps his top
+	return body({ skin: o.skin, top: o.top ?? o.skin, bottom: o.dhoti ?? 0xf5f1e6, sash: o.shawl, shawl: o.shawl, head: "hair", beard: o.beard || 0, pujari: !o.top, bare: !o.top, janeu: true, dhoti: "long", mark: o.mark || "tripundra", lod: 2 });
 }
 // A pilgrim merged into three meshes (body and two arms on shoulder pivots) so the arms can rise for the aarti.
 function devotee(seed, material) {

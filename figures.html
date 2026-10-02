@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spiritual Traveller · Figures</title>
+<meta name="theme-color" content="#0a1430">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<style>
+	html, body { margin: 0; height: 100%; background: #1d1a17; color: #eee6d8; font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+	canvas { display: block; width: 100%; height: 100%; }
+	.bar { position: fixed; left: 16px; right: 16px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; pointer-events: none; }
+	.bar > * { pointer-events: auto; }
+	.bar button { background: rgba(0, 0, 0, 0.45); color: inherit; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 10px; padding: 5px 9px; font: inherit; cursor: pointer; }
+	.bar button[aria-pressed="true"] { border-color: #e5b05a; }
+	.info { position: fixed; left: 16px; bottom: 12px; right: 16px; color: #cfc4b2; text-shadow: 0 1px 2px #000; pointer-events: none; }
+	.bar.hide, .info.hide { display: none; }
+</style>
+</head>
+<body>
+<!-- Lineup of every kind of figure from js/pilgrim.js. ?light=sun for outdoor light, ?spin=1 to turn them,
+     ?view=fig&i=N or ?view=face&i=N to frame one, ?t=S to freeze the clock at S seconds, ?ui=0 hides the bar. -->
+<canvas id="scene" aria-label="Figures from the pilgrimage, lined up"></canvas>
+<div class="bar" id="bar"></div>
+<div class="info" id="info"></div>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { Traveller, body, pose, crowdFigure, SKIN, NAMASTE, STAND } from "./js/pilgrim.js";
+
+const params = new URLSearchParams(location.search);
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.05, 200);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+
+// ---- lights: a soft studio, or an outdoor sun ----
+const studio = new THREE.Group(), sun = new THREE.Group();
+scene.add(studio, sun);
+{
+	studio.add(new THREE.HemisphereLight(0xfff1e0, 0x3a3028, 0.9));
+	const key = new THREE.DirectionalLight(0xfff0dc, 2.3);
+	key.position.set(3, 5, 6);
+	key.castShadow = true;
+	key.shadow.mapSize.set(2048, 2048);
+	key.shadow.camera.left = -8, key.shadow.camera.right = 8, key.shadow.camera.top = 4, key.shadow.camera.bottom = -2;
+	key.shadow.bias = -0.0004;
+	key.shadow.normalBias = 0.01;
+	key.shadow.radius = 4;
+	studio.add(key);
+	const fill = new THREE.DirectionalLight(0xd8e4ff, 0.7);
+	fill.position.set(-5, 2.5, 4);
+	studio.add(fill);
+	const rim = new THREE.DirectionalLight(0xffe2b8, 1.4);
+	rim.position.set(-2, 4, -6);
+	studio.add(rim);
+	sun.add(new THREE.HemisphereLight(0xa8c8ff, 0x6a5a40, 0.75));
+	const s = new THREE.DirectionalLight(0xfff2d8, 3.4);
+	s.position.set(-6, 9, 4);
+	s.castShadow = true;
+	s.shadow.mapSize.set(2048, 2048);
+	s.shadow.camera.left = -8, s.shadow.camera.right = 8, s.shadow.camera.top = 4, s.shadow.camera.bottom = -2;
+	s.shadow.bias = -0.0004;
+	s.shadow.normalBias = 0.01;
+	sun.add(s);
+}
+const floor = new THREE.Mesh(new THREE.CircleGeometry(20, 64), new THREE.MeshStandardMaterial({ color: 0x8a7a66, roughness: 0.9 }));
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+function setLight(kind) {
+	studio.visible = kind !== "sun";
+	sun.visible = kind === "sun";
+	scene.background = new THREE.Color(kind === "sun" ? 0x9ec3e6 : 0x24201c);
+	floor.material.color.set(kind === "sun" ? 0xb39a72 : 0x6e6252);
+	for (const b of bar.querySelectorAll("[data-light]")) b.setAttribute("aria-pressed", b.dataset.light === kind);
+}
+
+// ---- the lineup ----
+const items = [];
+const travellers = [];
+const tris = (o) => {
+	let n = 0;
+	o.traverse((m) => {
+		if (m.isMesh && m.visible) n += (m.geometry.index ? m.geometry.index.count : m.geometry.attributes.position.count) / 3;
+	});
+	return Math.round(n);
+};
+function add(name, obj, update) {
+	const x = (items.length - 5) * 0.85;
+	const g = new THREE.Group();
+	g.position.set(x, 0, 0);
+	g.add(obj);
+	scene.add(g);
+	obj.traverse((m) => m.isMesh && ((m.castShadow = true), (m.receiveShadow = true)));
+	items.push({ name, g, obj, update, tris: 0 });
+}
+for (const mode of ["walk", "darshan", "ride"]) {
+	const T = new Traveller();
+	T.group.scale.setScalar(1 / 0.28);
+	travellers.push(T);
+	const g = new THREE.Group();
+	g.add(T.group);
+	if (mode === "ride") {
+		const seat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.7), new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.5 }));
+		seat.position.set(0, 0.74, 0.05);
+		g.add(seat);
+		const tank = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.2, 0.3), new THREE.MeshStandardMaterial({ color: 0x8a1a14, roughness: 0.35, metalness: 0.4 }));
+		tank.position.set(0, 0.85, 0.5);
+		g.add(tank);
+		const bars = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.7, 8), new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.9, roughness: 0.3 }));
+		bars.rotation.z = Math.PI / 2;
+		bars.position.set(0, 1.12, 0.62);
+		g.add(bars);
+		for (const sx of [-1, 1]) {
+			const peg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.06), bars.material);
+			peg.position.set(sx * 0.22, 0.3, 0.3);
+			g.add(peg);
+		}
+	}
+	add("Traveller · " + mode, g, (dt, t) => T.update(dt, t, { mode, yaw: 0, distance: 3, rate: 1 }));
+}
+const fig = (name, opts, p) => {
+	const J = body(Object.assign({ lod: 1 }, opts));
+	pose(J, p);
+	add(name, J.root);
+	return J;
+};
+fig("Shaiva pujari", { skin: SKIN[1], top: SKIN[1], bottom: 0xf5f1e6, sash: 0x8a1c1c, shawl: 0x8a1c1c, pujari: true, mark: "tripundra", lod: 2 }, NAMASTE);
+fig("Vaishnava archaka", { skin: SKIN[3], top: SKIN[3], bottom: 0xf7f1df, sash: 0xe2b23a, shawl: 0xe2b23a, pujari: true, mark: "namam", lod: 2 }, Object.assign({}, STAND, { shL: -0.3, elL: -1.3, shLz: 0.1 }));
+fig("Elder in kurta and dhoti", { skin: SKIN[2], top: 0xf3efe6, bottom: 0xf1ebdc, sash: 0xd8b04a, head: "hair", beard: 0xd2cdc5, age: "elder", glasses: true, build: "slim" }, STAND);
+fig("Young man in a turban", { skin: SKIN[4], top: 0x2a6aa0, bottom: 0xf1ebdc, sash: 0xf3efe6, head: "turban", headColor: 0xd33a2c, moustache: 0x2a2420, age: "young", sleeve: 1 }, NAMASTE);
+fig("Man with a bag", { skin: SKIN[5], top: 0x6f8f6a, bottom: 0xe8e0cc, sash: 0xb8261c, head: "hair", moustache: 0x221c18, bag: true, build: "heavy" }, Object.assign({}, STAND, { look: 0.3 }));
+fig("Woman in a red sari", { skin: SKIN[0], top: 0xf2c14e, bottom: 0xc0262d, sash: 0xc0262d, headColor: 0xc0262d, head: "hair", sari: true, age: "young" }, NAMASTE);
+fig("Elder woman, veiled", { skin: SKIN[6], top: 0x6a2a8a, bottom: 0x7b2fa0, sash: 0x7b2fa0, headColor: 0x7b2fa0, head: "veil", sari: true, age: "elder", border: 0xf2c14e }, Object.assign({}, STAND, { nod: 0.12 }));
+fig("Woman in a green sari", { skin: SKIN[3], top: 0xb8261c, bottom: 0x2f8a4a, sash: 0x2f8a4a, headColor: 0x2f8a4a, head: "veil", sari: true }, Object.assign({}, STAND, { shR: -0.5, elR: -1.3, shRz: -0.1 }));
+const crowd = new THREE.Group();
+for (let i = 0; i < 6; i++) {
+	const m = crowdFigure(301 + i * 17);
+	m.geometry.scale(1 / 0.28, 1 / 0.28, 1 / 0.28);
+	m.position.x = (i - 2.5) * 0.7;
+	crowd.add(m);
+}
+crowd.position.set(0, 0, 2.2);
+scene.add(crowd);
+
+// ---- ui ----
+const bar = document.getElementById("bar"), info = document.getElementById("info");
+const button = (label, attr, fn) => {
+	const b = document.createElement("button");
+	b.type = "button";
+	b.textContent = label;
+	if (attr) b.dataset.light = attr;
+	b.addEventListener("click", fn);
+	bar.appendChild(b);
+	return b;
+};
+button("Studio", "studio", () => setLight("studio"));
+button("Sun", "sun", () => setLight("sun"));
+const spinB = button("Turntable", null, () => spinB.setAttribute("aria-pressed", (spin = !spin)));
+let spin = params.get("spin") === "1";
+spinB.setAttribute("aria-pressed", spin);
+button("All", null, () => frame("all"));
+if (params.get("ui") === "0") bar.classList.add("hide"), info.classList.add("hide");
+setLight(params.get("light") === "sun" ? "sun" : "studio");
+
+function frame(view, i = 0) {
+	if (view === "face" || view === "fig" || view === "bust") {
+		const it = items[i];
+		it.g.updateMatrixWorld(true);
+		const x = it.g.position.x, sit = it.name.includes("ride") ? -0.12 : 0;
+		const h = view === "face" ? 1.6 + sit : view === "bust" ? 1.38 + sit : 0.9;
+		const d = view === "face" ? +(params.get("d") || 0.55) : view === "bust" ? 1.4 : 3.6;
+		const yaw = +(params.get("yaw") || 0.35);
+		controls.target.set(x, h, 0);
+		camera.position.set(x + Math.sin(yaw) * d, h + (view === "fig" ? 0.25 : 0.03), Math.cos(yaw) * d);
+	} else if (view === "crowd") {
+		controls.target.set(0, 0.85, 2.2);
+		camera.position.set(0.4, 1.3, 6.4);
+	} else {
+		controls.target.set(0, 0.85, 0.6);
+		const wide = innerWidth / innerHeight < 1;
+		camera.position.set(0, 1.25, wide ? 24 : 11.5);
+	}
+	controls.update();
+}
+if (params.get("solo") === "1") {
+	for (const [k, it] of items.entries()) it.g.visible = k === +(params.get("i") || 0);
+	crowd.visible = false;
+}
+frame(params.get("view") || "all", +(params.get("i") || 0));
+
+addEventListener("resize", () => {
+	renderer.setSize(innerWidth, innerHeight, false);
+	camera.aspect = innerWidth / innerHeight;
+	camera.updateProjectionMatrix();
+});
+const fixed = params.get("t");
+let time = fixed ? +fixed : 0, last = performance.now();
+const step = (dt) => {
+	time += dt;
+	for (const it of items) if (it.update) it.update(dt, time);
+	if (spin) for (const it of items) it.g.rotation.y += dt * 0.5;
+	if (spin) crowd.rotation.y += dt * 0.3;
+};
+if (fixed) {
+	time = 0;
+	for (let k = 0; k < Math.round(+fixed * 30); k++) step(1 / 30);
+}
+for (const it of items) it.tris = tris(it.obj);
+let crowdTris = 0;
+crowd.traverse((m) => m.isMesh && (crowdTris += m.geometry.index.count / 3));
+info.textContent = items.map((it) => `${it.name}: ${it.tris.toLocaleString()}`).join(" · ") + ` · crowd LOD: ${Math.round(crowdTris / 6).toLocaleString()} each`;
+window.figures = { items: items.map((it) => ({ name: it.name, tris: it.tris })), crowd: Math.round(crowdTris / 6), step };
+function loop(now) {
+	const dt = Math.min(0.05, (now - last) / 1000);
+	last = now;
+	if (!fixed) step(dt);
+	controls.update();
+	renderer.render(scene, camera);
+	requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+window.ready = true;
+</script>
+</body>
+</html>
