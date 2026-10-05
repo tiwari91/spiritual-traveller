@@ -3321,12 +3321,13 @@ export class Sanctum {
 				if (sound && self.audio && self.audio.bell) self.audio.bell(1);
 			},
 			bigBell(n) { if (self.audio && self.audio.bell) self.audio.bell(n); },
-			// a cut to another set: everything jumps there this frame, behind a blink
+			// a cut to another set: everything jumps there this frame, behind a dip to black that fades up
 			cut() {
 				self.snap = true;
 				if (!self.root) return;
-				self.root.classList.add("blink");
-				setTimeout(() => self.root && self.root.classList.remove("blink"), 220);
+				self.root.classList.remove("blink");
+				self.root.classList.add("cutting");
+				setTimeout(() => self.root && self.root.classList.remove("cutting"), 350);
 			},
 			ghanti() { self._ghanti(); },
 			tx: () => self.trav.pos.x,

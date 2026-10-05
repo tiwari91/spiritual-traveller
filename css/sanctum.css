@@ -7,6 +7,8 @@ body.sanctum-open .hud * { pointer-events: none !important; }
 .sn-veil { position: absolute; inset: 0; background: #050302; opacity: 1; transition: opacity 1.1s ease; pointer-events: none; }
 .sanctum.ready .sn-veil { opacity: 0; }
 .sanctum.ready.blink .sn-veil { opacity: 0.9; transition-duration: 0.12s; }
+/* a cut to another set (Shirdi to Dwarkamai): straight to black, a breath, then a slow fade up on the new place */
+.sanctum.ready.cutting .sn-veil { opacity: 1; transition-duration: 0s; }
 .sanctum.leaving .sn-veil, .sanctum.ready.leaving .sn-veil { opacity: 1; transition-duration: 0.5s; }
 
 .sn-top { position: absolute; left: calc(12px + var(--safe-l)); right: calc(12px + var(--safe-r)); top: calc(10px + var(--safe-t)); display: flex; align-items: center; justify-content: space-between; gap: 10px; pointer-events: none; cursor: default; }
