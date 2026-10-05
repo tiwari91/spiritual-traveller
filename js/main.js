@@ -1037,7 +1037,7 @@ function buildUI() {
 	};
 	mk(0, START, "start", restart);
 	SHRINES.forEach((s, i) => mk(((i + 1) / N) * 100, s.name, "shrine", () => jump(i)));
-	if (coarse) $("hint").textContent = "Drag to look around · pinch to zoom · tap a shrine on the progress bar to go there";
+	if (coarse) $("hint").textContent = `Drag to look around · pinch to zoom · tap a ${KAILASH ? "stop" : "shrine"} on the progress bar to go there`;
 	// minimap base
 	drawMapBase();
 	// buttons
