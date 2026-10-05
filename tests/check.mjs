@@ -441,6 +441,21 @@ async function kailashBasic() {
 		ok("Kailash: boarding console clean", o.errors.length === 0, o.errors.slice(0, 3).join(" | "));
 		await o.ctx.close();
 	}
+	// on the bike (the journey's starting choice) the ride goes on across the Tibet side, keeping to the right
+	{
+		const o = await open({}, "?noenter=1", KPAGE);
+		ok("Kailash: starts out on the motorbike", await o.page.evaluate(() => document.getElementById("transport-label").textContent === "Bike"));
+		await o.page.evaluate(() => {
+			app.begin();
+			app.leg = 1;
+			app.s = app.roads.ways[1][1].s + 8;
+			app.setSpeed(2);
+		});
+		const until = (fn, ms) => o.page.waitForFunction(fn, null, { timeout: ms }).then(() => true, () => false);
+		ok("Kailash: by bike across the Tibet side, on the right", await until(() => app.mode === "bike" && !app.journey.busy() && app.journey.keep(app.s) === -1, 40000), await o.page.evaluate(() => app.mode + " " + app.journey.keep(app.s)));
+		ok("Kailash: bike across Tibet, console clean", o.errors.length === 0, o.errors.slice(0, 3).join(" | "));
+		await o.ctx.close();
+	}
 	// phone: the intro, the stop menu, a darshan
 	const phone = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, "?noenter=1", KPAGE);
 	await wait(phone.page, 1200);

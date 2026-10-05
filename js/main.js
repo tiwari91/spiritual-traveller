@@ -112,7 +112,8 @@ async function init() {
 	// where the road gives way to the footpath below Kedarnath, going up and coming back down
 	app.sGauri = roads.at.gauri;
 	app.sGauriBack = roads.at.gauriBack;
-	app.transport = clamp(store.get(TRANSPORT_KEY, 0), 0, TRANSPORT.length - 1);
+	// (the Kailash journey starts out on the motorbike: mostly by bike and on foot, unless another way is chosen)
+	app.transport = clamp(store.get(TRANSPORT_KEY, KAILASH ? TRANSPORT.indexOf("Bike") : 0), 0, TRANSPORT.length - 1);
 	if (params.has("go")) app.transport = Math.max(0, TRANSPORT.findIndex((t) => t.toLowerCase() === params.get("go")));
 	scenery.prebuild(params.has("s") ? parseFloat(params.get("s")) || 0 : 0);
 	// inside each temple: the shrine's own rituals, step by step
@@ -1059,7 +1060,9 @@ function kModeAt(s) {
 	if (s < w.out || s > w.in) return "walk";
 	const way = kWay(s), choice = TRANSPORT[app.transport];
 	if (way.kind === "walk") return "walk";
-	if (way.kind === "tibet") return "coach";
+	// (the Tibet side is the yatra's Chinese bus; on the bike or in the car, the ride goes on across it, keeping to
+	// the right: a liberty of the journey, which the README owns up to. Real yatris take the organised bus.)
+	if (way.kind === "tibet") return choice === "Bike" ? "bike" : choice === "Car" ? "car" : "coach";
 	if (choice === "Bike") return "bike";
 	if (choice === "Car") return "car";
 	if (way.kind === "jeep") return "jeep";
@@ -1081,6 +1084,7 @@ function kModeText() {
 	if (app.mode === "coach") return way.label || "By the yatra's bus";
 	if (way.kind === "jeep") return choice === "Bike" ? "By motorbike up the Kali" : choice === "Car" ? "By car up the Kali" : way.label;
 	if (app.mode === "bus") return "By the yatra's bus";
+	if (way.kind === "tibet" && way.label) return way.label.replace("By bus", app.mode === "car" ? "By car" : "By motorbike");
 	if (app.mode === "bike") return "By motorbike";
 	if (app.mode === "car") return "By car";
 	if (app.mode === "jeep") return "By jeep from Tanakpur";
@@ -1775,8 +1779,8 @@ function zoomBy(k) {
 // the camera panned by a drag of dx, dy pixels: a share of the distance to the traveller, so the same drag is a nudge
 // up close and a sweep from high up; up to a frame and a half either way
 function panBy(dx, dy) {
-	rig.pan.x = clamp(rig.pan.x - dx * 0.0022, -1.5, 1.5);
-	rig.pan.y = clamp(rig.pan.y + dy * 0.0022, -1.5, 1.5);
+	rig.pan.x = clamp(rig.pan.x - dx * 0.0016, -1.2, 1.2);
+	rig.pan.y = clamp(rig.pan.y + dy * 0.0016, -1.2, 1.2);
 	userTook();
 }
 function resetView() {
