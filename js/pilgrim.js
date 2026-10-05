@@ -1731,8 +1731,9 @@ export function reach(J, S, target, p = {}, pt = PALM) {
 
 // ---------- the traveller ----------
 export class Traveller {
-	constructor() {
-		this.J = body({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 });
+	// warm: dressed for the high passes (the Kailash journey): long sleeves, a maroon woollen shawl and a woollen cap
+	constructor({ warm = false } = {}) {
+		this.J = body(Object.assign({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 }, warm ? { top: 0xd8661a, sleeve: 1, sash: 0x6a1a22, shawl: 0x6a1a22, head: "cap", headColor: 0xe2761b, capBand: 0x6a1a22 } : {}));
 		this.group = new THREE.Group();
 		this.model = this.J.root;
 		this.model.scale.setScalar(0.28);
@@ -1844,7 +1845,12 @@ export class Traveller {
 const PLACES = {
 	bhimashankar: ["maharashtra", "shaiva"], kedarnath: ["garhwal", "shaiva"], tirupati: ["tirumala", "vaishnava"], badrinath: ["garhwal", "vaishnava"], shirdi: ["maharashtra"],
 	maharashtra: ["maharashtra"], tirumala: ["tirumala", "vaishnava"], garhwal: ["garhwal"],
+	// the Kailash journey: Indian yatris wrapped up for the high passes; Tibetan pilgrims and herders on the plateau
+	omparvat: ["yatri", "shaiva"], mansarovar: ["yatri", "shaiva"], yamdwar: ["yatri", "shaiva"], dirapuk: ["yatri", "shaiva"], dolmala: ["yatri", "shaiva"], darchen: ["yatri", "shaiva"],
+	yatri: ["yatri", "shaiva"], tibetan: ["tibetan"],
 };
+// padded jackets and fleeces in the colours the yatris wear on the passes
+const JACKET = [0x1f2a44, 0x7a1a24, 0x2a2a2e, 0x3a4a2a, 0x8a3a1a, 0x24506a, 0x5a2a5a, 0xa8641e];
 const WOOL = [0x6a2a2a, 0x5a4a3e, 0x8a7a6a, 0x3a3a48, 0x7a3a22, 0x4a5240, 0x9a8a72, 0x5a2034];
 export function crowdOpts(R, place) {
 	const pick = (a) => a[Math.floor(R() * a.length)];
@@ -1855,7 +1861,22 @@ export function crowdOpts(R, place) {
 	const woman = R() < 0.5;
 	const age = R() < 0.22 ? "elder" : R() < 0.3 ? "young" : "adult";
 	const build = R() < 0.2 ? "slim" : R() < 0.25 ? "heavy" : "average";
-	const skin = varySkin(pick(region === "tirumala" ? [SKIN[1], SKIN[3], SKIN[5], SKIN[6], SKIN[0]] : region === "garhwal" ? [SKIN[0], SKIN[2], SKIN[4], SKIN[6], SKIN[1]] : SKIN), R);
+	const skin = varySkin(pick(region === "tirumala" ? [SKIN[1], SKIN[3], SKIN[5], SKIN[6], SKIN[0]] : region === "garhwal" ? [SKIN[0], SKIN[2], SKIN[4], SKIN[6], SKIN[1]] : region === "tibetan" ? [SKIN[0], SKIN[1], SKIN[2]] : SKIN), R);
+	if (region === "tibetan") {
+		// a chuba, the long wrapped robe of sheepskin or wool, belted with a bright sash; a felt or fur hat; women
+		// with the striped apron and braids
+		const robe = pick([0x4a2a22, 0x3a2a24, 0x5a3a28, 0x2a2420, 0x6a2a2a]), hat = pick([0x6a5a3e, 0x2a2420, 0x8a6a3a]);
+		if (woman) return { skin, age, build, gender: "f", mark: "none", hairStyle: "braid", top: robe, bottom: pick([0x8a2a3a, 0x2a5a6a, 0x6a5a2a]), sash: pick([0xd8261c, 0x2a8a4a, 0xe8a81e]), head: R() < 0.5 ? "hair" : "veil", headColor: pick([0xd8261c, 0x2a5aa0, 0xe8e0cc]), sleeve: 1 };
+		return { skin, age, build, beard: 0, moustache: R() < 0.3 ? 0x221c18 : 0, mark: "none", top: robe, bottom: robe, pyjama: true, sash: pick([0xd8261c, 0xe8a81e, 0x2a6aa0]), head: R() < 0.7 ? "cap" : "hair", headColor: hat, capBand: pick([0xd8b04a, 0x8a1c1c]), sleeve: 1, bag: R() < 0.2 };
+	}
+	if (region === "yatri") {
+		// pilgrims on the way to Kailash: a padded jacket over the kurta or salwar, a woollen cap or a shawl over the
+		// head, a muffler, a small backpack
+		const jacket = pick(JACKET);
+		if (woman) return { skin, age, build, gender: "f", mark: "bindi", sindoor: age !== "young" && R() < 0.7, hairStyle: "bun", top: jacket, bottom: pick([0xe8e0cc, 0x3a3a48, 0x6a2a4a, 0x2a2a2e]), sash: pick(WOOL), shawl: pick(WOOL), head: R() < 0.6 ? "veil" : "cap", headColor: pick(WOOL), capBand: pick([0x7a1d24, 0x1a3a7a]), sleeve: 1, bag: R() < 0.5 };
+		const beard = R() < (age === "elder" ? 0.4 : 0.15) ? (age === "elder" ? 0xcfcac2 : 0x2e2824) : 0;
+		return { skin, age, build, beard, moustache: beard || (R() < 0.6 ? 0x221c18 : 0), mark: R() < 0.5 ? "tripundra" : "tilak", glasses: age === "elder" && R() < 0.4, top: jacket, bottom: pick([0x2a2a2e, 0x3a3a48, 0x5a5a5e, 0xe8e0cc]), pyjama: true, sash: pick([0xb8261c, 0xd8b04a, 0x2a5a2a]), head: R() < 0.75 ? "cap" : "hair", headColor: pick([0x2a2a2e, 0x5a4a3e, 0x7a1d24, 0x3a3a48, 0xe8741a]), capBand: pick([0x7a1d24, 0x2a5a2a, 0x8a6a1a]), sleeve: 1, bag: R() < 0.6 };
+	}
 	if (woman) {
 		// married women wear sindoor in the parting; the hair oiled and plaited or put up in a bun, with jasmine
 		const base = { skin, age, build, gender: "f", mark: "bindi", sindoor: age !== "young" && R() < 0.75, hairStyle: R() < (region === "tirumala" ? 0.7 : 0.45) ? "braid" : "bun" };

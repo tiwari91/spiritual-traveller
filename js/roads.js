@@ -1091,9 +1091,9 @@ export class Roads {
 			c.push(x, z, half);
 		};
 		for (const pts of this.roads) for (const p of pts) put(p.x, p.z, ((KIND[p.kind].paved / 2 + KIND[p.kind].shoulder) * M) + 0.15);
-		for (const p of this.trek) put(p.x, p.z, 0.4);
+		for (const t of this.treks || [this.trek]) for (const p of t) put(p.x, p.z, 0.4);
 		for (const w of this.walks) for (const p of w) put(p.x, p.z, 1.3);
-		for (const st of this.stands || []) put(st.x, st.z, 3.2);
+		for (const st of this.stands || []) put(st.x, st.z, KAILASH ? 2.2 : 3.2);
 		for (const pts of this.rails) for (const p of pts) put(p.x, p.z, (RAIL_BED / 2) * M + 0.3);
 		// each station: the platform, the building and the forecourt out to the road
 		const q = {};

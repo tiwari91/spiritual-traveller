@@ -20,6 +20,8 @@ import { MapView } from "./map3d.js";
 import { Audio } from "./audio.js";
 import { CITIES, INDIA, KAILASH, LANKA, ROUTE, SHRINES, toGeo, toWorld } from "./geo.js";
 import { LAKES, PASSING, RIVERS as K_RIVERS } from "./kailash-geo.js";
+import { Companions } from "./kailash-companion.js";
+import { kRegion, tibet } from "./kailash-world.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
 
 const $ = (id) => document.getElementById(id);
@@ -58,7 +60,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 5000);
 app.camera = camera;
 
-let world, route, sky, landmarks, line, traveller, ride, journey, lights, weather, petals, roads, scenery, traffic, sanctum, music, aarti, kd;
+let world, route, sky, landmarks, line, traveller, ride, journey, lights, weather, petals, roads, scenery, traffic, sanctum, music, aarti, kd, companions;
 const audio = new Audio();
 
 async function init() {
@@ -84,8 +86,10 @@ async function init() {
 	clearForests();
 	line = routeLine(route);
 	scene.add(line);
-	traveller = new Traveller();
+	traveller = new Traveller({ warm: KAILASH });
 	scene.add(traveller.group);
+	// the yakman and his pack yak who walk the parikrama with the traveller
+	if (KAILASH) companions = new Companions(scene);
 	// the aarti at the door, with each shrine's own music
 	music = new Music(audio);
 	aarti = new Aarti({ scene, landmarks, music, traveller, low: LOW });
@@ -689,6 +693,13 @@ function loop(now) {
 	}
 	// the traveller first, then the camera on them, so the shot never runs a frame behind
 	updateTraveller(dt);
+	if (KAILASH && app.frames % 30 === 0) travelSound();
+	if (companions) {
+		const c = route.chapters[app.leg];
+		const on = app.state === "travel" && app.leg >= 3 && app.mode === "walk" && app.s > c.s0 + 0.8 && app.s < c.s1 - 2.2;
+		// (on the other side of the path from the traveller)
+		companions.update(on, app.s, c.s1 - 2.4, (s, lane) => Object.assign({}, roadPoint(s, lane * journey.keep(s))), app.playing);
+	}
 	updateCamera(dt);
 	// a snow peak the camera has strayed into is hidden rather than filling the screen
 	for (const l of landmarks) for (const m of l.decor.children) {
@@ -710,6 +721,10 @@ function loop(now) {
 	focus.copy(rig.target);
 	const hour = currentHour();
 	const wx = currentWeather(focus);
+	if (KAILASH) {
+		const fg = toGeo(focus.x, focus.z);
+		wx.thin = tibet(fg.lon, fg.lat) * kRegion(fg.lon, fg.lat);
+	}
 	sky.update(hour, focus, dt, { overcast: wx.overcast, snow: wx.snow > 0.3 });
 	scene.fog.density *= clamp(70 / rig.dist, 0.12, 1.2);
 	const night = smoothstep(4, -8, sky.elev);
@@ -748,6 +763,20 @@ function loop(now) {
 	if (app.frames % 4 === 0) updateHud(hour);
 }
 
+// The sound of the way on the Kailash journey while travelling: the wind on the plateau, harder on the passes,
+// the Kali roaring below in its gorge (music.js); the darshan's own beds take over at each stop.
+function travelSound() {
+	let kind = null;
+	if (app.state === "travel") {
+		const p = traveller.group.position, g = toGeo(p.x, p.z), h = world.height(p.x, p.z);
+		if (tibet(g.lon, g.lat) > 0.5) kind = h > 51.5 ? "pass" : "plateau";
+		else if (g.lat > 29.8 && g.lon > 80.45) kind = h > 50 ? "pass" : "gorge";
+	}
+	if (kind !== app.travelSound) {
+		app.travelSound = kind;
+		if (music.travel) music.travel(kind);
+	}
+}
 // Places on the Kailash route, announced as the traveller passes them.
 let passS = null;
 function passing() {

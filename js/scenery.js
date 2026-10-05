@@ -7,7 +7,8 @@
 import * as THREE from "three";
 import { Batch, DITHER, HAZE_FOG, NO_FLIP, SHARED, T, VCOL, patch, place } from "./batch.js";
 import { FieldGeo, StripGeo, cropMaterial, fieldMaterial, landOf, layFields } from "./fields.js";
-import { CITIES, SHRINES, toGeo, toWorld } from "./geo.js";
+import { CITIES, KAILASH, SHRINES, toGeo, toWorld } from "./geo.js";
+import { kailashCountry } from "./kailash-scenery.js";
 import { addAnimal, addPerson, haystack } from "./life.js";
 import { M, region } from "./roads.js";
 import { LEAF, blobTexture, leafAtlas, leafCell, signCell } from "./textures.js";
@@ -447,14 +448,15 @@ export class Scenery {
 		this.foot.remove(k);
 	}
 	near(x, z, margin) {
-		for (const w of this.shrines) if (Math.hypot(x - w.x, z - w.z) < 12 + margin) return true;
+		// (the Kailash journey's stops are camps and cairns, not temple towns: they keep a smaller ground)
+		for (const w of this.shrines) if (Math.hypot(x - w.x, z - w.z) < (KAILASH ? 4.6 : 12) + margin) return true;
 		const sp = this.roads.shrinePos, cr = this.roads.clearR;
 		if (sp) for (let i = 0; i < sp.length; i++) if (Math.hypot(x - sp[i].x, z - sp[i].z) < (cr[i] || 9) + 1 + margin) return true;
 		return false;
 	}
 	// inside a temple's paved courtyard and approach
 	precinct(x, z) {
-		for (const w of this.shrines) if (Math.hypot(x - w.x, z - w.z) < 7.5) return true;
+		for (const w of this.shrines) if (Math.hypot(x - w.x, z - w.z) < (KAILASH ? 4.2 : 7.5)) return true;
 		return false;
 	}
 	ok(x, z, margin = 0.3) {
@@ -525,6 +527,9 @@ export class Scenery {
 			},
 		};
 		yield;
+		// above the trees on the Kailash journey (the Byans valley and the Tibetan plateau): its own country
+		if (KAILASH && (reg === "tibet" || reg === "byans")) yield* kailashCountry(this, ctx, reg);
+		else {
 		// ---------- villages first, so the fields make room for them ----------
 		const nv = plains ? 1 + (R() < 0.5 ? 1 : 0) + (town > 0.3 ? 1 : 0) : reg === "garhwal" ? (R() < 0.55 ? 1 : 0) : 1;
 		for (let v = 0; v < nv; v++) {
@@ -646,6 +651,7 @@ export class Scenery {
 				this.kiln(ctx, c.x, c.z, R);
 				this.foot.circle(k, c.x, c.z, 3);
 			}
+		}
 		}
 		yield;
 		// ---------- build the meshes ----------

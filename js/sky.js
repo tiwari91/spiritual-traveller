@@ -115,6 +115,12 @@ export class Sky {
 		const f = clamp((elev - a[0]) / (b[0] - a[0]), 0, 1);
 		const zen = a[1].clone().lerp(b[1], f), hor = a[2].clone().lerp(b[2], f), sunCol = a[3].clone().lerp(b[3], f);
 		const inten = lerp(a[4], b[4], f), hs = a[5].clone().lerp(b[5], f), hg = a[6].clone().lerp(b[6], f), hi = lerp(a[7], b[7], f), glow = a[8].clone().lerp(b[8], f);
+		// the thin air of the Tibetan plateau (the Kailash journey): a deeper blue overhead, a harder sun, less haze
+		const thin = weather.thin || 0;
+		if (thin) {
+			zen.lerp(new THREE.Color(0x1a3f9a), 0.45 * thin * smoothstep(-4, 12, elev));
+			hor.lerp(new THREE.Color(0xa9c4e2), 0.3 * thin * smoothstep(-4, 12, elev));
+		}
 		this.overcast = lerp(this.overcast, weather.overcast, Math.min(1, dt * 0.8));
 		const oc = this.overcast;
 		this.u.uZenith.value.copy(zen);
@@ -140,6 +146,10 @@ export class Sky {
 		this.fogColor.copy(hor).lerp(zen, 0.35).lerp(new THREE.Color(0x7f8a96), oc * 0.6);
 		this.scene.fog.color.copy(this.fogColor);
 		this.scene.fog.density = lerp(0.0028, 0.0075, oc) * (weather.snow ? 1.15 : 1) * (1 + 0.5 * this.u.uStars.value);
+		if (thin) {
+			this.scene.fog.density *= 1 - 0.4 * thin;
+			this.sun.intensity *= 1 + 0.12 * thin;
+		}
 		this.dome.position.copy(focus);
 		this.sunDir = sunDir;
 		this.elev = elev;

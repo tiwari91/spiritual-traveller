@@ -1,0 +1,263 @@
+// The country of the Kailash journey above the trees (scenery.js hands its chunks here on kailash.html): the high
+// Byans valley below the Lipulekh, with juniper scrub, stone houses and goats; and the Tibetan plateau, bare and
+// tawny, with mani walls and white chortens by the road, cairns hung with prayer flags on every rise, herds of yak
+// and flocks of sheep with a herder and a black tent, the flat-roofed whitewashed houses of Taklakot and Darchen,
+// and on the parikrama Tibetan pilgrims and pack yaks on the path. Built in the chunk's batch, in metres (M).
+import * as THREE from "three";
+import { T, beam, place } from "./batch.js";
+import { addAnimal, addPerson } from "./life.js";
+import { LAKES, P } from "./kailash-geo.js";
+import { lakeDist } from "./kailash-world.js";
+import { toGeo, toWorld } from "./geo.js";
+
+const M = 0.28;
+// prayer flags (lungta) always run in this order: blue sky, white air, red fire, green water, yellow earth
+export const FLAGS = [0x2a5ab8, 0xf2f0e8, 0xc8261c, 0x2a8a4a, 0xf0c419];
+const WHITE = 0xf1eee6, RED = 0x8a2a22, GOLD = 0xc8962a, STONE = [0x8a8278, 0x7a7268, 0x9a9288, 0x6a645c];
+const pick = (R, a) => a[Math.floor(R() * a.length)];
+const _a = new THREE.Vector3(), _b = new THREE.Vector3();
+
+// A string of prayer flags from a to b (world points), sagging, n flags along it.
+export function prayerFlags(b, a, c, sag = 0.18, n = 0, R = Math.random) {
+	const len = a.distanceTo(c);
+	n = n || Math.max(4, Math.round(len / (0.55 * M)));
+	let prev = a.clone();
+	for (let i = 1; i <= n; i++) {
+		const t = i / n;
+		const q = a.clone().lerp(c, t);
+		q.y -= Math.sin(t * Math.PI) * sag * len;
+		b.add(T.box, beam(prev, q, 0.006, 0.006), 0xd8d0c0);
+		// the flag hangs below the string, turned along it, a little ruffled
+		const yaw = Math.atan2(c.x - a.x, c.z - a.z);
+		b.add(T.box, place(q.x, q.y - 0.36 * M, q.z, yaw + Math.PI / 2 + (R() - 0.5) * 0.4, 0.42 * M, 0.34 * M, 0.01, (R() - 0.5) * 0.3), FLAGS[i % 5]);
+		prev = q;
+	}
+}
+// A white chorten: three stepped plinths, the dome (bumpa), the square harmika, the tapering spire of thirteen
+// rings, the moon and sun at the top. s: its height in world units.
+export function chorten(b, x, y, z, s, yaw = 0) {
+	const u = s / 1.0;
+	b.add(T.box, place(x, y - 0.02, z, yaw, 0.62 * u, 0.12 * u, 0.62 * u), WHITE);
+	b.add(T.box, place(x, y + 0.1 * u, z, yaw, 0.5 * u, 0.1 * u, 0.5 * u), WHITE);
+	b.add(T.box, place(x, y + 0.2 * u, z, yaw, 0.4 * u, 0.08 * u, 0.4 * u), WHITE);
+	b.add(T.box, place(x, y + 0.205 * u, z, yaw, 0.405 * u, 0.012 * u, 0.405 * u), RED);
+	b.add(T.ball, place(x, y + 0.27 * u, z, yaw, 0.34 * u, 0.3 * u, 0.34 * u), WHITE);
+	b.add(T.box, place(x, y + 0.56 * u, z, yaw, 0.14 * u, 0.08 * u, 0.14 * u), RED);
+	b.add(T.taper, place(x, y + 0.64 * u, z, yaw, 0.1 * u, 0.26 * u, 0.1 * u), GOLD);
+	b.add(T.ball, place(x, y + 0.9 * u, z, 0, 0.05 * u, 0.05 * u, 0.05 * u), GOLD);
+}
+// A mani wall: a long low wall of stones, its top laid with stones carved with Om mani padme hum, painted.
+export function maniWall(b, x, y, z, yaw, len, R) {
+	b.add(T.box, place(x, y - 0.02, z, yaw, 0.28, 0.22, len), pick(R, STONE));
+	const fx = Math.sin(yaw), fz = Math.cos(yaw);
+	for (let t = -len / 2 + 0.06; t < len / 2 - 0.05; t += 0.07 + R() * 0.04) b.add(T.box, place(x + fx * t, y + 0.2, z + fz * t, yaw + (R() - 0.5) * 0.4, 0.2, 0.025 + R() * 0.02, 0.05), R() < 0.55 ? 0xe8e4da : pick(R, [0x3a6ab0, 0xb83a2a, 0x3a8a4a, 0xd8b02a]));
+	// a little chorten at each end
+	chorten(b, x + fx * (len / 2 + 0.14), y, z + fz * (len / 2 + 0.14), 0.42, yaw);
+	chorten(b, x - fx * (len / 2 + 0.14), y, z - fz * (len / 2 + 0.14), 0.42, yaw);
+}
+// A cairn of stones (lhatse) with a pole of flags; strings of flags run out from it to the ground.
+export function cairn(b, world, x, z, s, R, strings = 3) {
+	const y = world.height(x, z);
+	for (let i = 0; i < 9; i++) {
+		const a = R() * 6.3, d = (1 - i / 9) * 0.18 * s;
+		b.add(T.ball, place(x + Math.cos(a) * d, y + (i / 9) * 0.28 * s - 0.03, z + Math.sin(a) * d, R() * 6, (0.16 - i * 0.012) * s, (0.1 - i * 0.006) * s, (0.14 - i * 0.01) * s), pick(R, STONE));
+	}
+	const top = new THREE.Vector3(x, y + 0.85 * s, z);
+	b.add(T.cyl, place(x, y + 0.2 * s, z, 0, 0.025 * s, 0.68 * s, 0.025 * s), 0x6a4a2e);
+	for (let k = 0; k < strings; k++) {
+		const a = (k / strings) * Math.PI * 2 + R(), d = (1.3 + R()) * s;
+		const ex = x + Math.cos(a) * d, ez = z + Math.sin(a) * d;
+		prayerFlags(b, top, new THREE.Vector3(ex, world.height(ex, ez) + 0.04, ez), 0.08, 0, R);
+	}
+}
+// A drokpa's black tent of yak hair, low and wide, smoke-hole along the ridge.
+function tent(b, x, y, z, yaw) {
+	b.add(T.pyramid, place(x, y - 0.02, z, yaw, 1.6 * M * 2, 1.7 * M, 1.1 * M * 2), 0x1e1a16);
+	b.add(T.box, place(x, y, z, yaw, 1.5 * M * 2, 0.5 * M, 1.0 * M * 2), 0x2a241e);
+	// guy ropes to pegs, and a string of flags on the ridge
+	const fx = Math.sin(yaw), fz = Math.cos(yaw);
+	for (const s of [-1, 1]) b.add(T.box, beam(_a.set(x + fx * s * 1.4 * M, y + 1.6 * M, z + fz * s * 1.4 * M), _b.set(x + fx * s * 3 * M, y, z + fz * s * 3 * M), 0.008, 0.008), 0x3a3026);
+}
+// A Tibetan house: whitewashed stone walls battered inwards, a flat roof with a parapet edged in dark red,
+// black-framed windows, prayer flags on the roof corners. w, d in metres.
+function house(b, x, y, z, yaw, w, d, R, floors = 1) {
+	const h = (2.8 + (floors - 1) * 2.6) * M;
+	b.add(T.box, place(x, y - 0.05, z, yaw, w * M, h + 0.05, d * M), WHITE);
+	b.add(T.box, place(x, y + h, z, yaw, w * M + 0.03, 0.22 * M, d * M + 0.03), 0x5a1a16);
+	b.add(T.box, place(x, y + h + 0.22 * M, z, yaw, w * M + 0.04, 0.05 * M, d * M + 0.04), 0x2a2420);
+	const fx = Math.sin(yaw), fz = Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
+	for (let f = 0; f < floors; f++) for (let i = 0; i < Math.max(1, Math.round(w / 2.5)); i++) {
+		const u = (i - (Math.max(1, Math.round(w / 2.5)) - 1) / 2) * 2.3 * M, yy = y + (1.0 + f * 2.6) * M;
+		b.add(T.box, place(x + rx * u + fx * (d / 2) * M, yy, z + rz * u + fz * (d / 2) * M, yaw, 0.9 * M, 1.0 * M, 0.06), 0x161412);
+		b.add(T.box, place(x + rx * u + fx * (d / 2 + 0.02) * M, yy + 1.05 * M, z + rz * u + fz * (d / 2 + 0.02) * M, yaw, 1.2 * M, 0.12 * M, 0.04), 0x8a2a22);
+	}
+	// the door, and flags on a stick at two corners of the roof
+	b.add(T.box, place(x - rx * (w / 2 - 0.9) * M + fx * (d / 2) * M, y, z - rz * (w / 2 - 0.9) * M + fz * (d / 2) * M, yaw, 0.9 * M, 1.9 * M, 0.06), 0x3a2418);
+	for (const s of [-1, 1]) {
+		const cx = x + rx * s * (w / 2) * M + fx * (d / 2) * M, cz = z + rz * s * (w / 2) * M + fz * (d / 2) * M;
+		b.add(T.cyl, place(cx, y + h, cz, 0, 0.02, 0.5, 0.02), 0x6a4a2e);
+		for (let k = 0; k < 3; k++) b.add(T.box, place(cx + 0.03, y + h + 0.42 - k * 0.07, cz, yaw, 0.08, 0.06, 0.008), FLAGS[(k + (s > 0 ? 2 : 0)) % 5]);
+	}
+	void R;
+}
+// A stone house of the Byans valley: grey stone, a slate roof, a carved wooden door frame.
+function stoneHouse(b, x, y, z, yaw, w, d, R) {
+	const h = 2.6 * M;
+	b.add(T.box, place(x, y - 0.05, z, yaw, w * M, h + 0.05, d * M), pick(R, [0x7a7268, 0x8a8278, 0x6e665e]));
+	b.add(T.gable, place(x, y + h, z, yaw + Math.PI / 2, d * M + 0.06, 1.0 * M, w * M + 0.06), 0x4a4a4e);
+	const fx = Math.sin(yaw), fz = Math.cos(yaw);
+	b.add(T.box, place(x + fx * (d / 2) * M, y, z + fz * (d / 2) * M, yaw, 0.9 * M, 1.8 * M, 0.06), 0x5a3a22);
+}
+
+// The plateau's chunk. ctx is scenery.js's chunk context; sc the Scenery.
+export function* kailashCountry(sc, ctx, reg) {
+	const { R, s0, s1, world, b } = ctx;
+	const tib = reg === "tibet";
+	const clearOfLakes = (x, z, m) => {
+		const g = toGeo(x, z);
+		return LAKES.every((L) => lakeDist(L, g.lon, g.lat) > m + 0.4);
+	};
+	const okAt = (x, z, m) => ctx.ok(x, z, m) && !ctx.taken(x, z, m) && clearOfLakes(x, z, m);
+	const trail = (s) => {
+		const r = sc.roads.road(s, 0, {});
+		return r && r.kind === "trail";
+	};
+	const near = (pt, d) => {
+		const w = toWorld(pt[0], pt[1]);
+		let m = Infinity;
+		for (let s = s0; s <= s1; s += 1) {
+			const p = sc.route.at(s, {});
+			m = Math.min(m, Math.hypot(p.x - w.x, p.z - w.z));
+		}
+		return m < d;
+	};
+	if (!tib) {
+		// ---------- the Byans valley: juniper and wild rose scrub, a few stone houses, goats ----------
+		for (let i = 0; i < 70 * (sc.low ? 0.55 : 1); i++) {
+			const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (1.6 + Math.pow(R(), 0.8) * 14), {});
+			if (okAt(c.x, c.z, 0.4)) ctx.tree(c.x, c.z, "bush", 0.7 + R() * 0.5);
+		}
+		for (let v = 0; v < 2; v++) {
+			const side = R() < 0.5 ? -1 : 1, sc0 = s0 + 3 + R() * (s1 - s0 - 6);
+			for (let k = 0; k < 4 + Math.floor(R() * 4); k++) {
+				const c = ctx.frame(sc0 + (R() - 0.5) * 4, side * (2.4 + R() * 3), {});
+				if (!okAt(c.x, c.z, 0.9)) continue;
+				const yaw = Math.atan2(c.dx, c.dz) + (side > 0 ? -Math.PI / 2 : Math.PI / 2);
+				stoneHouse(b, c.x, world.height(c.x, c.z), c.z, yaw, 5 + R() * 3, 4 + R() * 2, R);
+				ctx.claimCircle(c.x, c.z, 0.9);
+			}
+		}
+		for (let h = 0; h < 2; h++) {
+			const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (4 + R() * 10), {});
+			if (!okAt(c.x, c.z, 1)) continue;
+			for (let q = 0; q < 6 + Math.floor(R() * 6); q++) {
+				const x = c.x + (R() - 0.5) * 2.5, z = c.z + (R() - 0.5) * 2.5;
+				if (okAt(x, z, 0.1)) addAnimal(b, "goat", R, x, world.height(x, z), z, R() * 6.3);
+			}
+			if (okAt(c.x + 1, c.z, 0.2)) addPerson(b, R, c.x + 1, world.height(c.x + 1, c.z), c.z, R() * 6.3, "yatri");
+		}
+		yield;
+		return;
+	}
+	// ---------- the plateau ----------
+	// mani walls and chortens beside the road
+	for (let i = 0; i < 2; i++) {
+		if (R() < 0.35) continue;
+		const s = s0 + R() * (s1 - s0), side = R() < 0.5 ? -1 : 1;
+		const c = ctx.frame(s, side * (1.5 + R() * 0.8), {});
+		const len = 1.2 + R() * 2.2, yaw = Math.atan2(c.dx, c.dz);
+		const e1 = { x: c.x + Math.sin(yaw) * len / 2, z: c.z + Math.cos(yaw) * len / 2 }, e2 = { x: c.x - Math.sin(yaw) * len / 2, z: c.z - Math.cos(yaw) * len / 2 };
+		if (!okAt(c.x, c.z, 0.3) || !okAt(e1.x, e1.z, 0.3) || !okAt(e2.x, e2.z, 0.3)) continue;
+		maniWall(b, c.x, world.height(c.x, c.z), c.z, yaw, len, R);
+		ctx.claim([[e1.x - 0.2, e1.z - 0.2], [e1.x + 0.2, e1.z + 0.2], [e2.x + 0.2, e2.z + 0.2], [e2.x - 0.2, e2.z - 0.2]]);
+		ctx.claimCircle(c.x, c.z, len / 2 + 0.3);
+	}
+	if (R() < 0.6) {
+		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (1.8 + R() * 3), {});
+		if (okAt(c.x, c.z, 0.6)) {
+			chorten(b, c.x, world.height(c.x, c.z), c.z, 1.0 + R() * 0.6, R() * 6);
+			ctx.claimCircle(c.x, c.z, 0.6);
+		}
+	}
+	yield;
+	// cairns hung with flags on the rises beside the way, more of them on the parikrama and at the passes
+	const nc = 2 + (trail((s0 + s1) / 2) ? 4 : 0) + (near(P.lipulekh, 6) || near(P.gurlaLa, 6) || near(P.dolmaLa, 6) ? 4 : 0);
+	for (let i = 0; i < nc; i++) {
+		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (1.4 + R() * 4), {});
+		if (!okAt(c.x, c.z, 0.5)) continue;
+		cairn(b, world, c.x, c.z, 0.7 + R() * 0.6, R, 2 + Math.floor(R() * 3));
+		ctx.claimCircle(c.x, c.z, 0.5);
+	}
+	yield;
+	// a herd of yak grazing, the herder, the black tent and its mastiff; or a flock of sheep
+	for (let h = 0; h < 2; h++) {
+		if (R() < 0.35) continue;
+		const sheep = R() < 0.4;
+		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (4 + R() * 16), {});
+		if (!okAt(c.x, c.z, 1.5)) continue;
+		const n = sheep ? 12 + Math.floor(R() * 14) : 4 + Math.floor(R() * 7);
+		for (let q = 0; q < n; q++) {
+			const x = c.x + (R() - 0.5) * (sheep ? 3 : 4), z = c.z + (R() - 0.5) * (sheep ? 3 : 4);
+			if (okAt(x, z, 0.1)) addAnimal(b, sheep ? "sheep" : "yak", R, x, world.height(x, z), z, R() * 6.3);
+		}
+		const hx = c.x + 1.2, hz = c.z - 0.6;
+		if (okAt(hx, hz, 0.1)) addPerson(b, R, hx, world.height(hx, hz), hz, R() * 6.3, "tibetan");
+		if (R() < 0.6) {
+			const tx = c.x - 2.2, tz = c.z + 1.4;
+			if (okAt(tx, tz, 0.8)) {
+				tent(b, tx, world.height(tx, tz), tz, R() * 6.3);
+				addAnimal(b, "dog", R, tx + 0.6, world.height(tx + 0.6, tz), tz + 0.3, R() * 6.3);
+				ctx.claimCircle(tx, tz, 0.8);
+			}
+		}
+		ctx.claimCircle(c.x, c.z, 1.5);
+	}
+	yield;
+	// the parikrama: Tibetan pilgrims on the path (walking the other way round, as Bonpo pilgrims do, or resting),
+	// pack yaks with their yakmen, mani stones heaped by the way
+	if (trail((s0 + s1) / 2)) {
+		for (let i = 0; i < 9; i++) {
+			const s = s0 + R() * (s1 - s0);
+			if (!trail(s)) continue;
+			const side = R() < 0.5 ? -1 : 1, c = ctx.frame(s, side * (0.62 + R() * 0.3), {});
+			if (!okAt(c.x, c.z, 0.05)) continue;
+			const yaw = Math.atan2(c.dx, c.dz) + (R() < 0.75 ? 0 : Math.PI);
+			if (R() < 0.3) {
+				const yx = c.x - c.dz * side * 0.25, yz = c.z + c.dx * side * 0.25;
+				if (okAt(yx, yz, 0.15)) {
+					addAnimal(b, "packyak", R, yx, world.height(yx, yz), yz, yaw);
+					ctx.claimCircle(yx, yz, 0.4);
+				}
+			}
+			addPerson(b, R, c.x, world.height(c.x, c.z), c.z, yaw, R() < 0.7 ? "tibetan" : "yatri");
+			ctx.claimCircle(c.x, c.z, 0.15);
+		}
+		for (let i = 0; i < 4; i++) {
+			const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (0.95 + R() * 0.5), {});
+			if (!okAt(c.x, c.z, 0.2)) continue;
+			const y = world.height(c.x, c.z);
+			for (let k = 0; k < 14; k++) b.add(T.box, place(c.x + (R() - 0.5) * 0.3, y + R() * 0.12, c.z + (R() - 0.5) * 0.3, R() * 6, 0.12, 0.03, 0.08), R() < 0.5 ? 0xe8e4da : pick(R, STONE));
+		}
+	}
+	// boulders and stones strewn over the plateau
+	for (let i = 0; i < 18; i++) {
+		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (1.6 + Math.pow(R(), 0.7) * 20), {});
+		if (!okAt(c.x, c.z, 0.3)) continue;
+		const sz = 0.15 + R() * 0.5;
+		b.add(T.ball, place(c.x, world.height(c.x, c.z) - sz * 0.25, c.z, R() * 6, sz, sz * (0.5 + R() * 0.3), sz * (0.7 + R() * 0.4)), pick(R, STONE));
+	}
+	yield;
+	// the towns: Taklakot (Purang) on its terraces above the Karnali, and Darchen under Kailash
+	for (const [pt, n] of [[P.taklakot, 18], [P.darchen, 10]]) {
+		if (!near(pt, 5)) continue;
+		const w = toWorld(pt[0], pt[1]);
+		for (let k = 0; k < n; k++) {
+			const a = R() * Math.PI * 2, d = 2.2 + R() * 4;
+			const x = w.x + Math.cos(a) * d, z = w.z + Math.sin(a) * d;
+			if (!okAt(x, z, 1.0)) continue;
+			const yaw = Math.round((a + Math.PI) / (Math.PI / 2)) * (Math.PI / 2) + (R() - 0.5) * 0.2;
+			house(b, x, world.height(x, z), z, yaw, 6 + R() * 6, 5 + R() * 4, R, R() < 0.25 ? 2 : 1);
+			ctx.claimCircle(x, z, 1.2);
+		}
+	}
+}

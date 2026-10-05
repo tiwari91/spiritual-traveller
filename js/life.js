@@ -172,6 +172,62 @@ function dog(col, pose) {
 	p.limb(V(0, by + 0.2, -0.36), V(0.04, by + 0.2, -0.26), 0.018, 0.012, c);
 	return p.build();
 }
+// The yak of the Tibetan plateau and the high Byans valley: a big, low, dark body under a long shaggy skirt of
+// hair, a hump at the shoulders, the head carried low, upswept horns, a bushy tail; some piebald with white. A
+// pack yak carries a load roped on either side, a red tassel in its ear.
+export function yak(col, pose, pack = false, legs = true) {
+	const p = new Parts();
+	const c = new THREE.Color(col), hair = c.clone().multiplyScalar(0.8), white = 0xe8e2d6, horn = 0xcfc4ae, hoof = 0x1a1612;
+	const lie = pose === "lie", graze = pose === "graze";
+	const by = lie ? 0.6 : 1.12;
+	p.blob(0, by, 0, 0.42, 0.44, 0.92, c);
+	p.blob(0, by + 0.12, 0.48, 0.4, 0.5, 0.42, c);
+	p.blob(0, by + 0.5, 0.42, 0.24, 0.22, 0.3, hair); // the hump
+	p.blob(0, by + 0.02, -0.55, 0.4, 0.42, 0.42, c);
+	if (col === 0x2a2420) p.blob(0.12, by + 0.1, 0.2, 0.3, 0.32, 0.55, white); // a white patch
+	// the long hair hanging from the flanks and belly to the knees
+	for (const z of [-0.6, -0.25, 0.1, 0.45]) for (const sx of [-1, 1]) p.blob(sx * 0.32, by - 0.32, z, 0.14, lie ? 0.22 : 0.38, 0.24, hair, 0, 0, sx * 0.15);
+	p.blob(0, by - 0.38, 0, 0.3, lie ? 0.2 : 0.32, 0.75, hair);
+	const head = graze ? V(0, 0.45, 1.25) : lie ? V(0, by + 0.25, 1.0) : V(0, by - 0.05, 1.25);
+	p.limb(V(0, by + 0.1, 0.8), head, 0.22, 0.16, c);
+	p.blob(head.x, head.y, head.z, 0.15, 0.17, 0.26, c, graze ? 1.2 : 0.7);
+	p.blob(0, head.y - (graze ? 0.22 : 0.12), head.z + (graze ? 0.12 : 0.2), 0.1, 0.09, 0.09, 0x2a2420);
+	p.blob(0, head.y - 0.18, head.z - 0.05, 0.12, 0.2, 0.12, hair); // the beard of hair under the chin
+	for (const sx of [-1, 1]) {
+		const a = V(sx * 0.1, head.y + 0.12, head.z - 0.12), b = V(sx * 0.3, head.y + 0.18, head.z - 0.12), e = V(sx * 0.32, head.y + 0.38, head.z - 0.2);
+		p.limb(a, b, 0.045, 0.03, horn);
+		p.limb(b, e, 0.03, 0.01, horn);
+		p.blob(sx * 0.18, head.y + 0.05, head.z - 0.16, 0.07, 0.03, 0.05, c, 0, 0, sx * 0.5);
+	}
+	if (pack) {
+		p.blob(0.2, head.y + 0.07, head.z - 0.14, 0.05, 0.05, 0.05, 0xd8261c); // a red tassel in the ear
+		for (const sx of [-1, 1]) p.box(sx * 0.5, by - 0.05, 0, 0.32, 0.5, 0.8, sx > 0 ? 0x3a5a8a : 0x8a3a1e);
+		p.box(0, by + 0.42, -0.05, 0.75, 0.12, 0.75, 0x5a4a3a); // the saddle blanket and ropes
+		p.box(0, by + 0.5, -0.05, 0.85, 0.03, 0.06, 0xd8c8a0);
+	}
+	if (!lie && legs) for (const [lx, lz] of [[-0.2, 0.55], [0.2, 0.55], [-0.2, -0.6], [0.2, -0.6]]) {
+		p.limb(V(lx, by - 0.2, lz), V(lx, 0.05, lz), 0.09, 0.06, c);
+		p.box(lx, 0, lz, 0.11, 0.07, 0.13, hoof);
+	}
+	p.limb(V(0, by + 0.15, -0.95), V(0, by - 0.1, -1.05), 0.04, 0.03, c);
+	p.blob(0, by - 0.42, -1.07, 0.1, 0.3, 0.1, hair); // the bushy tail
+	return p.build();
+}
+// Sheep of the Changtang: white or cream, a black face on some.
+function sheep(col, pose) {
+	const p = new Parts();
+	const c = new THREE.Color(col);
+	const graze = pose === "graze";
+	const by = 0.5;
+	p.blob(0, by, 0, 0.22, 0.24, 0.42, c);
+	const head = graze ? V(0, 0.2, 0.5) : V(0, by + 0.18, 0.46);
+	p.limb(V(0, by + 0.05, 0.3), head, 0.08, 0.06, c);
+	p.blob(head.x, head.y, head.z + 0.04, 0.07, 0.08, 0.13, R0() < 0.5 ? 0x2a2420 : c, graze ? 1.1 : 0.5);
+	for (const [lx, lz] of [[-0.1, 0.25], [0.1, 0.25], [-0.1, -0.25], [0.1, -0.25]]) p.limb(V(lx, by - 0.1, lz), V(lx, 0, lz), 0.03, 0.02, 0x2a2420);
+	return p.build();
+}
+let _r0 = 7;
+const R0 = () => ((_r0 = (_r0 * 16807) % 2147483647) / 2147483647);
 const ANIMALS = {};
 export function animal(kind, R) {
 	const pose = R() < 0.45 ? "graze" : R() < 0.5 ? "lie" : "stand";
@@ -188,6 +244,16 @@ export function animal(kind, R) {
 		const gp = pose === "lie" ? "stand" : pose;
 		key = `goat${col}${gp}`;
 		make = () => goat(col, gp);
+	} else if (kind === "yak" || kind === "packyak") {
+		const col = [0x1e1a17, 0x2a2420, 0x3a2e26, 0x1e1a17][Math.floor(R() * 4)];
+		const yp = kind === "packyak" ? "stand" : pose;
+		key = `${kind}${col}${yp}`;
+		make = () => yak(col, yp, kind === "packyak");
+	} else if (kind === "sheep") {
+		const col = [0xece6d8, 0xe0d6c0, 0xd8ccb4][Math.floor(R() * 3)];
+		const sp = pose === "lie" ? "stand" : pose;
+		key = `sheep${col}${sp}`;
+		make = () => sheep(col, sp);
 	} else {
 		const col = [0xc49a62, 0xb88a52, 0xd8c09a, 0x3a3028][Math.floor(R() * 4)];
 		const dp = pose === "graze" ? "stand" : pose;
@@ -204,26 +270,28 @@ export function addAnimal(b, kind, R, x, y, z, yaw) {
 }
 
 // ---------- people ----------
-const FIG = [];
-export function figure(R) {
+const FIG = [], FIG_AT = {};
+// dress: dress the people as those of a region (pilgrim.js crowdOpts), e.g. "tibetan"; by default the plains' mix
+export function figure(R, dress) {
 	const n = 10;
 	const i = Math.floor(R() * n);
-	if (!FIG[i]) {
+	const F = dress ? (FIG_AT[dress] ||= []) : FIG;
+	if (!F[i]) {
 		try {
-			const m = crowdFigure(9000 + i * 37);
+			const m = crowdFigure(9000 + i * 37, dress);
 			let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
 			for (const k of Object.keys(g.attributes)) if (k !== "position" && k !== "normal" && k !== "color") g.deleteAttribute(k);
 			if (!g.attributes.normal) g.computeVertexNormals();
 			if (!g.attributes.color) g.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 3).fill(0.7), 3));
-			FIG[i] = g;
+			F[i] = g;
 		} catch (e) {
-			FIG[i] = null;
+			F[i] = null;
 		}
 	}
-	return FIG[i];
+	return F[i];
 }
-export function addPerson(b, R, x, y, z, yaw) {
-	const g = figure(R);
+export function addPerson(b, R, x, y, z, yaw, dress) {
+	const g = figure(R, dress);
 	if (g) b.addColored(g, place(x, y, z, yaw, 1, 1, 1), 1);
 }
 

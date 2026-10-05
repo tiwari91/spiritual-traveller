@@ -4,7 +4,8 @@
 // forms written out afresh, in the style of the aartis sung at each shrine.
 //
 //   const music = new Music(audio);    // audio: the Audio from audio.js; music follows its on/off toggle
-//   music.ambient(key);                // a quiet bed for darshan; key: "bhimashankar" | "shirdi" | "tirupati" | "kedarnath" | "badrinath"
+//   music.ambient(key);                // a quiet bed for darshan; key: "bhimashankar" | "shirdi" | "tirupati" | "kedarnath" | "badrinath",
+//                                      //   or the Kailash journey's "omparvat" | "mansarovar" | "yamdwar" | "dirapuk" | "dolmala" | "darchen"
 //   const a = music.aarti(key);        // the full aarti (about 95 s), then back to the ambient bed by itself
 //     a.id, a.duration, a.cues        // cues in seconds: enter, conch [a, b], pick, aarti [a, b], song [a, b],
 //                                     //   peal [a, b], offer [a, b], petals, end
@@ -14,6 +15,12 @@
 //   music.stinger("conch" | "bells" | "bell");
 //   music.stop(fade = 1.5);            // fade out and stay silent until the next ambient() or aarti()
 //   music.setEnabled(bool);            // an extra mute on top of audio.on
+//   music.travel(kind, level = 1);     // a quiet bed of the country while travelling, crossfaded (the Kailash journey):
+//                                      //   kind "plateau" (wind over the Tibetan plateau, flags now and then), "pass" (a
+//                                      //   hard wind on the Lipulekh and the Dolma La), "gorge" (the Kali roaring below
+//                                      //   the road, a little wind), or null to fade it out. It runs beside ambient() and
+//                                      //   aarti() without touching them, follows the sound toggle, and stays silent
+//                                      //   until called.
 //   music.playing                      // "ambient" | "aarti" | null
 //   aartiSchedule(key)                 // the same timing without a Music, for visuals that run with no sound
 //   Music.render(key, "aarti" | "ambient", seconds) → Promise<AudioBuffer>, offline, for tests
@@ -182,11 +189,44 @@ const BUFS = {
 		const R = lcg(99);
 		for (let i = 0; i < d.length; i++) d[i] = R() * 2 - 1;
 	}],
+	// ---- the Kailash journey ----
+	// a Tibetan singing bowl, struck: slow partials beating in pairs, ringing for many seconds
+	bowl: [9, bell(208, [[1, 0.7, 7.5], [1.003, 0.5, 7.5], [2.71, 0.4, 4.8], [2.716, 0.3, 4.8], [5.12, 0.22, 2.8], [8.3, 0.1, 1.6], [12.1, 0.05, 0.9]], 0.12)],
+	// the dril-bu, the lama's hand bell: bright and long
+	drilbu: [3, bell(1560, [[1, 0.6, 2.2], [1.004, 0.45, 2.2], [2.32, 0.35, 1.2], [3.86, 0.25, 0.7], [5.58, 0.14, 0.45], [7.7, 0.07, 0.25]], 0.25)],
+	// rolmo, the big flat cymbals of the gompa: a dark, long wash
+	rolmo: [3.2, (d, r) => cymbalInto(d, r, [380, 690, 1010, 1390, 1820, 2310, 2880, 3520, 4300, 5150], 2.3, 0.9, 0.09, 300)],
+	rolmoC: [0.4, (d, r) => cymbalInto(d, r, [380, 690, 1010, 1390, 1820, 2310], 0.12, 0.7, 0.04, 300)],
+	// nga, the great frame drum on its stand, struck with a curved stick
+	nga: drum({ f: 66, bend: 0.35, bendT: 0.05, decay: 0.55, parts: [[1, 1], [1.62, 0.22, 0.6], [2.31, 0.1, 0.4]], noise: 0.22, nDecay: 0.02, nLp: 1300 }),
+	// the bells round a yak's neck: dull, clanking iron
+	yakBell: [1.0, bell(690, [[1, 0.5, 0.5], [1.47, 0.35, 0.38], [2.09, 0.3, 0.26], [2.56, 0.2, 0.2], [3.42, 0.12, 0.12]], 0.5)],
+	// a prayer flag's snap in the wind
+	flap: [0.18, (d, r) => {
+		noiseInto(d, r, 0.9, 0.012, 3200, 700, 41);
+		noiseInto(d.subarray(Math.floor(0.035 * r)), r, 0.5, 0.018, 2400, 500, 43);
+	}],
+	// a small wave on a stony shore
+	lap: [1.6, (d, r) => {
+		const R = lcg(57);
+		let l = 0;
+		for (let i = 0; i < d.length; i++) {
+			const t = i / r, e = Math.sin(Math.PI * Math.min(1, t / 1.5)) ** 2 * (1 - t / 1.6);
+			l += 0.06 * (R() * 2 - 1 - l);
+			d[i] = l * e + (R() * 2 - 1) * 0.04 * e * Math.max(0, Math.sin(t * 9));
+		}
+	}],
 };
 
 // Reverb per shrine: [seconds, brightness, wet]. Kedarnath and Bhimashankar ring like stone halls; Shirdi's
 // Samadhi Mandir is a marble hall, full of people, a little softer.
-const ROOM = { kedarnath: [3.4, 0.5, 0.42], bhimashankar: [2.8, 0.55, 0.36], tirupati: [1.8, 0.7, 0.24], badrinath: [2.2, 0.6, 0.27], shirdi: [2.4, 0.6, 0.3] };
+const ROOM = { kedarnath: [3.4, 0.5, 0.42], bhimashankar: [2.8, 0.55, 0.36], tirupati: [1.8, 0.7, 0.24], badrinath: [2.2, 0.6, 0.27], shirdi: [2.4, 0.6, 0.3],
+	// the Kailash journey is out of doors: dry, open air with a little slap back off the valley sides, longest under
+	// the walls of Dirapuk and the gorge at Om Parvat
+	omparvat: [1.6, 0.6, 0.15], mansarovar: [1.1, 0.75, 0.08], yamdwar: [1.3, 0.7, 0.1], dirapuk: [2.0, 0.55, 0.17], dolmala: [0.9, 0.8, 0.07], darchen: [1.2, 0.7, 0.1] };
+// the stops on the Tibetan plateau
+const PLATEAU = new Set(["mansarovar", "yamdwar", "dirapuk", "dolmala", "darchen"]);
+const ROOM_K = new Set(["omparvat", ...PLATEAU]);
 
 class Engine {
 	constructor(ctx) {
@@ -509,6 +549,57 @@ function noiseBed(P, type, f, Q, level, sweep) {
 	P.stop.push(src, lfo);
 }
 
+// Dungchen: the gompa's long copper horns, blown in pairs from the roof, a low growling drone that swells and
+// breaks, far off across the valley.
+function dungchen(P, T, dur, f, vel) {
+	vel *= 0.45;
+	const c = P.ctx, amp = G(c, 0), lp = F(c, "lowpass", 260, 1.4);
+	chain(lp, F(c, "peaking", 520, 1.5, 6), amp, P.out);
+	for (const [m, det, a] of [[1, -6, 0.55], [1, 7, 0.5], [2, 3, 0.18], [0.5, 0, 0.3]]) {
+		const o = O(c, "sawtooth", f * m);
+		o.detune.value = det;
+		o.frequency.setValueAtTime(f * m * 0.94, T);
+		o.frequency.exponentialRampToValueAtTime(f * m, T + 0.5);
+		chain(o, G(c, a), lp);
+		o.start(T);
+		o.stop(T + dur + 0.1);
+	}
+	// the growl: the lips flutter, a slow roughness on the tone
+	const fl = O(c, "sine", 23), fg = G(c, vel * 0.3);
+	chain(fl, fg, amp.gain);
+	fl.start(T);
+	fl.stop(T + dur + 0.1);
+	lp.frequency.setValueAtTime(220, T);
+	lp.frequency.linearRampToValueAtTime(900, T + dur * 0.4);
+	lp.frequency.linearRampToValueAtTime(300, T + dur);
+	const g = amp.gain;
+	g.setValueAtTime(0, T);
+	g.linearRampToValueAtTime(vel, T + 0.8);
+	g.setValueAtTime(vel, T + dur - 1.0);
+	g.linearRampToValueAtTime(0, T + dur);
+}
+// Wind over the plateau: a low roar and a thin whistle, in slow gusts that never quite die.
+function windBed(P, level) {
+	const c = P.ctx, src = c.createBufferSource();
+	src.buffer = P.e.buf("noise");
+	src.loop = true;
+	const g = G(c, 0), gust = G(c, 0.55);
+	const low = F(c, "lowpass", 380, 0.7), whistle = F(c, "bandpass", 1100, 4);
+	chain(src, low, G(c, 1), gust);
+	chain(src, whistle, G(c, 0.35), gust);
+	chain(gust, g, P.out);
+	g.gain.setTargetAtTime(level, P.t, 2.5);
+	const lfos = [[0.031, 0.32, gust.gain], [0.113, 0.16, gust.gain], [0.047, 160, low.frequency], [0.083, 380, whistle.frequency]];
+	for (const [f, depth, param] of lfos) {
+		const o = O(c, "sine", f);
+		chain(o, G(c, depth), param);
+		o.start(P.t);
+		P.stop.push(o);
+	}
+	src.start(P.t);
+	P.stop.push(src);
+}
+
 // ---------- writing music ----------
 // A tempo grid: bars of upb units, each bar with its own unit length so a piece can gather speed.
 class Grid {
@@ -554,6 +645,9 @@ class Score {
 	}
 	om(t, dur, vel = 0.5) {
 		this.at(t, (T, P) => MUTE.has("om") || om(P, T, dur, vel));
+	}
+	dungchen(t, dur, f = 65.4, vel = 0.5) {
+		this.at(t, (T, P) => MUTE.has("dungchen") || dungchen(P, T, dur, f, vel));
 	}
 	// the damaru's rattle: the two heads struck in turn, quickening and easing
 	damaru(t, dur, vel = 0.5) {
@@ -854,6 +948,224 @@ const PIECES = {
 	},
 };
 
+
+// ---------- the Kailash journey ----------
+// "Om mani padme hum", murmured low by Tibetan pilgrims or the monks of a gompa, on one note with a fall at the end.
+function mani(S, t0, vel = 0.3, n = 1) {
+	let t = t0;
+	for (let r = 0; r < n; r++) for (const [s, d, v] of [[0, 0.7, "o"], [0, 0.34, "a"], [0, 0.34, "i"], [0, 0.42, "a"], [-2, 0.34, "e"], [-5, 0.95, "u"]]) {
+		const f = hz(s - 24), at = t;
+		S.at(at, (T, P) => P.v.monks && !MUTE.has("monks") && P.v.monks.note(T, f, d * 0.95, vel, { v }));
+		t += d;
+	}
+	return t;
+}
+// The close of an aarti out of doors, with no temple bells to peal: the hand bells together, the lama's bell from the
+// gompa (or the rolmo crashing), a last conch, then the wind. Same cue times as finale().
+function kfinale(S, end, conchF, o = {}) {
+	S.ring(end, end + 5.4, 0.1, 0.2);
+	for (let k = 0; k < 4; k++) S.hit(end + 0.2 + k * 1.3, o.drilbu === false ? "ghanti" : "drilbu", 0.5 - k * 0.08, 1, k % 2 ? 0.3 : -0.3);
+	if (o.rolmo) for (let k = 0; k < 3; k++) S.hit(end + 0.1 + k * 0.9, k === 2 ? "rolmo" : "rolmoC", 0.6, 1, 0);
+	if (o.nga) for (let k = 0; k < 6; k++) S.hit(end + 0.1 + k * 0.45, "nga", 0.6 - k * 0.06);
+	S.conch(end + 1.1, 4.2, conchF, 0.95);
+	return { peal: [end, end + 5.6], offer: [end + 5.8, end + 17.3], petals: end + 14.3, end: end + 22.5 };
+}
+Object.assign(PIECES, {
+	// Om Parvat: the batch's aarti at the camp under the mountain, in the Kumaoni manner. Om, the shankh, the bell,
+	// the ransingha and the turri calling across the valley, then a hill tune in a lilting six (S R G P D, as the
+	// hill songs go) over dhol and damau, and "Har Har Mahadev".
+	omparvat(S) {
+		S.om(0.6, 5.5, 0.42);
+		S.hit(1.2, "doorBell", 0.22, 1, -0.3);
+		S.conch(3.2, 4.8, 196, 1);
+		for (const [t, v] of [[8.4, 0.8], [10.2, 0.7], [12.0, 0.6]]) S.hit(t, "ghanta", v);
+		S.horn(9.1, 0.5);
+		S.horn(12.4, 0.55);
+		S.damaru(10.6, 1.2, 0.4);
+		S.ring(9, 15, 0.15);
+		const g = new Grid(15, 6).add(16, 0.38).add(8, 0.35, 0.29).add(6, 0.27);
+		const A1 = "S - R G - G P - G R - S", A2 = "R - G P - D P - G R - S";
+		const B1 = "P - P D - S' D - P G - R", B2 = "G - P G - R S - .D S - -";
+		const vw = "oaiaoaai";
+		let u = 0;
+		for (const [str, who] of [[A1 + " " + A2, "call"], [A1 + " " + A2, "resp"], [B1 + " " + B2, "call"], [B1 + " " + B2, "resp"], [[A1, A2, B1, B2].join(" "), "all"]]) u = S.sing(g, u, str, who, vw);
+		S.chant(g, 24, 30, [["a", 7, 0, 1], ["a", 7, 1, 1], ["a", 5, 2, 1], ["a", 4, 3, 1], ["e", 4, 4, 2]]);
+		const dd = { D: [["dholBass", 0.8]], t: [["dholStick", 0.42]], T: [["dholStick", 0.62]] }, dm = { x: [["damau", 0.36]], X: [["damau", 0.55]] };
+		S.rhythm(g, 0, 16, "D.tD.t", dd);
+		S.rhythm(g, 0, 16, "x..x.x", dm);
+		S.rhythm(g, 16, 24, "DttDtT", dd);
+		S.rhythm(g, 16, 24, "x.xX.x", dm);
+		S.rhythm(g, 24, 30, "DTtDTt", dd);
+		S.rhythm(g, 24, 30, "xXxxXx", dm);
+		S.rhythm(g, 8, 30, "o..o..", { o: [["manjira", 0.14]] });
+		S.ringGrid(g, 0, 30, 2);
+		for (let b = 0; b < 24; b += 2) S.hit(g.time(b * 6), "ghanta", 0.38);
+		S.horn(g.time(16 * 6), 0.6);
+		S.horn(g.time(24 * 6), 0.7);
+		const c = finale(S, g.end, 196);
+		S.horn(g.end + 0.6, 0.6);
+		S.om(g.end + 6.2, 7, 0.42);
+		return { g, cues: { ...OPEN, aarti: [9, g.end], song: [g.t0, g.end], ...c } };
+	},
+	// Mansarovar: the aarti by the lake after the snan, gentle, in Khamaj (the flattened Ni): harmonium, a soft
+	// dholak and manjira, the hand bell, and "Jai Mansarovar" at the close.
+	mansarovar(S) {
+		S.om(0.6, 6.0, 0.4);
+		S.conch(3.2, 4.8, 208, 1);
+		S.hit(8.4, "ghanti", 0.5);
+		S.hit(10.4, "bowl", 0.35);
+		S.ring(9, 15, 0.15);
+		let t = 9.2;
+		for (const [s, d] of [[0, 1.0], [4, 0.5], [5, 0.5], [7, 1.0], [9, 0.5], [10, 0.6], [9, 0.4], [7, 0.8], [5, 0.4], [4, 0.6], [0, 1.4]]) {
+			const f = hz(s), at = t;
+			S.at(at, (T, P) => P.v.lead && P.v.lead.note(T, f, d, 0.55));
+			t += d;
+		}
+		for (let x = 13.6, k = 0; x < 15; x += 0.11, k++) S.hit(x, k % 2 ? "manjiraC" : "manjira", 0.05 + (x - 13.6) * 0.06);
+		const g = new Grid(15, 8).add(16, 0.3).add(8, 0.28, 0.23).add(5, 0.22);
+		const L1 = "S - G M P - P - D n D P M - - -", L2 = "M G M P G - R S R - G R S - - -";
+		const M1 = "P P D - S' - S' - n D P - D P M -", M2 = "G M P - M G R - S R G R S - - -";
+		const vw = "oaiaaaoa";
+		let u = 0;
+		for (const [str, who] of [[L1 + " " + L2, "call"], [L1 + " " + L2, "resp"], [M1 + " " + M2, "call"], [M1 + " " + M2, "resp"], [[L1, L2, M1, M2].join(" "), "all"]]) u = S.sing(g, u, str, who, vw);
+		S.chant(g, 24, 29, [["a", 7, 0, 1], ["a", 9, 1, 1], ["a", 7, 2, 1], ["o", 5, 3, 1], ["a", 4, 4, 2]]);
+		const dk = { D: [["dholakGe", 0.5], ["dholakNa", 0.3]], n: [["dholakNa", 0.3]], t: [["dholakTi", 0.28]] };
+		S.rhythm(g, 0, 16, "D..nD.n.", dk);
+		S.rhythm(g, 16, 24, "DnnDtnDn", dk);
+		S.rhythm(g, 24, 29, "DnDnDtDn", dk);
+		S.rhythm(g, 0, 16, "o...o...", { o: [["manjira", 0.13]] });
+		S.rhythm(g, 16, 24, "o.c.o.c.", { o: [["manjira", 0.14]], c: [["manjiraC", 0.12]] });
+		S.rhythm(g, 24, 29, "oooooooo", { o: [["manjira", 0.14]] });
+		S.ringGrid(g, 0, 29, 2);
+		for (let b = 0; b < 24; b += 8) S.hit(g.time(b * 8), "bowl", 0.3);
+		const c = kfinale(S, g.end, 208, { drilbu: false });
+		S.om(g.end + 6.2, 7.5, 0.4);
+		return { g, cues: { ...OPEN, aarti: [9, g.end], song: [g.t0, g.end], ...c } };
+	},
+	// Yam Dwar: the yatris' aarti under Tarboche's flags as the parikrama begins. The dungchen sound from the gompa,
+	// the rolmo and the nga answer; then "Bam Bam Bhole" in Bhairav (the flattened Re and Dha of the morning).
+	yamdwar(S) {
+		S.dungchen(0.3, 5.2, 65.41, 0.5);
+		S.dungchen(2.4, 4.6, 65.41, 0.42);
+		S.hit(1.0, "rolmo", 0.45);
+		S.hit(2.9, "nga", 0.55);
+		S.conch(3.2, 4.8, 196, 0.95);
+		S.hit(8.4, "drilbu", 0.45, 1, -0.4);
+		S.hit(8.6, "ghanti", 0.5);
+		S.om(8.9, 5.5, 0.4);
+		S.ring(9, 15, 0.15);
+		const g = new Grid(15, 8).add(16, 0.32).add(8, 0.3, 0.24).add(5, 0.24);
+		const Y1 = "S - r G M - G r S - .N S r - - -", Y2 = "G M P - d P M G M G r - S - - -";
+		const Z1 = "P - d N S' - N d P - M P d P - -", Z2 = "M G r G M - G r S - .N - S - - -";
+		const vw = "aaoeaaoe";
+		let u = 0;
+		for (const [str, who] of [[Y1 + " " + Y2, "call"], [Y1 + " " + Y2, "resp"], [Z1 + " " + Z2, "call"], [Z1 + " " + Z2, "resp"], [[Y1, Y2, Z1, Z2].join(" "), "all"]]) u = S.sing(g, u, str, who, vw);
+		S.chant(g, 24, 29, [["a", 7, 0, 1], ["a", 7, 1, 1], ["o", 5, 2, 1], ["e", 4, 3, 2]]);
+		const dk = { D: [["dholakGe", 0.5], ["dholakNa", 0.3]], n: [["dholakNa", 0.3]] };
+		S.rhythm(g, 0, 16, "D...D.n.", dk);
+		S.rhythm(g, 16, 29, "D.nDn.n.", dk);
+		S.rhythm(g, 0, 16, "o...o...", { o: [["manjira", 0.13]] });
+		S.rhythm(g, 16, 24, "N.......", { N: [["nga", 0.5]] });
+		S.rhythm(g, 24, 29, "N...N...", { N: [["nga", 0.55]] });
+		S.rhythm(g, 24, 29, "c...c...", { c: [["rolmoC", 0.32]] });
+		S.ringGrid(g, 0, 29, 2);
+		const c = kfinale(S, g.end, 196, { rolmo: true });
+		S.dungchen(g.end + 6.0, 7.0, 65.41, 0.45);
+		return { g, cues: { ...OPEN, aarti: [9, g.end], song: [g.t0, g.end], ...c } };
+	},
+	// Dirapuk: the evening aarti before the north face, slow and grave, in Malkauns (S g M d n, the raga of the night
+	// and of Shiva). The monks' "Om mani padme hum" from the gompa opposite, a singing bowl, a dungchen far off, then
+	// the damaru and the yatris' call and response, and "Jai Kailashpati".
+	dirapuk(S) {
+		mani(S, 0.3, 0.32, 2);
+		S.hit(0.6, "bowl", 0.5);
+		S.dungchen(1.2, 4.4, 61.74, 0.32);
+		S.conch(3.2, 4.8, 185, 1);
+		S.hit(8.4, "bowl", 0.6);
+		S.om(8.6, 6.0, 0.42);
+		S.damaru(9.2, 1.4, 0.45);
+		S.hit(11.8, "drilbu", 0.4, 1, 0.4);
+		S.ring(9, 15, 0.15);
+		const g = new Grid(15, 8).add(14, 0.33).add(8, 0.3, 0.25).add(4, 0.24);
+		const K1 = "S - g M - M d - M g M - g S - -", K2 = "g M d - n d M - g M g - S - - -";
+		const J1 = "d - d n S' - n d M - d M g - - -", J2 = "M g M d M - g S .n S - - - - - -";
+		const vw = "oaaaiaaa";
+		let u = 0;
+		for (const [str, who] of [[K1 + " " + K2, "call"], [K1 + " " + K2, "resp"], [J1 + " " + J2, "call"], [J1 + " " + J2, "resp"], [[K1, K2, J1, J2].join(" "), "all"]]) u = S.sing(g, u, str, who, vw);
+		S.chant(g, 24, 26, [["a", 8, 0, 1], ["a", 8, 1, 1], ["a", 5, 2, 1], ["a", 3, 3, 1], ["i", 3, 4, 3]]);
+		const dk = { D: [["dholakGe", 0.45]], n: [["dholakNa", 0.26]] };
+		S.rhythm(g, 0, 8, "D.......", dk);
+		S.rhythm(g, 8, 26, "D...D.n.", dk);
+		S.rhythm(g, 0, 26, "o...o...", { o: [["manjira", 0.12]] });
+		S.rhythm(g, 16, 26, "N...N...", { N: [["nga", 0.42]] });
+		for (const b of [3, 7, 11, 15, 19, 23]) S.damaru(g.time(b * 8 + 5), 0.7, 0.36);
+		for (let b = 0; b < 24; b += 8) S.hit(g.time(b * 8), "bowl", 0.35);
+		S.ringGrid(g, 0, 26, 2);
+		const c = kfinale(S, g.end, 185, { nga: true });
+		S.hit(g.end + 6, "bowl", 0.5);
+		mani(S, g.end + 6.6, 0.3, 3);
+		return { g, cues: { ...OPEN, aarti: [9, g.end], song: [g.t0, g.end], ...c } };
+	},
+	// Dolma La: the short, breathless aarti at the pass, at 5,630 m in the wind: no harmonium, only voices, the hand
+	// bell, a damaru and the manjira, phrases broken by rests for breath, and "Jai Maa Gauri".
+	dolmala(S) {
+		S.om(0.6, 5.0, 0.38);
+		S.conch(3.2, 4.8, 196, 0.85);
+		S.hit(8.4, "drilbu", 0.45);
+		S.damaru(9.0, 1.2, 0.4);
+		S.ring(9, 15, 0.15);
+		const g = new Grid(15, 8).add(14, 0.34).add(8, 0.31, 0.26).add(4, 0.25);
+		const D1 = "S - R G - - G R S - _ _ R G - -", D2 = "G - P G R - S - .D S - - _ _ _ _";
+		const E1 = "P - P D P - G - R G P - G R - -", E2 = "G R S - .D - S - - - _ _ _ _ _ _";
+		const vw = "oaaiaaau";
+		let u = 0;
+		for (const [str, who] of [[D1 + " " + D2, "call"], [D1 + " " + D2, "resp"], [E1 + " " + E2, "call"], [E1 + " " + E2, "resp"], [[D1, D2, E1, E2].join(" "), "all"]]) u = S.sing(g, u, str, who, vw);
+		S.chant(g, 24, 26, [["a", 7, 0, 1], ["a", 9, 1, 2], ["a", 7, 3, 1], ["i", 4, 4, 2]]);
+		S.rhythm(g, 0, 22, "o...o...", { o: [["manjira", 0.13]] });
+		S.rhythm(g, 22, 26, "o.o.o.o.", { o: [["manjira", 0.15]] });
+		for (let b = 1; b < 26; b += 2) S.damaru(g.time(b * 8 + 4), 0.6, 0.32);
+		S.ringGrid(g, 0, 26, 2);
+		const c = kfinale(S, g.end, 196);
+		return { g, cues: { ...OPEN, aarti: [9, g.end], song: [g.t0, g.end], ...c } };
+	},
+	// Darchen: the parikrama done, the batch's aarti is a happy one, bright and quick in Bilawal: harmonium,
+	// dholak, manjira and clapping, the nagara and the gompa's rolmo at the close, and "Om Namah Shivaya".
+	darchen(S) {
+		S.om(0.6, 5.2, 0.42);
+		S.conch(3.2, 4.8, 220, 1);
+		S.hit(8.4, "ghanti", 0.5);
+		S.hit(9.0, "rolmo", 0.35);
+		S.ring(9, 15, 0.15);
+		let t = 9.2;
+		for (const [s, d] of [[0, 0.8], [4, 0.6], [7, 1.0], [9, 0.35], [11, 0.35], [12, 1.1], [11, 0.3], [9, 0.3], [7, 0.6], [4, 0.5], [2, 0.3], [0, 0.95]]) {
+			const f = hz(s), at = t;
+			S.at(at, (T, P) => P.v.lead && P.v.lead.note(T, f, d, 0.58));
+			t += d;
+		}
+		const g = new Grid(15, 8).add(16, 0.28).add(8, 0.26, 0.2).add(6, 0.19);
+		const H1 = "S S R G - G G M G R S R G - - -", H2 = "G M P - P D P M G M G R S - - -";
+		const I1 = "P - D - S' - S' - D P M P D P - -", I2 = "M G M P G - R - S R G R S - - -";
+		const vw = "oaaiaaaa";
+		let u = 0;
+		for (const [str, who] of [[H1 + " " + H2, "call"], [H1 + " " + H2, "resp"], [I1 + " " + I2, "call"], [I1 + " " + I2, "resp"], [[H1, H2, I1, I2].join(" "), "all"]]) u = S.sing(g, u, str, who, vw);
+		S.chant(g, 24, 30, [["o", 7, 0, 1], ["a", 7, 1, 0.5], ["a", 7, 1.5, 0.5], ["i", 5, 2, 1], ["a", 4, 3, 0.5], ["a", 4, 3.5, 0.5], ["a", 2, 4, 2]]);
+		const dk = { D: [["dholakGe", 0.6], ["dholakNa", 0.4]], d: [["dholakGe", 0.35], ["dholakNa", 0.3]], n: [["dholakNa", 0.4]], t: [["dholakTi", 0.36]] };
+		const cl = { x: [["clap", 0.3, 1, -0.45], ["clap", 0.26, 1.07, 0.4]], y: [["clap", 0.18, 1.03, -0.2], ["clap", 0.16, 0.97, 0.3]] };
+		S.rhythm(g, 0, 16, "DdntDnDn", dk);
+		S.rhythm(g, 16, 24, "DnDtnDnD", dk);
+		S.rhythm(g, 24, 30, "DnDnDtDnDnDnDtDn", dk);
+		S.rhythm(g, 0, 16, ".c.c.c.c", { c: [["manjiraC", 0.12]] });
+		S.rhythm(g, 16, 30, "o.c.o.c.", { o: [["manjira", 0.15]], c: [["manjiraC", 0.12]] });
+		S.rhythm(g, 8, 24, "x...x...", cl);
+		S.rhythm(g, 24, 30, "xyxyxyxy", cl);
+		S.rhythm(g, 24, 30, "N...N.N.", { N: [["nagara", 0.6]] });
+		S.ringGrid(g, 0, 30, 2);
+		const c = kfinale(S, g.end, 220, { rolmo: true });
+		S.om(g.end + 6.4, 7, 0.4);
+		return { g, cues: { ...OPEN, aarti: [9, g.end], song: [g.t0, g.end], ...c } };
+	},
+});
+
 const SCHEDULES = {};
 // The composed aarti for a shrine: its events, length, cues, and the clocks the visuals follow.
 export function aartiSchedule(key) {
@@ -926,6 +1238,52 @@ const AMBIENT = {
 		if (R() < 0.12) hum(S, t0, "S R G M G R S", "oaoaaaa", 0.3); // Om Namo Narayanaya
 	},
 };
+// the Kailash journey's beds
+function plateau(S, t0, R, o = {}) {
+	// prayer flags snapping in the wind
+	if (R() < 0.6) for (let k = 0, n = 1 + Math.floor(R() * 4); k < n; k++) S.hit(t0 + R() * 3.6, "flap", 0.1 + R() * 0.14, 0.85 + R() * 0.3, R() * 1.4 - 0.7);
+	// a string of yaks going by, their bells clanking
+	if (R() < 0.12) for (let k = 0, n = 2 + Math.floor(R() * 4); k < n; k++) S.hit(t0 + R() * 0.4 + k * 0.62, "yakBell", 0.16 + R() * 0.1, 0.92 + R() * 0.16, 0.5 - R());
+	// Tibetan pilgrims passing, murmuring the mantra
+	if (R() < (o.mani ?? 0.14)) mani(S, t0 + 0.2, 0.2 + R() * 0.06);
+	else if (R() < 0.08) hum(S, t0, "S S R G R S", "oaaiaa", 0.24); // the yatris: Om Namah Shivaya
+	if (R() < 0.05) S.hit(t0 + R() * 3, "bowl", 0.3);
+	if (o.gompa && R() < 0.035) S.hit(t0 + R() * 3, "drilbu", 0.22, 1, R() - 0.5);
+	if (o.gompa && R() < 0.025) S.dungchen(t0 + 0.3, 3.6, 65.41, 0.25);
+	// small waves on the shore
+	if (o.lake) for (let k = 0, n = 1 + Math.floor(R() * 3); k < n; k++) S.hit(t0 + R() * 3.2, "lap", 0.18 + R() * 0.12, 0.85 + R() * 0.3, R() * 1.2 - 0.6);
+}
+Object.assign(AMBIENT, {
+	// the camp at Nabhidhang: the little temple's bells, the batch chanting now and then, a horn far down the valley
+	omparvat(S, t0, R) {
+		if (R() < 0.3) for (let k = 0, n = 1 + Math.floor(R() * 3); k < n; k++) S.hit(t0 + R() * 0.5 + k * 1.3, "doorBell", 0.17, 1, R() - 0.5);
+		if (R() < 0.05) S.hit(t0 + R() * 3, "ghanta", 0.32);
+		if (R() < 0.12) S.om(t0 + R(), 5.5, 0.3);
+		else if (R() < 0.12) hum(S, t0, "S S R G R S", "oaaiaa", 0.3);
+		if (R() < 0.03) S.horn(t0 + R() * 2, 0.25);
+	},
+	mansarovar(S, t0, R) {
+		plateau(S, t0, R, { lake: true });
+		if (R() < 0.08) S.hit(t0 + R() * 3, "ghanti", 0.18, 1, R() - 0.5);
+	},
+	yamdwar(S, t0, R) {
+		plateau(S, t0, R, { gompa: true, mani: 0.2 });
+	},
+	dirapuk(S, t0, R) {
+		plateau(S, t0, R, { gompa: true, mani: 0.16 });
+	},
+	dolmala(S, t0, R) {
+		// the flags on the pass crack and roar; pilgrims call out as they reach the top
+		for (let k = 0, n = 3 + Math.floor(R() * 5); k < n; k++) S.hit(t0 + R() * 3.8, "flap", 0.14 + R() * 0.16, 0.8 + R() * 0.4, R() * 1.6 - 0.8);
+		if (R() < 0.12) mani(S, t0 + 0.2, 0.2);
+		if (R() < 0.06) S.chant({ upb: 8, time: (x) => t0 + 0.3 + x * 0.32 }, 0, 1, [["a", 7, 0, 1], ["a", 9, 1, 2], ["a", 7, 3, 1], ["i", 4, 4, 2]], 0.5);
+		if (R() < 0.08) for (let k = 0, n = 2 + Math.floor(R() * 3); k < n; k++) S.hit(t0 + R() * 0.4 + k * 0.6, "yakBell", 0.14, 0.95 + R() * 0.1, 0.5 - R());
+	},
+	darchen(S, t0, R) {
+		plateau(S, t0, R, { mani: 0.12 });
+		if (R() < 0.1) S.hit(t0 + R() * 3, "ghanti", 0.18, 1, R() - 0.5);
+	},
+});
 // a soft group chant across one block
 function hum(S, t0, str, vw, vel) {
 	const ns = score(str), u = 3.6 / ns.len;
@@ -941,7 +1299,7 @@ function makeProgram(e, dest, key, kind, piece) {
 	const P = { e, ctx: c, key, kind, stop: [], v: {}, i: 0, block: 0, base: t, t, seed: 1 + key.length * 31 };
 	P.bus = G(c, 0);
 	P.bus.connect(dest);
-	const level = kind === "ambient" ? { badrinath: 0.75, tirupati: 0.42, shirdi: 0.6 }[key] || 0.55 : 0.5;
+	const level = kind === "ambient" ? { badrinath: 0.75, tirupati: 0.42, shirdi: 0.6, omparvat: 0.6, mansarovar: 0.62, yamdwar: 0.6, dirapuk: 0.62, dolmala: 0.7, darchen: 0.6 }[key] || 0.55 : 0.5;
 	if (offline || kind === "fx") P.bus.gain.value = level;
 	else P.bus.gain.setTargetAtTime(level, t, 0.5);
 	P.out = G(c, 1);
@@ -953,20 +1311,55 @@ function makeProgram(e, dest, key, kind, piece) {
 	const south = key === "tirupati";
 	if (MUTE.has("drone")) P.muted = true;
 	else if (south) reedDrone(P, [[261.63, 0.5], [392, 0.28]], kind === "ambient" ? 0.02 : 0.03, 2200, true);
-	else reedDrone(P, [[130.81, 0.5], [196, 0.32], [261.63, 0.22]], kind === "ambient" ? 0.06 : 0.075, 1300, false);
+	// on the plateau no drone but the wind, except the batch's harmonium under its aarti (none carried over the pass)
+	else if (PLATEAU.has(key)) {
+		if (kind === "aarti" && key !== "dolmala") reedDrone(P, [[130.81, 0.5], [196, 0.32]], 0.045, 1100, false);
+	} else reedDrone(P, [[130.81, 0.5], [196, 0.32], [261.63, 0.22]], kind === "ambient" ? 0.06 : 0.075, 1300, false);
 	if (key === "kedarnath" && !MUTE.has("bed")) noiseBed(P, "bandpass", 450, 0.6, 0.05, 250);
 	if (key === "badrinath" && !MUTE.has("bed")) noiseBed(P, "lowpass", 650, 0.5, 0.06, 150);
+	// the Kailash journey: the wind over the plateau (hardest on the Dolma La), the lake's hush at Mansarovar, the
+	// stream below Dirapuk, and at Om Parvat the Kali roaring far down in its gorge
+	if (PLATEAU.has(key) && !MUTE.has("wind")) windBed(P, (key === "dolmala" ? 0.17 : 0.09) * (kind === "ambient" ? 1 : 0.5));
+	if (key === "mansarovar" && !MUTE.has("bed")) noiseBed(P, "lowpass", 420, 0.6, 0.025, 80);
+	if (key === "dirapuk" && !MUTE.has("bed")) noiseBed(P, "bandpass", 1700, 0.5, 0.022, 300);
+	if (key === "omparvat" && !MUTE.has("bed")) {
+		noiseBed(P, "lowpass", 280, 0.7, 0.05, 60);
+		if (!MUTE.has("wind")) windBed(P, 0.03);
+	}
 	if (south) P.v.nada = new Nadaswaram(P, kind === "ambient" ? 0.5 : 0.32);
 	else if (kind === "aarti") {
-		P.v.lead = new Reed(P, 0.38);
+		if (key !== "dolmala") P.v.lead = new Reed(P, 0.38); // nobody carries a harmonium over the Dolma La
 		// at Shirdi the call is a pair of priests singing together
 		P.v.solo = key === "shirdi" ? new Singer(P, 2, 0.95) : new Singer(P, 1, 0.95);
 	} else if (key === "shirdi") P.v.lead = new Reed(P, 0.22, 1700); // a distant harmonium
-	if (kind === "aarti" || key === "bhimashankar" || key === "badrinath" || key === "shirdi") P.v.chorus = new Singer(P, 3, 0.85);
+	if (kind === "aarti" || key === "bhimashankar" || key === "badrinath" || key === "shirdi" || ROOM_K.has(key)) P.v.chorus = new Singer(P, 3, 0.85);
+	// the monks and the Tibetan pilgrims, low, for "Om mani padme hum"
+	if (PLATEAU.has(key)) P.v.monks = new Singer(P, 4, 0.7);
 	if (kind === "aarti") {
 		P.events = piece.events;
 		P.duration = piece.duration;
 	} else P.gen = AMBIENT[key];
+	return P;
+}
+// The country while travelling (the Kailash journey): a quiet bed on its own bus, with flags now and then.
+const TRAVEL = {
+	plateau: { wind: 0.07, gen: (S, t0, R) => R() < 0.25 && S.hit(t0 + R() * 3.6, "flap", 0.08 + R() * 0.08, 0.9 + R() * 0.2, R() - 0.5) },
+	pass: { wind: 0.15, gen: (S, t0, R) => {
+		for (let k = 0, n = Math.floor(R() * 3); k < n; k++) S.hit(t0 + R() * 3.6, "flap", 0.1 + R() * 0.1, 0.85 + R() * 0.3, R() * 1.4 - 0.7);
+	} },
+	gorge: { wind: 0.02, river: 0.06 },
+};
+function travelProgram(e, dest, kind, level) {
+	const c = e.ctx, t = c.currentTime, spec = TRAVEL[kind] || {};
+	const P = { e, ctx: c, key: "travel", kind: "travel", stop: [], v: {}, i: 0, block: 0, base: t, t, seed: 17 + kind.length * 31 };
+	P.bus = G(c, 0);
+	P.bus.connect(dest);
+	P.bus.gain.setTargetAtTime(Math.max(0, level), t, 1.2);
+	P.out = G(c, 1);
+	P.out.connect(P.bus);
+	if (spec.wind && !MUTE.has("wind")) windBed(P, spec.wind);
+	if (spec.river && !MUTE.has("bed")) noiseBed(P, "lowpass", 320, 0.7, spec.river, 70);
+	P.gen = spec.gen || null;
 	return P;
 }
 // Play every event of P that falls before ctx time `until`; anything already past is skipped.
@@ -1075,8 +1468,11 @@ export class Music {
 		this.finish(false);
 		this.cur = null;
 		this.drop(fade);
-		clearInterval(this.timer);
-		this.timer = 0;
+		// (the travelling bed keeps the clock going for its flags)
+		if (!this.tLive) {
+			clearInterval(this.timer);
+			this.timer = 0;
+		}
 	}
 	setEnabled(v) {
 		this.enabled = !!v;
@@ -1131,6 +1527,34 @@ export class Music {
 			if (this.audio.duck) this.audio.duck(0);
 			this.tick();
 		} else if (!this.audible && this.live) this.drop(0.6);
+		this.syncTravel();
+	}
+	// the travelling bed: kind "plateau" | "pass" | "gorge", or null to fade it out (see the header)
+	travel(kind, level = 1) {
+		kind = kind || null;
+		if (this.tKind === kind && this.tLevel === level) return;
+		this.tKind = kind;
+		this.tLevel = level;
+		this.syncTravel();
+	}
+	syncTravel() {
+		const want = this.audible && this.tKind ? this.tKind + "|" + this.tLevel : null;
+		if ((this.tLive ? this.tLive.sig : null) === want) return;
+		// the same country at a new level: just move the fader
+		if (this.tLive && want && this.tLive.sig.split("|")[0] === this.tKind) {
+			this.tLive.bus.gain.setTargetAtTime(Math.max(0, this.tLevel), this.audio.ctx.currentTime, 1.2);
+			this.tLive.sig = want;
+			return;
+		}
+		if (this.tLive) {
+			release(this.tLive, 2.5);
+			this.tLive = null;
+		}
+		if (!want) return;
+		this.ready();
+		this.tLive = travelProgram(this.e, this.out, this.tKind, this.tLevel);
+		this.tLive.sig = want;
+		if (!this.timer) this.timer = setInterval(() => this.tick(), 50);
 	}
 	drop(fade) {
 		const P = this.live;
@@ -1140,6 +1564,7 @@ export class Music {
 		if (this.audio.duck) this.audio.duck(1);
 	}
 	tick() {
+		if (this.tLive && this.tLive.gen) pump(this.tLive, this.tLive.ctx.currentTime + (document.hidden ? 1.5 : 0.3));
 		const c = this.cur;
 		if (!c) return;
 		if (c.kind === "aarti" && !c.loop && now() - c.t0 >= c.piece.duration) {
