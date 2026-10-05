@@ -480,8 +480,10 @@ function updateCamera(dt) {
 	if (app.state === "travel" && rig.dist < 40) {
 		const d = camera.position.distanceTo(rig.target);
 		if (app.frames % 3 === 0) rig.block = occlusion(camera.position);
-		// hard against a wall, coming in close does not help: swing round to whichever side is open
-		if (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5 && !journey.camera()) {
+		// hard against a wall, coming in close does not help: swing round to whichever side is open. A framed shot
+		// (getting on or off) is chosen clear when it starts, but the roadside trees stream in after that, so it may
+		// swing too, though only round to the side, never up
+		if (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5) {
 			// round to either side, or up and over (a stall's awning, a temple wall, a tree beside the path)
 			let best = rig.swing || 0, bestR = rig.rise || 0, bestD = rig.block;
 			for (const [a, up] of [[0.9, 0], [-0.9, 0], [0, 0.55], [1.8, 0], [-1.8, 0], [0.6, 0.5], [-0.6, 0.5], [Math.PI, 0], [0, 0.95]]) {
