@@ -731,12 +731,15 @@ Object.assign(Journey.prototype, {
 	// on the road: from a few metres ahead and out over the carriageway, where no tree or bus stand is in the way
 	// the side is chosen once for the whole getting on or off: the first of these with a clear view of the traveller
 	// and not up a hillside (beside a bus stand on a slope, under a tree, behind a parked bus), else the clearest
-	roadCam(p, heading, dist = 3.2, pitch = 0.24) {
+	// first: the side to try first (a coach's door is at its nose, so the shot looks back at it from ahead on the door's
+	// side, and from higher, over the kerb, rather than across the coach's front)
+	roadCam(p, heading, dist = 3.2, pitch = 0.24, first) {
 		const target = new THREE.Vector3(p.x, p.y + 0.3, p.z);
 		const e = this.ep;
 		if (e && e.roadYaw === undefined && this.app.viewFrom) {
-			let best = -0.55, bestScore = -Infinity;
-			for (const a of [-0.55, 0.55, -1.25, 1.25, Math.PI - 0.6, Math.PI + 0.6]) {
+			let best = first ?? -0.55, bestScore = -Infinity;
+			const sides = [-0.55, 0.55, -1.25, 1.25, Math.PI - 0.6, Math.PI + 0.6];
+			for (const a of first === undefined ? sides : [first, ...sides.filter((q) => q !== first)]) {
 				const yw = heading + a, cp = Math.cos(pitch);
 				const q = new THREE.Vector3(target.x + Math.sin(yw) * cp * dist, target.y + Math.sin(pitch) * dist, target.z + Math.cos(yw) * cp * dist);
 				const clear = this.app.viewFrom(target, q) ?? Infinity;
@@ -750,7 +753,7 @@ Object.assign(Journey.prototype, {
 			}
 			e.roadYaw = best;
 		}
-		this.cam = { target, yaw: heading + (e && e.roadYaw !== undefined ? e.roadYaw : -0.55), pitch, dist };
+		this.cam = { target, yaw: heading + (e && e.roadYaw !== undefined ? e.roadYaw : first ?? -0.55), pitch, dist };
 	},
 	frame(p, yaw, side = 1, dist = 3.4, pitch = 0.2) {
 		this.cam = { target: new THREE.Vector3(p.x, p.y + 0.32, p.z), yaw: yaw + side * 1.15, pitch, dist };
@@ -770,7 +773,7 @@ Object.assign(Journey.prototype, {
 		const fl = v.floor || 0, D = v.tall ? mix(STAND, DUCK, 0.25) : DUCK, up = (p, k = 1) => (fl && (p.y += fl * k), p);
 		let outW = null;
 		const cs = T.to === "walk" ? -1 : side; // at a bus stand, from the road side, clear of the parked buses
-		const cam = () => (st ? this.frame(L(out[0], out[1]), yawV() + 0.9, 1, 4.6, 0.26) : this.roadCam(L(out[0], out[1]), yawV()));
+		const cam = () => (st ? this.frame(L(out[0], out[1]), yawV() + 0.9, 1, 4.6, 0.26) : v.tall ? this.roadCam(L(out[0], out[1]), yawV(), 4.6, 0.42, side * 0.55) : this.roadCam(L(out[0], out[1]), yawV()));
 		return [
 			{ d: 0.5, f: () => (put(), this.seated(v), cam()) },
 			{ d: 0.7, f: (k) => (put(), door && door.open(k), this.seated(v), cam()) },
@@ -799,6 +802,7 @@ Object.assign(Journey.prototype, {
 			{ d: 1.4, f: (k) => {
 				this.tvSet(outW, yawV(), "idle", Object.assign({}, STAND, { look: 0.5 * k }), 1);
 				if (st) this.frame(outW, yawV() + 0.9, 1, 4.6, 0.26);
+				else if (v.tall) this.roadCam(outW, yawV(), 4.6 + k, 0.42, side * 0.55);
 				else this.roadCam(outW, yawV(), 3.2 + k);
 			} },
 		];
@@ -814,7 +818,7 @@ Object.assign(Journey.prototype, {
 		const L = (x, z) => this.local(v, x, 0, z);
 		const sx = Math.abs(v.seat.x), seat = [v.seat.x, v.seat.z], slide = [side * sx, v.seat.z], inn = [side * (hw - 0.28), dz], out = [side * (hw + 0.42), dz];
 		const yawV = () => v.group.rotation.y;
-		const cam = () => (st ? this.frame(L(out[0], out[1]), yawV() + 0.9, 1, 4.6, 0.26) : this.roadCam(L(out[0], out[1]), yawV()));
+		const cam = () => (st ? this.frame(L(out[0], out[1]), yawV() + 0.9, 1, 4.6, 0.26) : v.tall ? this.roadCam(L(out[0], out[1]), yawV(), 4.6, 0.42, side * 0.55) : this.roadCam(L(out[0], out[1]), yawV()));
 		const fl = v.floor || 0, D = v.tall ? mix(STAND, DUCK, 0.25) : DUCK, up = (p, k = 1) => (fl && (p.y += fl * k), p);
 		let P0 = null, prevS = sv - 9;
 		const steps = [];
@@ -826,6 +830,7 @@ Object.assign(Journey.prototype, {
 			const yaw = yawV();
 			if (P0) this.tvSet(P0, yaw, "idle", Object.assign({}, STAND, { look: -0.7 * (1 - k) }), 1);
 			if (st) this.frame(P0 || L(out[0], out[1]), yaw, side, 4.2, 0.24);
+			else if (v.tall) this.roadCam(P0 || L(out[0], out[1]), yaw, 4.8, 0.42, side * 0.55);
 			else this.roadCam(P0 || L(out[0], out[1]), yaw, 3.6, 0.24);
 		} });
 		steps.push(
@@ -1197,6 +1202,14 @@ Object.assign(Journey.prototype, {
 		} else {
 			this.seated(v);
 			this.tv.scale = vs / M;
+			if (v.tall) {
+				// in a coach: framed on the traveller in the window seat, from outside on the door's side, close or
+				// wider by turns, as the train is shot at its open door
+				const side = this.keep(app.s), shot = Math.floor(app.t / 12) % 2;
+				const me = this.local(v, v.seat.x, v.seat.y + 0.55, v.seat.z);
+				const h = v.group.rotation.y;
+				this.cam = shot ? { target: me, yaw: h + side * (Math.PI / 2 - 0.75), pitch: 0.16, dist: 4.4, key: "coach1" } : { target: me, yaw: h + side * (Math.PI / 2 - 0.3), pitch: 0.06, dist: 2.1, key: "coach0" };
+			}
 		}
 	},
 	// on the train: standing at the open door, holding the rail, the country going by

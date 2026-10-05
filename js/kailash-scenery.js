@@ -9,6 +9,7 @@ import { addAnimal, addPerson } from "./life.js";
 import { LAKES, P } from "./kailash-geo.js";
 import { lakeDist } from "./kailash-world.js";
 import { toGeo, toWorld } from "./geo.js";
+import { region } from "./roads.js";
 
 const M = 0.28;
 // prayer flags (lungta) always run in this order: blue sky, white air, red fire, green water, yellow earth
@@ -118,6 +119,14 @@ export function* kailashCountry(sc, ctx, reg) {
 		return LAKES.every((L) => lakeDist(L, g.lon, g.lat) > m + 0.4);
 	};
 	const okAt = (x, z, m) => ctx.ok(x, z, m) && !ctx.taken(x, z, m) && clearOfLakes(x, z, m);
+	// whether a point is on the Tibetan side (a chunk can straddle the pass)
+	const inTibet = (x, z) => {
+		const g = toGeo(x, z);
+		return region(g.lon, g.lat) === "tibet";
+	};
+	// anything taller than a stone keeps well back from the way, so the camera following the traveller (or riding
+	// beside the coach) never has it in the shot's line: back from the road's centre, and from any path on foot
+	const tallOk = (x, z, r) => okAt(x, z, r) && sc.roads.footDist(x, z) > r + 1.9 && sc.roads.clearance(x, z) > r + 1.6;
 	const trail = (s) => {
 		const r = sc.roads.road(s, 0, {});
 		return r && r.kind === "trail";
@@ -140,8 +149,8 @@ export function* kailashCountry(sc, ctx, reg) {
 		for (let v = 0; v < 2; v++) {
 			const side = R() < 0.5 ? -1 : 1, sc0 = s0 + 3 + R() * (s1 - s0 - 6);
 			for (let k = 0; k < 4 + Math.floor(R() * 4); k++) {
-				const c = ctx.frame(sc0 + (R() - 0.5) * 4, side * (2.4 + R() * 3), {});
-				if (!okAt(c.x, c.z, 0.9)) continue;
+				const c = ctx.frame(sc0 + (R() - 0.5) * 4, side * (3.0 + R() * 3), {});
+				if (!tallOk(c.x, c.z, 0.9)) continue;
 				const yaw = Math.atan2(c.dx, c.dz) + (side > 0 ? -Math.PI / 2 : Math.PI / 2);
 				stoneHouse(b, c.x, world.height(c.x, c.z), c.z, yaw, 5 + R() * 3, 4 + R() * 2, R);
 				ctx.claimCircle(c.x, c.z, 0.9);
@@ -164,17 +173,17 @@ export function* kailashCountry(sc, ctx, reg) {
 	for (let i = 0; i < 2; i++) {
 		if (R() < 0.35) continue;
 		const s = s0 + R() * (s1 - s0), side = R() < 0.5 ? -1 : 1;
-		const c = ctx.frame(s, side * (1.5 + R() * 0.8), {});
+		const c = ctx.frame(s, side * (3.3 + R() * 1.2), {});
 		const len = 1.2 + R() * 2.2, yaw = Math.atan2(c.dx, c.dz);
 		const e1 = { x: c.x + Math.sin(yaw) * len / 2, z: c.z + Math.cos(yaw) * len / 2 }, e2 = { x: c.x - Math.sin(yaw) * len / 2, z: c.z - Math.cos(yaw) * len / 2 };
-		if (!okAt(c.x, c.z, 0.3) || !okAt(e1.x, e1.z, 0.3) || !okAt(e2.x, e2.z, 0.3)) continue;
+		if (!inTibet(c.x, c.z) || !tallOk(c.x, c.z, 0.3) || !tallOk(e1.x, e1.z, 0.3) || !tallOk(e2.x, e2.z, 0.3)) continue;
 		maniWall(b, c.x, world.height(c.x, c.z), c.z, yaw, len, R);
 		ctx.claim([[e1.x - 0.2, e1.z - 0.2], [e1.x + 0.2, e1.z + 0.2], [e2.x + 0.2, e2.z + 0.2], [e2.x - 0.2, e2.z - 0.2]]);
 		ctx.claimCircle(c.x, c.z, len / 2 + 0.3);
 	}
 	if (R() < 0.6) {
-		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (1.8 + R() * 3), {});
-		if (okAt(c.x, c.z, 0.6)) {
+		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (3.4 + R() * 3), {});
+		if (inTibet(c.x, c.z) && tallOk(c.x, c.z, 0.6)) {
 			chorten(b, c.x, world.height(c.x, c.z), c.z, 1.0 + R() * 0.6, R() * 6);
 			ctx.claimCircle(c.x, c.z, 0.6);
 		}
@@ -183,9 +192,11 @@ export function* kailashCountry(sc, ctx, reg) {
 	// cairns hung with flags on the rises beside the way, more of them on the parikrama and at the passes
 	const nc = 2 + (trail((s0 + s1) / 2) ? 4 : 0) + (near(P.lipulekh, 6) || near(P.gurlaLa, 6) || near(P.dolmaLa, 6) ? 4 : 0);
 	for (let i = 0; i < nc; i++) {
-		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (1.4 + R() * 4), {});
-		if (!okAt(c.x, c.z, 0.5)) continue;
-		cairn(b, world, c.x, c.z, 0.7 + R() * 0.6, R, 2 + Math.floor(R() * 3));
+		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (3.3 + R() * 4), {});
+		const cs = 0.7 + R() * 0.6;
+		// (its strings of flags reach out about twice its size)
+		if (!inTibet(c.x, c.z) || !tallOk(c.x, c.z, 2.4 * cs)) continue;
+		cairn(b, world, c.x, c.z, cs, R, 2 + Math.floor(R() * 3));
 		ctx.claimCircle(c.x, c.z, 0.5);
 	}
 	yield;
@@ -193,8 +204,8 @@ export function* kailashCountry(sc, ctx, reg) {
 	for (let h = 0; h < 2; h++) {
 		if (R() < 0.35) continue;
 		const sheep = R() < 0.4;
-		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (4 + R() * 16), {});
-		if (!okAt(c.x, c.z, 1.5)) continue;
+		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (4.5 + R() * 16), {});
+		if (!inTibet(c.x, c.z) || !tallOk(c.x, c.z, 1.5)) continue;
 		const n = sheep ? 12 + Math.floor(R() * 14) : 4 + Math.floor(R() * 7);
 		for (let q = 0; q < n; q++) {
 			const x = c.x + (R() - 0.5) * (sheep ? 3 : 4), z = c.z + (R() - 0.5) * (sheep ? 3 : 4);
@@ -204,7 +215,7 @@ export function* kailashCountry(sc, ctx, reg) {
 		if (okAt(hx, hz, 0.1)) addPerson(b, R, hx, world.height(hx, hz), hz, R() * 6.3, "tibetan");
 		if (R() < 0.6) {
 			const tx = c.x - 2.2, tz = c.z + 1.4;
-			if (okAt(tx, tz, 0.8)) {
+			if (tallOk(tx, tz, 0.8)) {
 				tent(b, tx, world.height(tx, tz), tz, R() * 6.3);
 				addAnimal(b, "dog", R, tx + 0.6, world.height(tx + 0.6, tz), tz + 0.3, R() * 6.3);
 				ctx.claimCircle(tx, tz, 0.8);
@@ -225,11 +236,11 @@ export function* kailashCountry(sc, ctx, reg) {
 			if (R() < 0.3) {
 				const yx = c.x - c.dz * side * 0.25, yz = c.z + c.dx * side * 0.25;
 				if (okAt(yx, yz, 0.15)) {
-					addAnimal(b, "packyak", R, yx, world.height(yx, yz), yz, yaw);
+					addAnimal(ctx.soft, "packyak", R, yx, world.height(yx, yz), yz, yaw);
 					ctx.claimCircle(yx, yz, 0.4);
 				}
 			}
-			addPerson(b, R, c.x, world.height(c.x, c.z), c.z, yaw, R() < 0.7 ? "tibetan" : "yatri");
+			addPerson(ctx.soft, R, c.x, world.height(c.x, c.z), c.z, yaw, R() < 0.7 ? "tibetan" : "yatri");
 			ctx.claimCircle(c.x, c.z, 0.15);
 		}
 		for (let i = 0; i < 4; i++) {
@@ -242,8 +253,8 @@ export function* kailashCountry(sc, ctx, reg) {
 	// boulders and stones strewn over the plateau
 	for (let i = 0; i < 18; i++) {
 		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (1.6 + Math.pow(R(), 0.7) * 20), {});
-		if (!okAt(c.x, c.z, 0.3)) continue;
 		const sz = 0.15 + R() * 0.5;
+		if (!(sz < 0.3 ? okAt(c.x, c.z, 0.3) : tallOk(c.x, c.z, sz))) continue;
 		b.add(T.ball, place(c.x, world.height(c.x, c.z) - sz * 0.25, c.z, R() * 6, sz, sz * (0.5 + R() * 0.3), sz * (0.7 + R() * 0.4)), pick(R, STONE));
 	}
 	yield;
@@ -254,7 +265,7 @@ export function* kailashCountry(sc, ctx, reg) {
 		for (let k = 0; k < n; k++) {
 			const a = R() * Math.PI * 2, d = 2.2 + R() * 4;
 			const x = w.x + Math.cos(a) * d, z = w.z + Math.sin(a) * d;
-			if (!okAt(x, z, 1.0)) continue;
+			if (!tallOk(x, z, 1.0)) continue;
 			const yaw = Math.round((a + Math.PI) / (Math.PI / 2)) * (Math.PI / 2) + (R() - 0.5) * 0.2;
 			house(b, x, world.height(x, z), z, yaw, 6 + R() * 6, 5 + R() * 4, R, R() < 0.25 ? 2 : 1);
 			ctx.claimCircle(x, z, 1.2);

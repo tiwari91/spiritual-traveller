@@ -29,6 +29,8 @@
 // keeps its clock, so turning the sound on mid-aarti joins it at the right bar. Notes are scheduled on the
 // AudioContext clock a little ahead (lookahead), never timed by setTimeout.
 
+import { KAILASH } from "./geo.js";
+
 const SA = 261.63; // Sa is middle C, in tune with the drone and bell in audio.js
 const hz = (s) => SA * Math.pow(2, s / 12);
 const NOTE = { S: 0, r: 1, R: 2, g: 3, G: 4, M: 5, m: 6, P: 7, d: 8, D: 9, n: 10, N: 11 };
@@ -144,6 +146,7 @@ const bell = (f0, parts, click = 0.25) => (d, r) => {
 };
 const drum = (o) => [Math.min(2.5, o.decay * 6 + 0.05), (d, r) => drumInto(d, r, o)];
 // name: [seconds, fill(data, rate), sample rate (defaults to the context's)]
+const K_BUFS = new Set(["bowl", "drilbu", "rolmo", "rolmoC", "nga", "yakBell", "flap", "lap"]);
 const BUFS = {
 	// the great temple bell, its partial pairs beating slowly
 	ghanta: [6, bell(165, [[0.5, 0.35, 6.5], [1, 0.6, 5.5], [1.004, 0.45, 5.5], [1.19, 0.3, 4], [1.5, 0.3, 3.2], [1.506, 0.2, 3.2], [2, 0.32, 2.6], [2.52, 0.2, 1.8], [2.67, 0.18, 1.6], [3.01, 0.14, 1.2], [3.98, 0.1, 0.8], [5.3, 0.06, 0.5], [6.8, 0.04, 0.35]], 0.35)],
@@ -1500,7 +1503,8 @@ export class Music {
 			const e = (this.e = new Engine(ctx));
 			this.out = masterChain(ctx, this.audio.master);
 			// build the one-shot sounds one at a time in spare moments, so the first drum stroke never stalls a frame
-			const names = Object.keys(BUFS);
+			// (the Kailash journey's own sounds only on its own page)
+			const names = Object.keys(BUFS).filter((n) => KAILASH || !K_BUFS.has(n));
 			const next = () => {
 				const n = names.shift();
 				if (!n || this.e !== e) return;

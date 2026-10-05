@@ -845,18 +845,18 @@ function kModeAt(s) {
 function kModeText() {
 	const c = route.chapters[app.leg], way = kWay(app.s), w = roads.legWalk[app.leg], choice = TRANSPORT[app.transport];
 	if (app.mode === "walk") {
-		if (app.leg > 0 && app.s < w.out + 0.5 && way.kind !== "walk") return `On foot from ${SHRINES[app.leg - 1].name} to the road`;
-		if (app.s > w.in - 0.5 && way.kind !== "walk") return `On foot to ${c.shrine.name}`;
+		if (app.leg > 0 && app.s < w.out + 0.5 && way.kind !== "walk") return "On foot to the road";
+		if (app.s > w.in - 0.5 && way.kind !== "walk") return "On foot";
 		return way.label || "On foot";
 	}
 	if (app.mode === "train") return "By train to Tanakpur";
 	if (app.mode === "auto") return "By auto to Delhi Junction";
 	if (app.mode === "coach") return way.label || "By the yatra's bus";
-	if (way.kind === "jeep") return choice === "Bike" ? "By motorbike up the Kali gorge" : choice === "Car" ? "By car up the Kali gorge" : way.label;
-	if (app.mode === "bus") return "By the yatra's bus to Tanakpur and Dharchula";
-	if (app.mode === "bike") return "By motorbike to Dharchula";
-	if (app.mode === "car") return "By car to Dharchula";
-	if (app.mode === "jeep") return "By jeep to Dharchula";
+	if (way.kind === "jeep") return choice === "Bike" ? "By motorbike up the Kali" : choice === "Car" ? "By car up the Kali" : way.label;
+	if (app.mode === "bus") return "By the yatra's bus";
+	if (app.mode === "bike") return "By motorbike";
+	if (app.mode === "car") return "By car";
+	if (app.mode === "jeep") return "By jeep from Tanakpur";
 	return MODES[app.mode] || c.mode;
 }
 const travPos = new THREE.Vector3(), tp = {}, rp = {};
@@ -1228,13 +1228,6 @@ function drawMapBase() {
 	if (KAILASH) {
 		g.fillStyle = "#1c2f5e";
 		g.fillRect(0, 0, W, W);
-		// the plateau beyond the crest a shade paler
-		g.fillStyle = "rgba(120,140,190,0.18)";
-		g.beginPath();
-		g.moveTo(...mapXY(76.7, 33.0, W));
-		for (const [lo, la] of [[76.7, 32.6], [78.0, 32.0], [79.3, 31.0], [80.5, 30.35], [81.03, 30.24], [81.6, 30.1], [82.3, 29.95]]) g.lineTo(...mapXY(lo, la, W));
-		g.lineTo(...mapXY(82.3, 33.0, W));
-		g.fill();
 		g.strokeStyle = "rgba(120,170,220,0.55)";
 		g.lineWidth = 1;
 		for (const r of K_RIVERS) {

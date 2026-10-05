@@ -342,6 +342,13 @@ export class Scenery {
 		this.shrines = SHRINES.map((s) => toWorld(s.lon, s.lat));
 		this.cities = CITIES.map((c) => Object.assign({ w: toWorld(c.lon, c.lat) }, c));
 		this.trees = new Trees(scene, low);
+		// people and animals on the paths of the Kailash journey: drawn, but not counted as something the camera must
+		// keep clear of (it follows the traveller among them along the parikrama)
+		if (KAILASH) {
+			this.soft = new THREE.Group();
+			this.soft.name = "scenery-soft";
+			scene.add(this.soft);
+		}
 		this.clutter = new Clutter(scene, this, low);
 		this.mats = { field: fieldMaterial(), crop: cropMaterial(low), house: houseMaterial(low), sign: signMaterial(), blob: blobMaterial() };
 		// compile every countryside shader up front (with its shadow variant), so none stalls a frame later
@@ -424,6 +431,7 @@ export class Scenery {
 		for (const [k, g] of this.chunks) {
 			const d = camera.position.distanceTo(g.userData.centre);
 			g.visible = d < 260 && k >= k0 - 4 && k <= k1 + 4;
+			if (g.userData.soft) g.userData.soft.visible = g.visible;
 			this.trees.setVisible(k, g.visible);
 		}
 		this.trees.update(camera);
@@ -442,6 +450,10 @@ export class Scenery {
 	}
 	dispose(k, g) {
 		this.group.remove(g);
+		if (g.userData.soft) {
+			this.soft.remove(g.userData.soft);
+			g.userData.soft.geometry.dispose();
+		}
 		g.traverse((o) => o.geometry && o.geometry.dispose());
 		this.chunks.delete(k);
 		this.trees.remove(k);
@@ -495,6 +507,7 @@ export class Scenery {
 			claim: (pts) => this.foot.poly(k, pts),
 			claimCircle: (x, z, r) => this.foot.circle(k, x, z, r),
 			b: new Batch(),
+			soft: new Batch(),
 			hg: new HouseGeo(),
 			sg: new HouseGeo(),
 			fields: new FieldGeo(),
@@ -657,6 +670,10 @@ export class Scenery {
 		// ---------- build the meshes ----------
 		const g = new THREE.Group();
 		if (!ctx.b.empty) g.add(yield* ctx.b.buildGen(VCOL, low ? 20000 : 40000));
+		if (!ctx.soft.empty) {
+			g.userData.soft = ctx.soft.build(VCOL);
+			this.soft.add(g.userData.soft);
+		}
 		yield;
 		if (!ctx.hg.empty) g.add(ctx.hg.build(this.mats.house));
 		if (!ctx.sg.empty) g.add(ctx.sg.build(this.mats.sign, true));
