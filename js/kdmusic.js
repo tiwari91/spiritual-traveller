@@ -27,6 +27,7 @@ export const TRACKS = {
 	badrinath: { id: "a3XaLpZSW14", title: "Narayana / For Your Love" },
 	// Shirdi: Krishna Das has no chant for Sai Baba, so the Samadhi Mandir's own (synthesised) aarti plays there
 	// the Kailash journey: Shiva at every stop, with the same two chants
+	narayan: { id: "a3XaLpZSW14", title: "Narayana / For Your Love" },
 	omparvat: { id: "PTc8X37oJBE", title: "Om Namah Shivaya (Live! Songs With Lyrics)" },
 	mansarovar: { id: "sn1otVlvVrM", title: "Jai Shiva Omkara" },
 	yamdwar: { id: "PTc8X37oJBE", title: "Om Namah Shivaya (Live! Songs With Lyrics)" },

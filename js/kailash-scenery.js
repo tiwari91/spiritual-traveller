@@ -18,6 +18,73 @@ const WHITE = 0xf1eee6, RED = 0x8a2a22, GOLD = 0xc8962a, STONE = [0x8a8278, 0x7a
 const pick = (R, a) => a[Math.floor(R() * a.length)];
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
+// A sadhu's things, by a cave or an ashram: the trishul planted in the ground, the saffron flag on its pole, and the
+// dhuni, the fire kept in a ring of stones, with a log laid across its embers.
+export function trishul(b, x, y, z, h = 0.5) {
+	b.add(T.box, place(x, y, z, 0, 0.014, h, 0.014), 0x9aa0a6);
+	for (const [dx, hh] of [[-0.05, 0.1], [0, 0.14], [0.05, 0.1]]) b.add(T.cone, place(x + dx, y + h - (dx ? 0.02 : 0), z, 0, 0.02, hh, 0.014), 0x9aa0a6);
+	b.add(T.box, place(x, y + h - 0.02, z, 0, 0.12, 0.012, 0.012), 0x9aa0a6);
+}
+export function saffronFlag(b, x, y, z, h = 0.7) {
+	b.add(T.box, place(x, y, z, 0, 0.012, h, 0.012), 0x5a4434);
+	b.add(T.box, place(x + 0.08, y + h - 0.12, z, 0, 0.16, 0.1, 0.006), 0xff8a1e);
+}
+export function dhuni(b, x, y, z, R = Math.random) {
+	for (let k = 0; k < 7; k++) {
+		const a = (k / 7) * Math.PI * 2 + R() * 0.3;
+		b.add(T.ball, place(x + Math.cos(a) * 0.14, y - 0.02, z + Math.sin(a) * 0.14, a, 0.08, 0.06, 0.07), 0x6a645c);
+	}
+	b.add(T.ball, place(x, y - 0.03, z, 0, 0.16, 0.07, 0.16), 0x2a2420);
+	b.add(T.ball, place(x, y + 0.01, z, 0, 0.09, 0.06, 0.09), 0xff7a1a);
+	b.add(T.box, place(x - 0.08, y + 0.02, z + 0.05, 0.4, 0.22, 0.03, 0.03, 0, 0.2), 0x3a2a20);
+}
+// A hermit's cave: a mass of rock in the hillside with a dark mouth towards yaw, a trishul and a flag at the entrance.
+export function cave(b, x, y, z, yaw, s = 1) {
+	const c = Math.cos(yaw), sn = Math.sin(yaw);
+	b.add(T.ball, place(x, y - 0.35 * s, z, yaw, 1.7 * s, 1.1 * s, 1.3 * s), 0x6a645c);
+	b.add(T.ball, place(x - sn * 0.3 * s, y - 0.3 * s, z - c * 0.3 * s, yaw + 0.7, 1.1 * s, 0.9 * s, 1.0 * s), 0x7a7268);
+	b.add(T.ball, place(x + sn * 0.55 * s, y - 0.02, z + c * 0.55 * s, yaw, 0.5 * s, 0.42 * s, 0.4 * s), 0x0e0c0a);
+	trishul(b, x + sn * 0.9 * s + c * 0.35 * s, y, z + c * 0.9 * s - sn * 0.35 * s, 0.5 * s);
+	saffronFlag(b, x + sn * 0.95 * s - c * 0.4 * s, y, z + c * 0.95 * s + sn * 0.4 * s, 0.7 * s);
+}
+// By the Kumaon and Kali valley roads (the Kailash journey's hill country below the tree line): now and then a
+// hermit's cave in the bank above the road with a sadhu at his dhuni before it, and a sadhu walking the road. (The
+// caves and the sadhus are the journey's own dressing: travellers' accounts say the old pilgrims slept in villages and
+// caves on the walk up, but no particular cave or hermit by this road is on record.)
+export function* kumaonWayside(sc, ctx) {
+	const { R, s0, s1, world, b } = ctx;
+	if (R() < 0.45) return;
+	const okAt = (x, z, m) => ctx.ok(x, z, m) && !ctx.taken(x, z, m);
+	const tallOk = (x, z, r) => okAt(x, z, r) && sc.roads.footDist(x, z) > r + 1.9 && sc.roads.clearance(x, z) > r + 1.6;
+	if (R() < 0.7) {
+		// the cave on the uphill side of the road, its mouth to the way
+		for (let t = 0; t < 6; t++) {
+			const side = R() < 0.5 ? -1 : 1, s = s0 + 3 + R() * (s1 - s0 - 6);
+			const c = ctx.frame(s, side * (4.0 + R() * 2.5), {});
+			const r = ctx.frame(s, side * 1.0, {});
+			if (world.height(c.x, c.z) < world.height(r.x, r.z) + 0.3 || !tallOk(c.x, c.z, 1.1)) continue;
+			const yaw = Math.atan2(r.x - c.x, r.z - c.z);
+			const y = world.height(c.x, c.z);
+			cave(b, c.x, y, c.z, yaw, 0.9 + R() * 0.3);
+			const fx = c.x + Math.sin(yaw) * 1.5, fz = c.z + Math.cos(yaw) * 1.5;
+			if (okAt(fx, fz, 0.3)) {
+				dhuni(b, fx, world.height(fx, fz), fz, R);
+				addPerson(b, R, fx + Math.cos(yaw) * 0.35, world.height(fx + Math.cos(yaw) * 0.35, fz - Math.sin(yaw) * 0.35), fz - Math.sin(yaw) * 0.35, yaw + Math.PI + 0.4, "sadhu");
+			}
+			ctx.claimCircle(c.x, c.z, 1.3);
+			break;
+		}
+	}
+	yield;
+	if (R() < 0.6) {
+		// a sadhu on the road, with his staff, walking the verge the way the traveller goes or the other way
+		const side = R() < 0.5 ? -1 : 1, c = ctx.frame(s0 + R() * (s1 - s0), side * (0.65 + R() * 0.3), {});
+		if (okAt(c.x, c.z, 0.08) && sc.roads.footDist(c.x, c.z) > 1.2) {
+			addPerson(ctx.soft, R, c.x, world.height(c.x, c.z), c.z, Math.atan2(c.dx, c.dz) + (R() < 0.6 ? 0 : Math.PI), "sadhu");
+			ctx.claimCircle(c.x, c.z, 0.15);
+		}
+	}
+}
 // A string of prayer flags from a to b (world points), sagging, n flags along it.
 export function prayerFlags(b, a, c, sag = 0.18, n = 0, R = Math.random) {
 	const len = a.distanceTo(c);

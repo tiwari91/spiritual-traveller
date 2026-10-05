@@ -39,7 +39,7 @@ export const P = {
 	// the yatra's Delhi stay, west of the Yamuna (the road east crosses it at once)
 	delhi: [77.13, 28.62], moradabad: [78.78, 28.84], rampur: [79.03, 28.8], bareilly: [79.43, 28.37], pilibhit: [79.8, 28.63], khatima: [79.97, 28.92],
 	tanakpur: [80.109, 29.074], champawat: [80.1, 29.33], lohaghat: [80.08, 29.4], pithoragarh: [80.22, 29.58], ogla: [80.36, 29.68], jauljibi: [80.38, 29.75],
-	dharchula: [80.543, 29.8485], tawaghat: [80.6, 29.95], malpa: [80.67, 30.03], budhi: [80.76, 30.11], garbyang: [80.83, 30.15], gunji: [80.851, 30.187],
+	dharchula: [80.543, 29.8485], tawaghat: [80.6, 29.95], sosa: [80.628, 29.962], narayan: [80.655, 29.97], malpa: [80.67, 30.03], budhi: [80.76, 30.11], garbyang: [80.83, 30.15], gunji: [80.851, 30.187],
 	kalapani: [80.93, 30.206], nabhidhang: [80.985, 30.222], roadHead: [81.016, 30.236], lipulekh: [81.029, 30.233], busStand: [81.046, 30.243], pala: [81.08, 30.262], taklakot: [81.177, 30.29],
 	gurlaLa: [81.158, 30.452], isthmus: [81.345, 30.66], chiu: [81.353, 30.777], hor: [81.624, 30.750], qugu: [81.405, 30.518],
 	darchen: [81.287, 30.976], tarboche: [81.245, 31.004],
@@ -108,6 +108,28 @@ export const CITIES = [
 // up from behind the traveller to the mountain (lift above the ground, pitch, distance); petals: false where no
 // flowers are thrown; shelf: the stop's level ground (kailash-world.js).
 export const SHRINES = [
+	{
+		key: "narayan", name: "Narayan Ashram", deva: "नारायण आश्रम", lon: P.narayan[0], lat: P.narayan[1], look: [80.62, 29.995],
+		deity: "Narayana; the ashram of Narayan Swami on the hillside above the Kali", kind: "Ashram · Sosa, above Tawaghat",
+		state: "Dharchula tehsil, Pithoragarh district, Uttarakhand: about 14 km up from Tawaghat by the district's reckoning (travellers' figures run from 23 to 54 km out of Dharchula)",
+		altitude: "about 2,734 m",
+		season: "Open from spring to early winter, roughly April to June and September to November; snowed in between. Early June for the flowers.",
+		access: "From Dharchula up the Kali to Tawaghat, then the side road up to Sosa (an Inner Line Permit is needed beyond Dharchula). A KMVN rest house stands just below the ashram.",
+		note: "Founded in 1936 by Narayan Swami (Sri Raghavendra) and built over some thirteen years: a temple, a library, a meditation room (the Shoonyata Kuteer), a school for the valley's children, herb gardens and the swami's samadhi. Before the road and the war of 1962 the Kailash pilgrims walking up from Almora are said to have rested here, between Pangu and Sirkha; the yatra's buses now pass below it.",
+		mantra: "ॐ नमो नारायणाय", mantraLatin: "Om Namo Narayanaya", greeting: "Narayan Narayan",
+		hour: 15.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [3.4, 5.6], uphill: true, view: { lift: 1.5, pitch: 0.08, dist: 6.4 },
+	},
+	{
+		key: "kalapani", name: "Kalapani", deva: "कालापानी", lon: P.kalapani[0], lat: P.kalapani[1], look: [80.92, 30.222],
+		deity: "Kali, at the source of the Kali river; the cave of Sage Vyasa on the cliff above", kind: "Kali temple · Vyas cave",
+		state: "The upper Kali valley, below Nabhidhang, at about 3,600 m; under Indian administration, and also claimed by Nepal",
+		altitude: "about 3,600 m (the MEA's booklet); the Kalapani area lies between 3,650 and 6,180 m",
+		season: "The yatra passes in June to August; the road is open from about the middle of May to late October.",
+		access: "By the Border Roads road up the Kali from Dharchula, about 85 km and five to seven hours by jeep. The ITBP checks documents here, and an Inner Line Permit is needed. The batches halt at Kalapani before Nabhidhang.",
+		note: "A small temple of Kali, tended by the ITBP, where the yatris pray before going on up to the pass; the Kali, which gives the valley and the border river their name, rises here. Tradition says Sage Vyasa did penance for years in a cave on the cliff above, its mouth marked with a flag (the MEA's own booklet points it out on the way in). Not the Vyas Gufa at Mana near Badrinath.",
+		mantra: "ॐ क्रीं कालिकायै नमः", mantraLatin: "Om Krim Kalikayai Namah", greeting: "Jai Maa Kali",
+		hour: 10.4, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [3.4, 5.6], uphill: true, view: { lift: 1.5, pitch: 0.08, dist: 6.4 },
+	},
 	{
 		key: "omparvat", name: "Om Parvat", deva: "ॐ पर्वत", lon: P.nabhidhang[0], lat: P.nabhidhang[1], look: P.omParvat,
 		deity: "Shiva, in the snow that lies in the shape of ॐ on the face of Om Parvat", kind: "Om Parvat · Nabhidhang",
@@ -181,9 +203,19 @@ export const SHRINES = [
 // transport chip: bus, train, bike or car), "tibet" (the Chinese bus on the Tibet side).
 export const ROUTE = [
 	{
-		title: "Delhi to the Kumaon Himalaya", secs: 120, overnight: true, kicker: "From Delhi · by road", mode: "By road and jeep",
-		pts: [P.delhi, [77.7, 28.72], P.moradabad, P.rampur, P.bareilly, P.pilibhit, P.khatima, P.tanakpur, [80.13, 29.2], P.champawat, P.lohaghat, [80.16, 29.49], P.pithoragarh, P.ogla, P.jauljibi, [80.47, 29.8], P.dharchula, P.tawaghat, P.malpa, P.budhi, P.garbyang, P.gunji, [80.92, 30.2], P.kalapani, P.nabhidhang],
+		title: "Delhi to the Kumaon Himalaya", secs: 104, overnight: true, kicker: "From Delhi · by road", mode: "By road and jeep",
+		pts: [P.delhi, [77.7, 28.72], P.moradabad, P.rampur, P.bareilly, P.pilibhit, P.khatima, P.tanakpur, [80.13, 29.2], P.champawat, P.lohaghat, [80.16, 29.49], P.pithoragarh, P.ogla, P.jauljibi, [80.47, 29.8], P.dharchula, P.tawaghat, P.sosa, P.narayan],
 		ways: [["choice", P.delhi], ["jeep", [80.45, 29.789], "By jeep up the Kali gorge"]],
+	},
+	{
+		title: "Up the Kali gorge to Kalapani", secs: 34, overnight: true, kicker: "The Byans valley · by jeep", mode: "By jeep",
+		pts: [P.narayan, [80.645, 29.99], P.malpa, P.budhi, P.garbyang, P.gunji, [80.92, 30.2], P.kalapani],
+		ways: [["jeep", P.narayan, "By jeep up the Kali gorge"]],
+	},
+	{
+		title: "Kalapani to Nabhidhang", secs: 12, kicker: "The last camp · by jeep", mode: "By jeep",
+		pts: [P.kalapani, [80.958, 30.212], P.nabhidhang],
+		ways: [["jeep", P.kalapani, "By jeep to Nabhidhang"]],
 	},
 	{
 		title: "Over the Lipulekh to Mansarovar", secs: 90, overnight: true, kicker: "Into Tibet", mode: "On foot and by bus",
@@ -195,9 +227,9 @@ export const ROUTE = [
 		pts: [P.qugu, [81.372, 30.535], [81.336, 30.569], [81.335, 30.6], P.isthmus, [81.35, 30.72], P.chiu, [81.35, 30.8], [81.33, 30.87], [81.3, 30.935], P.pastDarchen, [81.25, 30.985], P.tarboche],
 		ways: [["tibet", P.qugu, "By bus round the lake"], ["tibet", [81.335, 30.6], "By bus round the lake", { shared: true }], ["tibet", P.chiu, "By bus across the Barkha plain"], ["tibet", P.pastDarchen, "By bus past Darchen"]],
 	},
-	{ title: "Up the Lha Chu to Dirapuk", secs: 60, kicker: "The parikrama · day one", mode: "On foot, about 20 km", pts: KORA.west, ways: [["walk", P.tarboche, "On foot up the Lha Chu"]] },
-	{ title: "Over the Dolma La", secs: 34, kicker: "The parikrama · day two", mode: "On foot, a steep 6 km", pts: KORA.north, ways: [["walk", P.dirapuk, "On foot, climbing"]] },
-	{ title: "Down by Zuthulphuk to Darchen", secs: 70, overnight: true, kicker: "The parikrama · days two and three", mode: "On foot, about 30 km", pts: KORA.east, ways: [["walk", P.dolmaLa, "On foot, down past Gauri Kund"], ["walk", P.zuthulphuk, "On foot, the last day"]] },
+	{ title: "Up the Lha Chu to Dirapuk", secs: 60, kora: true, kicker: "The parikrama · day one", mode: "On foot, about 20 km", pts: KORA.west, ways: [["walk", P.tarboche, "On foot up the Lha Chu"]] },
+	{ title: "Over the Dolma La", secs: 34, kora: true, kicker: "The parikrama · day two", mode: "On foot, a steep 6 km", pts: KORA.north, ways: [["walk", P.dirapuk, "On foot, climbing"]] },
+	{ title: "Down by Zuthulphuk to Darchen", secs: 70, overnight: true, kora: true, kicker: "The parikrama · days two and three", mode: "On foot, about 30 km", pts: KORA.east, ways: [["walk", P.dolmaLa, "On foot, down past Gauri Kund"], ["walk", P.zuthulphuk, "On foot, the last day"]] },
 ];
 
 // Places passed on the way, announced as the traveller goes by: [lon, lat, text].

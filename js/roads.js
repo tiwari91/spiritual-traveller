@@ -1809,7 +1809,7 @@ const LINES = [
 const K_LINES = [
 	{
 		// (the line ends at Tanakpur, at the foot of the hills, not carried on up into them)
-		to: "omparvat", stock: "icf", tail: -7, ends: [[77.23, 28.66, "दिल्ली जंक्शन", "DELHI JN"], [80.109, 29.074, "टनकपुर", "TANAKPUR"]],
+		to: "narayan", stock: "icf", tail: -7, ends: [[77.23, 28.66, "दिल्ली जंक्शन", "DELHI JN"], [80.109, 29.074, "टनकपुर", "TANAKPUR"]],
 		halts: [[78.78, 28.84, "मुरादाबाद जंक्शन", "MORADABAD JN"], [79.43, 28.37, "बरेली जंक्शन", "BAREILLY JN"], [79.8, 28.63, "पीलीभीत जंक्शन", "PILIBHIT JN"]],
 	},
 ];

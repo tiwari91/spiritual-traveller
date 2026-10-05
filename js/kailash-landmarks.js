@@ -10,6 +10,7 @@ import { Batch, T, VCOL, place } from "./batch.js";
 import { ROUTE, toWorld } from "./geo.js";
 import { KAILASH, P } from "./kailash-geo.js";
 import { addAnimal } from "./life.js";
+import { cave, dhuni, saffronFlag } from "./kailash-scenery.js";
 import { glowTexture, peak, terrainDetail } from "./landmarks.js";
 import { clamp, fbm, lerp, rand, smoothstep } from "./util.js";
 
@@ -287,7 +288,7 @@ function kailashMesh(H = 12, R0 = 6.2) {
 	const tt = new Float32Array(N), band = new Float32Array(N), gul = new Float32Array(N), face = new Float32Array(N);
 	// strata of uneven thickness, each a ledge stepping back
 	const R = rand(17), cuts = [0];
-	while (cuts[cuts.length - 1] < 1) cuts.push(cuts[cuts.length - 1] + 0.028 + R() * 0.035);
+	while (cuts[cuts.length - 1] < 1) cuts.push(cuts[cuts.length - 1] + 0.042 + R() * 0.05);
 	const bandAt = (t) => {
 		let i = 0;
 		while (cuts[i + 1] < t) i++;
@@ -310,7 +311,9 @@ function kailashMesh(H = 12, R0 = 6.2) {
 			// the profile: a broad foot of scree, steep straight faces, the shoulders rolling over into the dome
 			// the profile: a foot of scree, then four steep faces drawing in (a truncated pyramid), and the summit dome
 			const u = Math.max(0, (t - 0.08) / 0.92);
-			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.76 * Math.pow(u, 1.05)) * (u > 0.88 ? Math.sqrt(Math.max(0, 1 - ((u - 0.88) / 0.12) ** 2)) : 1));
+			// (the north face, over Dirapuk, is a sheer wall: it keeps its width higher and then drops in steeply)
+			const northy = smoothstep(0.3, 1, -Math.cos(th));
+			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.76 * Math.pow(u, lerp(1.05, 2.3, northy))) * (u > 0.9 ? Math.sqrt(Math.max(0, 1 - ((u - 0.9) / 0.1) ** 2)) : 1));
 			// the strata dip gently to the west and wander a little
 			const [bi, f] = bandAt(clamp(t + 0.035 * Math.sin(th) + 0.012 * Math.sin(th * 3 + 1) + 0.03 * (fbm(th * 1.6 + 5, t * 2.5, 3) - 0.5), 0, 0.999));
 			const jag = fbm(th * 5 + bi, bi * 0.7, 2);
@@ -364,6 +367,8 @@ function kailashMesh(H = 12, R0 = 6.2) {
 		const low = 1 - 0.4 * smoothstep(0.25, 0.75, t);
 		const steep = 0.75 + 0.25 * (1 - smoothstep(0.25, 0.6, ny));
 		let s = 1 - clamp(bare * (0.8 + 0.2 * low) * steep + 0.25 * low * smoothstep(0.55, 0.75, broken) * (1 - smoothstep(0.3, 0.6, ny)), 0, 1);
+		// the north face, in shadow and sheer, is mostly dark rock with the snow in lines along its ledges
+		s *= 1 - north * 0.5 * (1 - smoothstep(0.55, 0.8, f));
 		s = Math.max(s, smoothstep(0.82, 0.95, ny) * 0.9); // the shelves
 		s = Math.max(s, smoothstep(0.76, 0.86, t + (fbm(th * 4, t * 6, 3) - 0.5) * 0.1)); // the dome
 		s *= smoothstep(0.05, 0.18, t); // the scree at the foot
@@ -532,7 +537,98 @@ function gompa(world, x, z, yaw, s = 1, seed = 1, rock = true) {
 	return m;
 }
 
+// A deodar for the ashram's grove: a trunk and three tiers of dark green.
+function conifer(b, x, y, z, s = 1, seed = 1) {
+	b.add(T.cyl, place(x, y - 0.05, z, 0, 0.06 * s, 0.5 * s, 0.06 * s), 0x4a3828);
+	for (const [h, r, w] of [[0.3, 0.42, 0.5], [0.62, 0.34, 0.42], [0.9, 0.24, 0.36]]) b.add(T.cone, place(x, y + h * s, z, seed, r * s, w * s, r * s), seed % 2 ? 0x2e4a2a : 0x344f2c);
+}
+
 // ---------- the stops ----------
+// Narayan Ashram, on its terraces above the Kali: the temple behind the altar, the long hall with its tin roof and
+// verandah, the meditation hut and the swami's samadhi, beds of marigold, deodars round about, and sadhus.
+function narayan(ctx) {
+	const g = new THREE.Group(), b = new Batch(), F = frame(ctx), R = rand(131);
+	altar(b, F);
+	const y0 = F.ground(0, 0.6);
+	b.add(T.box, place(0, y0 - 0.06, 0.4, 0, 1.2, 0.16, 0.9), 0x9a9286);
+	b.add(T.box, place(0, y0 + 0.1, 0.25, 0, 0.8, 0.62, 0.7), 0xf1eee6);
+	b.add(T.box, place(0, y0 + 0.66, 0.25, 0, 0.86, 0.05, 0.76), 0x8a2a22);
+	b.add(T.taper, place(0, y0 + 0.7, 0.25, 0, 0.5, 0.75, 0.5), 0xe8dcc0);
+	b.add(T.ball, place(0, y0 + 1.43, 0.25, 0, 0.1, 0.1, 0.1), 0xc8962a);
+	b.add(T.box, place(0, y0 + 0.14, 0.61, 0, 0.26, 0.4, 0.02), 0x5a3a24);
+	saffronFlag(b, 0.5, y0 + 0.66, 0.0, 0.7);
+	// the hall, set back on the hillside
+	const H = F.floor(0, -1.9, 1.0);
+	b.add(T.box, place(0, H - 0.1, -1.9, 0, 2.8, 0.72, 1.1), 0xf1eee6);
+	b.add(T.box, place(0, H + 0.6, -1.9, 0, 2.86, 0.04, 1.16), 0x8a2a22);
+	b.add(T.gable, place(0, H + 0.62, -1.9, Math.PI / 2, 1.22, 0.32, 2.92), 0x5a6a3a);
+	for (const u of [-1.0, -0.5, 0, 0.5, 1.0]) b.add(T.box, place(u, H + 0.18, -1.34, 0, 0.18, 0.26, 0.012), 0x3a4a5a);
+	for (const u of [-1.2, -0.6, 0.6, 1.2]) b.add(T.box, place(u, H - 0.1, -1.3, 0, 0.04, 0.7, 0.04), 0x6a4a2e);
+	b.add(T.box, place(0, H - 0.1, -1.34, 0, 0.3, 0.46, 0.02), 0x5a3a24);
+	// the meditation hut and the samadhi
+	const k = F.spot([[2.2, -1.3], [-2.3, -1.4], [2.4, 0.2], [-2.4, 0.3]], 0.5, 0.25);
+	if (k) {
+		const y = F.floor(k[0], k[1], 0.4);
+		b.add(T.box, place(k[0], y - 0.05, k[1], 0.3, 0.6, 0.42, 0.6), 0xe8e2d0);
+		b.add(T.gable, place(k[0], y + 0.37, k[1], 0.3 + Math.PI / 2, 0.7, 0.2, 0.7), 0x6a2a22);
+	}
+	const sm = F.spot([[-1.6, 0.5], [1.7, 0.6], [-1.9, -0.4]], 0.4, 0.2);
+	if (sm) {
+		const y = F.ground(sm[0], sm[1]);
+		b.add(T.box, place(sm[0], y - 0.03, sm[1], 0, 0.6, 0.1, 0.6), 0xd8d2c4);
+		b.add(T.box, place(sm[0], y + 0.07, sm[1], 0, 0.4, 0.12, 0.4), 0xf1eee6);
+		b.add(T.taper, place(sm[0], y + 0.19, sm[1], 0, 0.22, 0.26, 0.22), 0xe8dcc0);
+	}
+	// the gardens: beds of marigold and herbs either side of the way
+	for (const [gx, gz] of [[-1.5, 1.6], [1.6, 1.5], [-1.9, 2.8], [2.0, 2.9]]) {
+		if (!F.free(gx, gz, 0.5)) continue;
+		F.take(gx, gz, 0.5);
+		const y = F.ground(gx, gz);
+		b.add(T.box, place(gx, y - 0.02, gz, 0, 1.0, 0.06, 0.7), 0x3f5a2e);
+		for (let i = 0; i < 9; i++) b.add(T.ball, place(gx + (R() - 0.5) * 0.85, y + 0.05, gz + (R() - 0.5) * 0.55, 0, 0.06, 0.05, 0.06), R() < 0.6 ? 0xf2a01e : 0xd8261c);
+	}
+	// deodars round the ashram, kept off the way and out of the shot behind the traveller
+	for (const [tx, tz] of [[-3.2, -2.4], [3.1, -2.2], [-3.6, -0.6], [3.5, -0.4], [-2.6, -3.4], [2.7, -3.3], [-4.0, 1.2], [4.0, 1.4]]) {
+		if (!F.free(tx, tz, 0.45)) continue;
+		F.take(tx, tz, 0.45);
+		conifer(b, tx, F.ground(tx, tz), tz, 0.9 + R() * 0.5, Math.floor(R() * 7));
+	}
+	rocks(b, F, 10, 2.2, 4.4, R, 0x7a7268);
+	const crowd = crowdAt(F, 5, 17);
+	finish(b, g);
+	return { g, peaks: [], crowd };
+}
+// Kalapani: the small Kali temple with its red band and bells, the ITBP post's olive huts, and the Vyas cave in the
+// rock above with a flag at its mouth and a sadhu at his dhuni before it.
+function kalapani(ctx) {
+	const g = new THREE.Group(), b = new Batch(), F = frame(ctx), R = rand(137);
+	altar(b, F);
+	const y0 = F.ground(0, 0.4);
+	b.add(T.box, place(0, y0 - 0.06, 0.3, 0, 1.3, 0.14, 1.0), 0x8a8076);
+	b.add(T.box, place(0, y0 + 0.08, 0.2, 0, 0.9, 0.6, 0.8), 0xf1eee6);
+	b.add(T.box, place(0, y0 + 0.62, 0.2, 0, 0.96, 0.05, 0.86), 0xb8261c);
+	b.add(T.taper, place(0, y0 + 0.66, 0.2, 0, 0.52, 0.7, 0.52), 0xd8261c);
+	b.add(T.ball, place(0, y0 + 1.34, 0.2, 0, 0.09, 0.09, 0.09), 0xc8962a);
+	b.add(T.box, place(0, y0 + 0.1, 0.61, 0, 0.28, 0.42, 0.02), 0x3a2a20);
+	for (const sx of [-1, 1]) b.add(T.box, place(sx * 0.42, y0 + 0.08, 0.72, 0, 0.03, 0.62, 0.03), 0x5a4434);
+	b.add(T.box, place(0, y0 + 0.7, 0.72, 0, 0.9, 0.03, 0.03), 0x5a4434);
+	for (const x of [-0.25, -0.08, 0.08, 0.25]) b.add(T.cone, place(x, y0 + 0.56, 0.72, 0, 0.06, 0.09, 0.06), 0xc8902a);
+	saffronFlag(b, 0.6, y0 + 0.1, 0.0, 0.9);
+	for (const [w, d] of [[1.0, 0.55], [0.8, 0.5]]) {
+		const s = F.spot(F.ring(2.2, 4.2, 40, R() * 1000 | 0), Math.max(w, d) * 0.65, 0.2);
+		if (s) hut(b, s[0], F.floor(s[0], s[1], Math.max(w, d) * 0.5), s[1], w, d, Math.atan2(-s[0], -s[1]) + Math.PI, 0x5a6238);
+	}
+	const cv = [1.9, -2.6];
+	cave(b, cv[0], F.ground(cv[0], cv[1]), cv[1], Math.atan2(-cv[0], -cv[1]) + Math.PI, 1.1);
+	F.take(cv[0], cv[1], 1.3);
+	dhuni(b, 1.1, F.ground(1.1, -1.6), -1.6, R);
+	F.take(1.1, -1.6, 0.3);
+	rocks(b, F, 24, 1.2, 4.4, R, 0x7a7068);
+	const crowd = crowdAt(F, 5, 23);
+	crowd.push([0.7, -1.5, F.ground(0.7, -1.5), "sadhu"]);
+	finish(b, g);
+	return { g, peaks: [], crowd };
+}
 // Om Parvat, from the camp at Nabhidhang: the huts of the camp, an ITBP tent, the open-air Shiva shrine with its
 // trishul and bells, a railing along the viewpoint.
 function omparvat(ctx) {
@@ -884,4 +980,4 @@ function darchen(ctx) {
 	return { g, peaks: [], crowd, world };
 }
 
-export const K_BUILDERS = { omparvat, mansarovar, yamdwar, dirapuk, dolmala, darchen };
+export const K_BUILDERS = { narayan, kalapani, omparvat, mansarovar, yamdwar, dirapuk, dolmala, darchen };

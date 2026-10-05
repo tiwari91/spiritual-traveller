@@ -1846,6 +1846,7 @@ const PLACES = {
 	bhimashankar: ["maharashtra", "shaiva"], kedarnath: ["garhwal", "shaiva"], tirupati: ["tirumala", "vaishnava"], badrinath: ["garhwal", "vaishnava"], shirdi: ["maharashtra"],
 	maharashtra: ["maharashtra"], tirumala: ["tirumala", "vaishnava"], garhwal: ["garhwal"],
 	// the Kailash journey: Indian yatris wrapped up for the high passes; Tibetan pilgrims and herders on the plateau
+	narayan: ["sadhu", "vaishnava"], kalapani: ["yatri", "shaiva"], sadhu: ["sadhu", "shaiva"],
 	omparvat: ["yatri", "shaiva"], mansarovar: ["yatri", "shaiva"], yamdwar: ["yatri", "shaiva"], dirapuk: ["yatri", "shaiva"], dolmala: ["yatri", "shaiva"], darchen: ["yatri", "shaiva"],
 	yatri: ["yatri", "shaiva"], tibetan: ["tibetan"],
 };
@@ -1862,6 +1863,14 @@ export function crowdOpts(R, place) {
 	const age = R() < 0.22 ? "elder" : R() < 0.3 ? "young" : "adult";
 	const build = R() < 0.2 ? "slim" : R() < 0.25 ? "heavy" : "average";
 	const skin = varySkin(pick(region === "tirumala" ? [SKIN[1], SKIN[3], SKIN[5], SKIN[6], SKIN[0]] : region === "garhwal" ? [SKIN[0], SKIN[2], SKIN[4], SKIN[6], SKIN[1]] : region === "tibetan" ? [SKIN[0], SKIN[1], SKIN[2]] : SKIN), R);
+	if (region === "sadhu") {
+		// a sadhu: robes of saffron or ochre, a shawl of the same, the hair long or wound up in a turban, a beard on
+		// most, the sect's mark on the forehead and a rudraksha mala
+		const robe = pick([0xe8731c, 0xd9641a, 0xc8562a, 0xf0a030, 0xb8462a]);
+		const old = age === "young" ? "adult" : age;
+		const beard = pick(old === "elder" ? [0xcfcac2, 0xbab4ab, 0x5a4a3e] : [0x2e2824, 0x5a4a3e, 0xcfcac2]);
+		return { skin, age: old, build: R() < 0.5 ? "slim" : build, beard, moustache: beard, mark: sect === "vaishnava" ? "urdhva" : "tripundra", top: robe, bottom: robe, dhoti: "long", sash: pick([0xe8731c, 0x8a2a1a, 0xf0c050]), shawl: pick([0xe8731c, 0x8a2a1a]), head: R() < 0.5 ? "turban" : "hair", headColor: 0xe8731c };
+	}
 	if (region === "tibetan") {
 		// a chuba, the long wrapped robe of sheepskin or wool, belted with a bright sash; a felt or fur hat; women
 		// with the striped apron and braids

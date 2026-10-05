@@ -252,6 +252,7 @@ function arrive(i) {
 	$("enter").innerHTML = app.inside[i] ? AGAIN : KAILASH ? "To the rituals… <span>they play by themselves</span>" : "Going inside… <span>the rituals play by themselves</span>";
 	// a Kailash stop with no rituals of its own has nothing to go in for
 	$("enter").hidden = !!(KAILASH && sanctum.has && !sanctum.has(s.key));
+	if ($("kview")) $("kview").hidden = !(KAILASH && s.lookKailash);
 	$("darshan").querySelector(".d-scroll").scrollTop = 0;
 	$("darshan").classList.add("show");
 	document.body.classList.add("darshan-open");
@@ -928,7 +929,7 @@ function loop(now) {
 	if (KAILASH && app.frames % 30 === 0) travelSound();
 	if (companions) {
 		const c = route.chapters[app.leg];
-		const on = app.state === "travel" && app.leg >= 3 && app.mode === "walk" && app.s > c.s0 + 0.8 && app.s < c.s1 - 2.2;
+		const on = app.state === "travel" && !!c.kora && app.mode === "walk" && app.s > c.s0 + 0.8 && app.s < c.s1 - 2.2;
 		// (on the other side of the path from the traveller)
 		companions.update(on, app.s, c.s1 - 2.4, (s, lane) => Object.assign({}, roadPoint(s, lane * journey.keep(s))), app.playing);
 	}
@@ -1321,6 +1322,7 @@ function buildUI() {
 	$("start").addEventListener("click", begin);
 	$("continue").addEventListener("click", next);
 	$("enter").addEventListener("click", () => enterTemple(true));
+	if ($("kview")) $("kview").addEventListener("click", kailashWhole);
 	$("btn-play").addEventListener("click", togglePlay);
 	$("btn-speed").addEventListener("click", () => setSpeed((app.speed + 1) % SPEEDS.length));
 	$("btn-time").addEventListener("click", () => cycleTime());
@@ -1737,6 +1739,7 @@ function installInput() {
 		else if (k === "w" || k === "W") cycleWeather();
 		else if (k === "v" || k === "V") cycleTransport();
 		else if ((k === "e" || k === "E") && app.state === "darshan") enterTemple(true);
+		else if ((k === "k" || k === "K") && app.state === "darshan" && KAILASH && SHRINES[app.at].lookKailash) kailashWhole();
 		else if (k === "m" || k === "M") toggleSound();
 		else if (k === "h" || k === "H") document.body.classList.toggle("hide-hud");
 		else if (k === "c" || k === "C") resetView();
@@ -1784,6 +1787,16 @@ function panBy(dx, dy) {
 	rig.pan.x = clamp(rig.pan.x - dx * 0.0016, -1.2, 1.2);
 	rig.pan.y = clamp(rig.pan.y + dy * 0.0016, -1.2, 1.2);
 	userTook();
+}
+// At a stop that looks to Kailash: the whole mountain framed (the zoom drawn out, and with it the aim up to the
+// summit, cameraGoal), and back again to the traveller
+function kailashWhole() {
+	if (app.state !== "darshan" || !SHRINES[app.at].lookKailash) return;
+	const out = zoomNow() < 2;
+	rig.userYaw = rig.userPitch = 0;
+	rig.pan.x = rig.pan.y = 0;
+	rig.zoom = out ? 3.4 : 1;
+	if (out) toast("Kailash, 6,638 m. No one climbs it: the pilgrim goes round.");
 }
 function resetView() {
 	rig.userYaw = 0;

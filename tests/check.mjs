@@ -365,17 +365,18 @@ async function kailashBasic() {
 	ok("Kailash: travel advances from Delhi", await page.waitForFunction((s0) => app.s > s0 + 0.5, s0, { timeout: 30000 }).then(() => true, () => false));
 	ok("Kailash: chapter card on start", (await page.evaluate(() => app.lastCard)) === "Delhi to the Kumaon Himalaya");
 	ok("Kailash: starts from Delhi", await page.evaluate(() => document.querySelector(".node.start span").textContent === "Delhi"));
-	const names = ["Om Parvat", "Mansarovar", "Yam Dwar", "Dirapuk", "Dolma La", "Darchen"];
-	ok("Kailash: six stops on the route", (await page.evaluate(() => app.route.chapters.length)) === names.length);
+	const names = ["Narayan Ashram", "Kalapani", "Om Parvat", "Mansarovar", "Yam Dwar", "Dirapuk", "Dolma La", "Darchen"];
+	const mantras = ["Om Namo Narayanaya", "Om Krim Kalikayai Namah"];
+	ok("Kailash: eight stops on the route", (await page.evaluate(() => app.route.chapters.length)) === names.length);
 	// the lakes are drawn, and the Tibet side keeps to the right
 	ok("Kailash: Mansarovar and Rakshas Tal are drawn", await page.evaluate(() => app.world.rivers.children.filter((m) => m.name === "lake").length === 2));
-	ok("Kailash: the Tibet side keeps to the right", await page.evaluate(() => app.journey.keep(app.route.chapters[1].s1 - 10) === -1 && app.journey.keep(app.route.chapters[0].s0 + 10) === 1));
+	ok("Kailash: the Tibet side keeps to the right", await page.evaluate(() => app.journey.keep(app.route.chapters[3].s1 - 10) === -1 && app.journey.keep(app.route.chapters[0].s0 + 10) === 1));
 	await page.evaluate(() => app.setSpeed(3));
 	for (let i = 0; i < names.length; i++) {
 		await page.waitForFunction((i) => app.state === "darshan" && app.at === i, i, { timeout: 240000 });
 		await wait(page, 3500);
 		const d = await page.evaluate(() => ({ name: document.getElementById("d-name").textContent, m: document.getElementById("d-mantra-latin").textContent, show: document.getElementById("darshan").classList.contains("show") }));
-		ok(`Kailash: darshan at ${names[i]}`, d.show && d.name === names[i] && d.m === "Om Namah Shivaya", `${d.name}: ${d.m}`);
+		ok(`Kailash: darshan at ${names[i]}`, d.show && d.name === names[i] && d.m === (mantras[i] || "Om Namah Shivaya"), `${d.name}: ${d.m}`);
 		await shot(page, `k1${i}-darshan-${names[i].toLowerCase().replace(/ /g, "-")}`);
 		await page.click("#continue");
 		if (i < names.length - 1) {
@@ -388,9 +389,9 @@ async function kailashBasic() {
 	ok("Kailash: finale after Darchen", await page.evaluate(() => app.state === "finale" && !document.getElementById("finale").hidden));
 	await shot(page, "k30-finale");
 	await page.keyboard.press("Escape");
-	await page.keyboard.press("6");
+	await page.keyboard.press("8");
 	await wait(page, 600);
-	ok("Kailash: key 6 jumps to Darchen", await page.evaluate(() => app.state === "darshan" && app.at === 5));
+	ok("Kailash: key 8 jumps to Darchen", await page.evaluate(() => app.state === "darshan" && app.at === 7));
 	ok("Kailash: desktop console clean", errors.length === 0, errors.slice(0, 5).join(" | "));
 	await ctx.close();
 	// each stop close up, at its own hour and in its own weather
@@ -433,8 +434,8 @@ async function kailashBasic() {
 		});
 		ok("Kailash: changes from the bus to a jeep at Dharchula", await until(() => app.journey.status().ep === "bus>jeep", 40000));
 		await o.page.evaluate(() => {
-			app.leg = 1;
-			app.s = app.roads.ways[1][1].s - 2;
+			app.leg = 3;
+			app.s = app.roads.ways[3][1].s - 2;
 			app.setSpeed(2);
 		});
 		ok("Kailash: over the Lipulekh on foot, onto the Chinese bus, door on the right", await until(() => app.journey.status().ep === "walk>coach" && app.journey.keep(app.s) === -1, 60000));
@@ -447,8 +448,8 @@ async function kailashBasic() {
 		ok("Kailash: starts out on the motorbike", await o.page.evaluate(() => document.getElementById("transport-label").textContent === "Bike"));
 		await o.page.evaluate(() => {
 			app.begin();
-			app.leg = 1;
-			app.s = app.roads.ways[1][1].s + 8;
+			app.leg = 3;
+			app.s = app.roads.ways[3][1].s + 8;
 			app.setSpeed(2);
 		});
 		const until = (fn, ms) => o.page.waitForFunction(fn, null, { timeout: ms }).then(() => true, () => false);
@@ -467,9 +468,9 @@ async function kailashBasic() {
 	await phone.page.tap("#start");
 	await wait(phone.page, 2500);
 	ok("Kailash phone: no horizontal overflow", !(await phone.page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)));
-	await phone.page.tap(".node.shrine >> nth=3");
+	await phone.page.tap(".node.shrine >> nth=5");
 	await wait(phone.page, 4000);
-	ok("Kailash phone: tap node opens Dirapuk", await phone.page.evaluate(() => app.state === "darshan" && app.at === 3));
+	ok("Kailash phone: tap node opens Dirapuk", await phone.page.evaluate(() => app.state === "darshan" && app.at === 5));
 	await shot(phone.page, "k61-phone-darshan");
 	ok("Kailash phone: continue button visible", await phone.page.evaluate(() => {
 		const r = document.getElementById("continue").getBoundingClientRect();

@@ -1532,10 +1532,21 @@ export function buildLandmarks(world, scene, renderer, crowdFigure) {
 	for (const s of SHRINES) {
 		const w = toWorld(s.lon, s.lat);
 		const y = world.height(w.x, w.z);
+		// a stop on a hillside (the Kali gorge's) faces up the slope: the traveller looks up at it, and the camera behind
+		// them stands out over the valley rather than on the bank above
+		if (s.uphill) {
+			let best = -Infinity, dir = 0;
+			for (let k = 0; k < 32; k++) {
+				const a = (k / 32) * Math.PI * 2, ux = Math.sin(a), uz = Math.cos(a);
+				const rise = world.height(w.x + ux * 6, w.z + uz * 6) + world.height(w.x + ux * 10, w.z + uz * 10) - world.height(w.x - ux * 6, w.z - uz * 6) - world.height(w.x - ux * 10, w.z - uz * 10);
+				if (rise > best) (best = rise), (dir = a);
+			}
+			s.facing = Math.atan2(-Math.sin(dir), -Math.cos(dir));
+		}
 		const spec = (BUILDERS[s.key] || K_BUILDERS[s.key])({ world, x: w.x, y, z: w.z, facing: s.facing, shrine: s });
 		if (crowdFigure && spec.crowd) {
-			spec.crowd.forEach(([x, z, fy], i) => {
-				const f = crowdFigure(s.key.length * 100 + i * 7 + 3, s.key);
+			spec.crowd.forEach(([x, z, fy, dress], i) => {
+				const f = crowdFigure(s.key.length * 100 + i * 7 + 3, dress || s.key);
 				f.position.set(x, fy - 0.0, z);
 				// pilgrims face the shrine, with a little variety
 				f.rotation.y = Math.atan2(-x, -z + (s.key === "tirupati" && z > 3 ? -2 : 0)) + Math.sin(i * 3.1) * 0.35;

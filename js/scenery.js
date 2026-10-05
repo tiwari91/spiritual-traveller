@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { Batch, DITHER, HAZE_FOG, NO_FLIP, SHARED, T, VCOL, patch, place } from "./batch.js";
 import { FieldGeo, StripGeo, cropMaterial, fieldMaterial, landOf, layFields } from "./fields.js";
 import { CITIES, KAILASH, SHRINES, toGeo, toWorld } from "./geo.js";
-import { kailashCountry } from "./kailash-scenery.js";
+import { kailashCountry, kumaonWayside } from "./kailash-scenery.js";
 import { KAILASH as K_CENTRE, P as KP } from "./kailash-geo.js";
 import { OM_DIR } from "./kailash-world.js";
 import { addAnimal, addPerson, haystack } from "./life.js";
@@ -688,6 +688,8 @@ export class Scenery {
 				this.foot.circle(k, c.x, c.z, 3);
 			}
 		}
+		// the Kailash journey's hill roads: a hermit's cave, a sadhu on the way
+		if (KAILASH && reg === "garhwal") yield* kumaonWayside(this, ctx);
 		}
 		yield;
 		// ---------- build the meshes ----------
