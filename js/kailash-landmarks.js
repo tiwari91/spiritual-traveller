@@ -294,7 +294,7 @@ function kailashMesh(H = 12, R0 = 6.2) {
 			// the profile: a broad foot of scree, steep straight faces, the shoulders rolling over into the dome
 			// the profile: a foot of scree, then four steep faces drawing in (a truncated pyramid), and the summit dome
 			const u = Math.max(0, (t - 0.08) / 0.92);
-			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.56 * u) * (u > 0.8 ? Math.sqrt(Math.max(0, 1 - ((u - 0.8) / 0.2) ** 2)) : 1));
+			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.72 * Math.pow(u, 0.9)) * (u > 0.82 ? Math.sqrt(Math.max(0, 1 - ((u - 0.82) / 0.18) ** 2)) : 1));
 			// the strata dip gently to the west and wander a little
 			const [bi, f] = bandAt(clamp(t + 0.035 * Math.sin(th) + 0.012 * Math.sin(th * 3 + 1) + 0.01 * (fbm(th * 2, t * 3, 2) - 0.5), 0, 0.999));
 			const jag = fbm(th * 5 + bi, bi * 0.7, 2);

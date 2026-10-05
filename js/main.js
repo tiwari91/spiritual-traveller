@@ -713,6 +713,8 @@ function updateCamera(dt) {
 		rig.rise = 0;
 		rig.hid = 0;
 	}
+	// (on the Kailash journey's steep ground, coming in past a bank can bring the lens down to the ground: never into it)
+	if (KAILASH) camera.position.y = Math.max(camera.position.y, world.height(camera.position.x, camera.position.z) + 0.08);
 	camera.lookAt(rig.target);
 	// keep the shrine clear of the darshan panel
 	const open = app.state === "darshan";

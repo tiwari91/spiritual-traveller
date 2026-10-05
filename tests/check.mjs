@@ -360,9 +360,9 @@ async function kailashBasic() {
 	const gl = await page.evaluate(() => ({ tris: app.renderer.info.render.triangles, frames: app.frames }));
 	ok("Kailash: WebGL renders", gl.tris > 50000 && gl.frames > 20, `${gl.tris} triangles`);
 	await shot(page, "k02-leaving-delhi");
+	// (the yatra's bus pulls up and the traveller gets on first, so give it a moment)
 	const s0 = await page.evaluate(() => app.s);
-	await wait(page, 2000);
-	ok("Kailash: travel advances from Delhi", (await page.evaluate(() => app.s)) > s0);
+	ok("Kailash: travel advances from Delhi", await page.waitForFunction((s0) => app.s > s0 + 0.5, s0, { timeout: 30000 }).then(() => true, () => false));
 	ok("Kailash: chapter card on start", (await page.evaluate(() => app.lastCard)) === "Delhi to the Kumaon Himalaya");
 	ok("Kailash: starts from Delhi", await page.evaluate(() => document.querySelector(".node.start span").textContent === "Delhi"));
 	const names = ["Om Parvat", "Mansarovar", "Yam Dwar", "Dirapuk", "Dolma La", "Darchen"];
