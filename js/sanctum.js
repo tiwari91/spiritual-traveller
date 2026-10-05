@@ -2529,7 +2529,780 @@ function shirdi(ctx) {
 		},
 	};
 }
+// ---------- the Kailash journey: rituals out of doors ----------
+// Mansarovar's shore, the camp under the north face at Dirapuk, the Dolma La and Yam Dwar. No room here: a sky dome
+// and a painted panorama of the country round about (Kailash's banded pyramid, the lake, Gurla Mandhata's snows),
+// ground laid as a height grid the feet stand on, high-altitude daylight (dusk at Dirapuk), prayer flags in the wind.
+// Each builder returns its layout with outdoor: true, its own props (props), and a tick for the wind, the fire and
+// the snow. Units are metres; the traveller starts towards +z and looks towards -z, where Kailash stands.
+const KAIL_R = 55; // the panorama's radius
+const KAIL_EYE = 1.5;
+const FLAG_COLS = [0x2a5ab8, 0xf2f0e8, 0xc8262a, 0x2f8a4a, 0xf0c41e]; // blue, white, red, green, yellow
+// A sky dome: zenith to horizon, and the ground colour below it.
+function skyDome(top, horizon, below) {
+	const geo = new THREE.SphereGeometry(70, 48, 24);
+	const p = geo.attributes.position, col = [];
+	const a = new THREE.Color(top), b = new THREE.Color(horizon), c = new THREE.Color(below), t = new THREE.Color();
+	for (let i = 0; i < p.count; i++) {
+		const y = p.getY(i) / 70;
+		if (y >= 0) t.copy(b).lerp(a, Math.pow(y, 0.55));
+		else t.copy(b).lerp(c, Math.min(1, -y * 6));
+		col.push(t.r, t.g, t.b);
+	}
+	geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+	const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+	m.renderOrder = -2;
+	return m;
+}
+// Where an angle of elevation (radians) falls on the panorama's canvas, and where an azimuth to the right of -z does.
+const panY = (H, a) => H * (1 - (KAIL_R * Math.tan(a) + KAIL_EYE + 30) / 64);
+const panX = (W, az) => (((0.5 - az / (Math.PI * 2)) % 1) + 1) % 1 * W;
+const deg = (d) => (d * Math.PI) / 180;
+// A ridge line across the canvas from x0 to x1, its height (elevation) from f(u), filled down to the bottom.
+function ridgeFill(g, W, H, x0, x1, f, fill) {
+	g.fillStyle = fill;
+	g.beginPath();
+	g.moveTo(x0, H);
+	for (let x = x0; x <= x1; x += 4) g.lineTo(x, panY(H, f((x - x0) / (x1 - x0), x)));
+	g.lineTo(x1, H);
+	g.closePath();
+	g.fill();
+}
+// Kailash: the dome-topped pyramid of dark rock banded with ledges of snow, the great gully down the middle of the
+// face, the snowcap, a collar of cloud at its foot; lit golden from one side at dusk (glow).
+function paintKailash(g, cx, base, w, h, R, glow = 0, north = false) {
+	g.save();
+	const shape = () => {
+		g.beginPath();
+		g.moveTo(cx - w * 0.5, base);
+		g.bezierCurveTo(cx - w * 0.44, base - h * 0.35, cx - w * 0.36, base - h * 0.62, cx - w * 0.26, base - h * 0.84);
+		g.quadraticCurveTo(cx - w * 0.12, base - h * 1.01, cx, base - h);
+		g.quadraticCurveTo(cx + w * 0.13, base - h * 1.0, cx + w * 0.27, base - h * 0.83);
+		g.bezierCurveTo(cx + w * 0.37, base - h * 0.6, cx + w * 0.45, base - h * 0.33, cx + w * 0.5, base);
+		g.closePath();
+	};
+	shape();
+	const rock = g.createLinearGradient(0, base - h, 0, base);
+	rock.addColorStop(0, north ? "#5a4c42" : "#6a5c50");
+	rock.addColorStop(1, "#2c2622");
+	g.fillStyle = rock;
+	g.fill();
+	g.clip();
+	// the strata: ledges of snow lying across the face, thicker towards the top
+	for (let i = 0; i < 26; i++) {
+		const t = i / 26, y = base - h * (0.08 + t * 0.9);
+		const th = h * (0.006 + t * t * 0.018) * (0.6 + R() * 0.8);
+		g.fillStyle = `rgba(240,244,250,${0.55 + t * 0.4})`;
+		g.beginPath();
+		g.moveTo(cx - w, y);
+		for (let x = -w; x <= w; x += w / 30) g.lineTo(cx + x, y + Math.sin(x * 0.07 + i) * th * 0.8 + (R() - 0.5) * th);
+		for (let x = w; x >= -w; x -= w / 30) g.lineTo(cx + x, y + th + Math.sin(x * 0.05 + i * 2) * th * 0.6);
+		g.fill();
+	}
+	// the snowcap
+	g.fillStyle = "rgba(242,246,252,0.92)";
+	g.beginPath();
+	g.ellipse(cx, base - h * 0.97, w * 0.27, h * 0.13, 0, 0, Math.PI * 2);
+	g.fill();
+	// the vertical gully down the middle of the face, filled with snow, its shadow beside it
+	g.fillStyle = "rgba(20,16,14,0.45)";
+	g.fillRect(cx + w * 0.012, base - h * 0.86, w * 0.02, h * 0.62);
+	g.fillStyle = "rgba(236,240,248,0.88)";
+	g.beginPath();
+	g.moveTo(cx - w * 0.012, base - h * 0.9);
+	g.lineTo(cx + w * 0.012, base - h * 0.9);
+	g.lineTo(cx + w * 0.006, base - h * 0.22);
+	g.lineTo(cx - w * 0.008, base - h * 0.22);
+	g.fill();
+	// the side away from the light in shadow, the near side lit
+	const side = g.createLinearGradient(cx - w * 0.5, 0, cx + w * 0.5, 0);
+	side.addColorStop(0, "rgba(255,240,215,0.08)");
+	side.addColorStop(0.5, "rgba(0,0,0,0)");
+	side.addColorStop(1, "rgba(10,14,30,0.42)");
+	g.fillStyle = side;
+	g.fillRect(cx - w, base - h * 1.1, w * 2, h * 1.2);
+	if (glow > 0) {
+		const gl = g.createLinearGradient(0, base - h, 0, base - h * 0.35);
+		gl.addColorStop(0, `rgba(255,170,90,${0.55 * glow})`);
+		gl.addColorStop(1, "rgba(255,170,90,0)");
+		g.fillStyle = gl;
+		g.fillRect(cx - w, base - h * 1.1, w * 2, h);
+	}
+	g.restore();
+	// foothills in front of its foot, darker, and the collar of cloud
+	g.fillStyle = "#3a322c";
+	g.beginPath();
+	g.moveTo(cx - w * 0.8, base + h * 0.02);
+	for (let x = -0.8; x <= 0.8; x += 0.04) g.lineTo(cx + x * w, base - h * (0.12 + 0.08 * Math.sin(x * 9) + 0.05 * R()) * (1 - Math.abs(x) * 0.6));
+	g.lineTo(cx + w * 0.8, base + h * 0.05);
+	g.fill();
+	for (let i = 0; i < 26; i++) {
+		const x = cx + (R() - 0.5) * w * 1.1, y = base - h * (0.1 + R() * 0.08), r = w * (0.05 + R() * 0.07);
+		const cg = g.createRadialGradient(x, y, 0, x, y, r);
+		cg.addColorStop(0, `rgba(235,236,240,${0.28 + R() * 0.2})`);
+		cg.addColorStop(1, "rgba(235,236,240,0)");
+		g.fillStyle = cg;
+		g.fillRect(x - r, y - r, r * 2, r * 2);
+	}
+}
+// A broad snow massif (Gurla Mandhata, the ranges round the pass).
+function paintSnowRange(g, W, H, x0, x1, base, top, R) {
+	g.fillStyle = "#6a6058";
+	g.beginPath();
+	g.moveTo(x0, panY(H, base));
+	const n = 40, pts = [];
+	for (let i = 0; i <= n; i++) {
+		const u = i / n, e = base + (top - base) * Math.pow(Math.sin(Math.PI * u), 0.8) * (0.8 + 0.25 * R());
+		pts.push([lerp(x0, x1, u), panY(H, e)]);
+	}
+	for (const [x, y] of pts) g.lineTo(x, y);
+	g.lineTo(x1, panY(H, base));
+	g.fill();
+	g.fillStyle = "rgba(240,244,250,0.9)";
+	g.beginPath();
+	pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+	for (let i = n; i >= 0; i--) {
+		const [x, y] = pts[i];
+		g.lineTo(x, y + (panY(H, base) - y) * (0.35 + 0.2 * Math.sin(i * 1.7)));
+	}
+	g.fill();
+}
+// The panorama round each place, on a canvas wrapped round the inside of a cylinder (transparent sky).
+function panorama(kind) {
+	const W = 4096, H = 1024, R = rand(kind.length * 17 + 3);
+	const c = canvas(W, H, (g) => {
+		g.clearRect(0, 0, W, H);
+		const hills = (e0, e1, col, k = 9, seed = 1) => ridgeFill(g, W, H, 0, W, (u) => e0 + (e1 - e0) * fbm(u * k + seed, seed * 0.7, 4), col);
+		if (kind === "mansarovar") {
+			// across the water to the north: brown hills, and Kailash white above them; Gurla Mandhata behind
+			hills(deg(0.4), deg(3.2), "#8a7a64", 7, 3);
+			paintKailash(g, panX(W, deg(-6)), panY(H, deg(1.6)), W * 0.05, H * 0.11, R, 0.15);
+			hills(deg(0.2), deg(1.2), "#7a6a56", 15, 5);
+			paintSnowRange(g, W, H, panX(W, deg(178)), panX(W, deg(138)), deg(1), deg(14), R);
+			hills(deg(-0.2), deg(4), "#7e705c", 11, 9);
+			// the far shore of the lake: a thin line of pale beach at the foot of the hills, water below it
+			g.fillStyle = "rgba(60,150,170,1)";
+			g.fillRect(panX(W, deg(60)), panY(H, deg(0.25)), panX(W, deg(-60)) - panX(W, deg(60)), panY(H, deg(-6)) - panY(H, deg(0.25)));
+		} else if (kind === "dirapuk") {
+			// the north face, close and filling the head of the valley, the valley walls either side
+			paintKailash(g, panX(W, 0), panY(H, deg(4)), W * 0.2, H * 0.52, R, 1, true);
+			ridgeFill(g, W, H, panX(W, deg(-25)), panX(W, deg(-90)), (u) => deg(10 + 12 * fbm(u * 6, 2, 4) - u * 6), "#4a3a30");
+			ridgeFill(g, W, H, panX(W, deg(90)), panX(W, deg(25)), (u) => deg(4 + 12 * fbm(u * 6, 7, 4) + u * 4), "#54423a");
+			hills(deg(1), deg(9), "#5e4e44", 10, 11);
+		} else if (kind === "dolmala") {
+			// rock and snow all round the pass; on the right, far below, the emerald Gauri Kund
+			hills(deg(2), deg(16), "#5a524c", 8, 13);
+			paintSnowRange(g, W, H, panX(W, deg(-20)), panX(W, deg(-120)), deg(3), deg(18), R);
+			paintSnowRange(g, W, H, panX(W, deg(170)), panX(W, deg(110)), deg(2), deg(12), R);
+			hills(deg(-2), deg(6), "#6a6058", 14, 17);
+			// the drop into the valley on the right, and the lake in its hollow
+			ridgeFill(g, W, H, panX(W, deg(140)), panX(W, deg(40)), (u) => deg(-6 - 10 * Math.sin(Math.PI * u)), "#5c544c");
+			const gx = panX(W, deg(88)), gy = panY(H, deg(-17));
+			const gk = g.createRadialGradient(gx, gy, 0, gx, gy, W * 0.03);
+			gk.addColorStop(0, "#1f8a7a");
+			gk.addColorStop(0.7, "#2a9a86");
+			gk.addColorStop(1, "#cfe4e0");
+			g.fillStyle = gk;
+			g.beginPath();
+			g.ellipse(gx, gy, W * 0.03, H * 0.022, 0, 0, Math.PI * 2);
+			g.fill();
+			g.fillStyle = "rgba(240,244,250,0.85)";
+			g.beginPath();
+			g.ellipse(gx - W * 0.012, gy - H * 0.006, W * 0.012, H * 0.008, 0.2, 0, Math.PI * 2);
+			g.fill();
+		} else {
+			// Yam Dwar: the south-west face of Kailash above the ridges, the Barkha plain behind
+			hills(deg(1), deg(6), "#7a6a58", 8, 19);
+			paintKailash(g, panX(W, deg(4)), panY(H, deg(5)), W * 0.09, H * 0.27, R, 0.1);
+			hills(deg(0.5), deg(3.5), "#6e604e", 13, 23);
+			hills(deg(-0.5), deg(1.2), "#8e806a", 20, 29);
+		}
+		// a little haze over the distance
+		const hz = g.createLinearGradient(0, panY(H, deg(10)), 0, panY(H, deg(-2)));
+		hz.addColorStop(0, "rgba(200,215,230,0)");
+		hz.addColorStop(1, "rgba(200,215,230,0.25)");
+		g.globalCompositeOperation = "source-atop";
+		g.fillStyle = hz;
+		g.fillRect(0, 0, W, H);
+		g.globalCompositeOperation = "source-over";
+	});
+	const t = texOf(c);
+	t.wrapS = THREE.RepeatWrapping;
+	t.wrapT = THREE.ClampToEdgeWrapping;
+	return t;
+}
+function backdrop(ctx, kind, sky) {
+	const g = ctx.g;
+	g.add(skyDome(...sky));
+	const cyl = new THREE.Mesh(new THREE.CylinderGeometry(KAIL_R, KAIL_R, 64, 96, 1, true), new THREE.MeshBasicMaterial({ map: panorama(kind), transparent: true, side: THREE.BackSide, fog: false, depthWrite: false }));
+	cyl.position.y = 2;
+	cyl.renderOrder = -1;
+	g.add(cyl);
+}
+// Ground the feet stand on: a height grid over ±ext metres, coloured by colour(x, z, y).
+function groundGrid(ctx, floor, colour, ext = 30, step = 0.5) {
+	const n = Math.round((ext * 2) / step) + 1;
+	const pos = new Float32Array(n * n * 3), col = new Float32Array(n * n * 3), idx = [];
+	const c = new THREE.Color();
+	for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+		const x = -ext + i * step, z = -ext + j * step, y = floor(x, z), k = j * n + i;
+		pos.set([x, y, z], k * 3);
+		c.set(colour(x, z, y));
+		const v = 0.88 + 0.24 * fbm(x * 0.9 + 3, z * 0.9, 3);
+		col.set([c.r * v, c.g * v, c.b * v], k * 3);
+		if (i < n - 1 && j < n - 1) idx.push(k, k + n, k + 1, k + 1, k + n, k + n + 1);
+	}
+	const geo = new THREE.BufferGeometry();
+	geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+	geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+	geo.setIndex(idx);
+	geo.computeVertexNormals();
+	const m = mesh(geo, std(0xffffff, { vertexColors: true, roughness: 0.95, map: gritTex() }), 0, 0, 0, ctx.g);
+	m.castShadow = false;
+	// world-space uvs for the grit texture
+	const uv = new Float32Array(n * n * 2);
+	for (let k = 0; k < n * n; k++) uv.set([pos[k * 3] * 0.6, pos[k * 3 + 2] * 0.6], k * 2);
+	geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+	return m;
+}
+let _grit;
+function gritTex() {
+	if (_grit) return _grit;
+	const R = rand(77);
+	_grit = texOf(canvas(256, 256, (g, W, H) => {
+		g.fillStyle = "#d8d8d8";
+		g.fillRect(0, 0, W, H);
+		for (let i = 0; i < 2600; i++) {
+			const v = 150 + R() * 105, r = 1 + R() * 4;
+			g.fillStyle = `rgb(${v},${v},${v})`;
+			g.beginPath();
+			g.ellipse(R() * W, R() * H, r, r * (0.5 + R() * 0.5), R() * 3, 0, Math.PI * 2);
+			g.fill();
+		}
+	}));
+	KEEP.add(_grit);
+	return _grit;
+}
+// Loose stones and boulders scattered where ok(x, z) allows, sitting on the ground.
+function stones(ctx, n, seed, floor, ok, size = [0.08, 0.5], col = 0x8a7f74) {
+	const R = rand(seed);
+	const geo = new THREE.IcosahedronGeometry(0.5, 1);
+	const p = geo.attributes.position;
+	for (let i = 0; i < p.count; i++) {
+		const k = 1 + Math.sin(p.getX(i) * 9 + p.getY(i) * 7) * 0.12 + Math.cos(p.getZ(i) * 8) * 0.1;
+		p.setXYZ(i, p.getX(i) * k, p.getY(i) * k * 0.7, p.getZ(i) * k);
+	}
+	geo.computeVertexNormals();
+	const im = new THREE.InstancedMesh(geo, std(col, { roughness: 0.9 }), n);
+	const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = V(), c = new THREE.Color();
+	let k = 0;
+	for (let i = 0; i < n * 4 && k < n; i++) {
+		const x = (R() - 0.5) * 56, z = (R() - 0.5) * 56;
+		if (!ok(x, z)) continue;
+		const sz = lerp(size[0], size[1], Math.pow(R(), 3));
+		e.set((R() - 0.5) * 0.5, R() * 6.3, (R() - 0.5) * 0.5);
+		q.setFromEuler(e);
+		s.set(sz * (0.8 + R() * 0.5), sz, sz * (0.8 + R() * 0.5));
+		m4.compose(V(x, floor(x, z) + sz * 0.15, z), q, s);
+		im.setMatrixAt(k, m4);
+		c.set(col).offsetHSL(0, 0, (R() - 0.5) * 0.12);
+		im.setColorAt(k, c);
+		k++;
+	}
+	im.count = k;
+	im.castShadow = im.receiveShadow = true;
+	ctx.g.add(im);
+	return im;
+}
+// Strings of prayer flags between points [a, b, sag], each flag a small cloth that flaps; wind in tick().
+function flagStrings(ctx, strings, size = [0.2, 0.15], gap = 0.27) {
+	const items = [], lines = [];
+	for (const [a, b, sag] of strings) {
+		const len = a.distanceTo(b), n = Math.max(2, Math.floor(len / gap));
+		let prev = null;
+		for (let i = 0; i <= n; i++) {
+			const u = i / n, p = a.clone().lerp(b, u);
+			p.y -= sag * 4 * u * (1 - u);
+			if (prev) lines.push(prev.x, prev.y, prev.z, p.x, p.y, p.z);
+			if (i > 0 && i < n) items.push({ p: p.clone(), t: b.clone().sub(a).normalize(), c: FLAG_COLS[i % 5] });
+			prev = p;
+		}
+	}
+	const geo = new THREE.PlaneGeometry(size[0], size[1], 2, 1);
+	geo.translate(0, -size[1] / 2, 0);
+	const grp = new THREE.Group();
+	ctx.g.add(grp);
+	const im = new THREE.InstancedMesh(geo, std(0xffffff, { roughness: 0.85, side: THREE.DoubleSide }), Math.max(1, items.length));
+	const c = new THREE.Color();
+	items.forEach((it, i) => {
+		c.set(it.c);
+		im.setColorAt(i, c);
+	});
+	im.count = items.length;
+	im.castShadow = true;
+	grp.add(im);
+	const lg = new THREE.BufferGeometry();
+	lg.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+	grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x3a342c })));
+	const m4 = new THREE.Matrix4(), bx = V(), by = V(), bz = V(), up = V(0, 1, 0), q = new THREE.Quaternion(), qa = new THREE.Quaternion();
+	const set = (t) => {
+		items.forEach((it, i) => {
+			bx.copy(it.t);
+			bz.crossVectors(bx, up).normalize();
+			by.crossVectors(bz, bx);
+			m4.makeBasis(bx, by, bz);
+			q.setFromRotationMatrix(m4);
+			qa.setFromAxisAngle(bx, Math.sin(t * 3.1 + i * 0.7) * 0.45 + Math.sin(t * 7.3 + i) * 0.12 + 0.35);
+			m4.compose(it.p, qa.multiply(q), V(1, 1, 1));
+			im.setMatrixAt(i, m4);
+		});
+		im.instanceMatrix.needsUpdate = true;
+	};
+	set(0);
+	(ctx.ticks ||= []).push((dt, t) => set(t));
+	return grp;
+}
+// Sun and sky light for the place, with shadows; and the whole set's tick.
+function outdoorLight(ctx, { sun = 0xfff2dc, sunI = 3.0, dir = [0.5, 0.8, 0.35], sky = 0xbcd4f0, ground = 0x8a7a64, hemi = 1.2 }) {
+	const s = new THREE.DirectionalLight(sun, sunI);
+	s.position.set(dir[0] * 20, dir[1] * 20, dir[2] * 20);
+	if (!ctx.low) {
+		s.castShadow = true;
+		s.shadow.mapSize.set(2048, 2048);
+		const c = s.shadow.camera;
+		c.left = c.bottom = -12;
+		c.right = c.top = 12;
+		c.near = 1;
+		c.far = 60;
+		s.shadow.bias = -0.0005;
+		s.shadow.normalBias = 0.02;
+	}
+	ctx.g.add(s, s.target);
+	ctx.g.add(new THREE.HemisphereLight(sky, ground, hemi));
+}
+// A stone altar heaped with mani stones and a juniper burner or a lamp before it: the batch's puja place.
+function cairn(ctx, x, z, floor, w = 1.2, d = 0.7, h = 0.45) {
+	const g = ctx.g, y = floor(x, z);
+	const stone = std(0x8a8076, { roughness: 0.92, map: gritTex() });
+	mesh(new THREE.BoxGeometry(w, h, d, 2, 2, 2), stone, x, y + h / 2, z, g);
+	const R = rand(Math.round(x * 13 + z * 7) + 5);
+	for (let i = 0; i < 18; i++) {
+		const s = mesh(new THREE.BoxGeometry(0.16 + R() * 0.12, 0.04 + R() * 0.04, 0.12 + R() * 0.08), std([0x9a9086, 0x7a7068, 0xb0a698][i % 3], { roughness: 0.85 }), x + (R() - 0.5) * (w - 0.2), y + h + 0.02 + R() * 0.12, z + (R() - 0.5) * (d - 0.2), g);
+		s.rotation.set((R() - 0.5) * 0.3, R() * 3, (R() - 0.5) * 0.3);
+	}
+	// a carved mani stone set upright on top: OM MANI PADME HUM
+	const mani = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.05), [stone, stone, stone, stone, std(0xffffff, { map: maniTex(), roughness: 0.85 }), stone]);
+	mani.position.set(x, y + h + 0.13, z + d / 2 - 0.1);
+	mani.castShadow = true;
+	g.add(mani);
+	return y + h;
+}
+let _mani;
+function maniTex() {
+	if (_mani) return _mani;
+	_mani = texOf(canvas(256, 160, (g, W, H) => {
+		g.fillStyle = "#8a8078";
+		g.fillRect(0, 0, W, H);
+		g.fillStyle = "#e8e0d0";
+		g.textAlign = "center";
+		g.textBaseline = "middle";
+		g.font = `600 30px "Noto Sans Tibetan", serif`;
+		g.fillText("ༀ་མ་ཎི་པ་དྨེ་ཧཱུྃ", W / 2, H / 2, W - 16);
+	}));
+	KEEP.add(_mani);
+	return _mani;
+}
+// A pole with strings of flags fanned out from its top to anchors round it.
+function flagPole(ctx, x, z, h, floor, spread, n, seed, a0 = 0, a1 = Math.PI * 2) {
+	const y = floor(x, z);
+	mesh(new THREE.CylinderGeometry(0.05, 0.08, h, 8), std(0x6a4a2e, { roughness: 0.8 }), x, y + h / 2, z, ctx.g);
+	const R = rand(seed), top = V(x, y + h, z), out = [];
+	for (let i = 0; i < n; i++) {
+		const a = lerp(a0, a1, (i + R() * 0.6) / n), r = spread * (0.7 + R() * 0.45);
+		const bx = x + Math.sin(a) * r, bz = z + Math.cos(a) * r;
+		out.push([top.clone().add(V(0, -R() * 0.4, 0)), V(bx, floor(bx, bz) + 0.1, bz), 0.15 + R() * 0.25]);
+	}
+	return out;
+}
+// The Tibetan butter lamps on the altar: brass cups, some lit; khatas draped.
+function butterLamps(ctx, x, y, z, rows, cols, unlitAt) {
+	const g = ctx.g, M = ctx.M, out = { lit: null };
+	for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+		const px = x + (c - (cols - 1) / 2) * 0.09, pz = z + r * 0.09;
+		mesh(lathe([[0, 0], [0.025, 0], [0.012, 0.012], [0.01, 0.05], [0.032, 0.07], [0.036, 0.09], [0, 0.085]], 12), M.brass, px, y, pz, g);
+		const isNew = unlitAt && r === unlitAt[0] && c === unlitAt[1];
+		const f = ctx.kit.flame(g, px, y + 0.095, pz, 0.7, 0.6);
+		if (isNew) out.lit = { f, p: V(px, y + 0.09, pz) };
+	}
+	ctx.kit.light(x, y + 0.4, z + 0.1, 2.5, 4, 0xffb060);
+	return out;
+}
+
+function mansarovar(ctx) {
+	const { g, M, kit } = ctx;
+	ctx.ticks = [];
+	// the shore at Qugu: a pebble beach shelving into clear turquoise water; the lake reaches the far shore
+	const floor = (x, z) => (z > 1.2 ? 0.06 + (z - 1.2) * 0.014 + (fbm(x * 0.3, z * 0.3, 2) - 0.5) * 0.08 : lerp(-1.4, 0.06, ease((z + 6) / 7.2)));
+	backdrop(ctx, "mansarovar", [0x1d4f9e, 0xb8d0e8, 0x6a7a80]);
+	outdoorLight(ctx, { dir: [0.55, 0.62, -0.35], sunI: 5.4, hemi: 1.6, sky: 0xc0d8f2, ground: 0x9a8a70 });
+	groundGrid(ctx, floor, (x, z, y) => (y < 0 ? 0x8a8a7a : y < 0.12 ? 0xa49c8c : 0xa8946e));
+	stones(ctx, 380, 11, floor, (x, z) => z > -2 && Math.hypot(x - 0.4, z - 0.4) > 1.6 && Math.hypot(x + 2.2, z - 3.6) > 1.6, [0.05, 0.35], 0x9a948a);
+	const water = new THREE.Mesh(new THREE.PlaneGeometry(130, 75, 1, 1).rotateX(-Math.PI / 2), std(0x2a9ab0, { roughness: 0.06, metalness: 0.25, transparent: true, opacity: 0.78, envMapIntensity: 1.2 }));
+	water.position.set(0, 0, 1.25 - 37.5);
+	water.receiveShadow = true;
+	g.add(water);
+	// shallows over the pebbles, paler
+	const shallow = new THREE.Mesh(new THREE.PlaneGeometry(60, 6).rotateX(-Math.PI / 2), std(0x6ad0d4, { roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35, depthWrite: false }));
+	shallow.position.set(0, 0.004, -1.8);
+	g.add(shallow);
+	// the havan kund: a square of stones round the fire, the elder's things beside it
+	const hk = [-2.2, 3.4], hy = floor(hk[0], hk[1]);
+	const stone = std(0x8a8076, { roughness: 0.9, map: gritTex() });
+	for (const [dx, dz, w, d] of [[0, -0.32, 0.72, 0.1], [0, 0.32, 0.72, 0.1], [-0.32, 0, 0.1, 0.54], [0.32, 0, 0.1, 0.54]]) mesh(new THREE.BoxGeometry(w, 0.22, d), stone, hk[0] + dx, hy + 0.11, hk[1] + dz, g);
+	mesh(new THREE.BoxGeometry(0.54, 0.06, 0.54), std(0x2a1c14, { roughness: 1 }), hk[0], hy + 0.04, hk[1], g);
+	for (let i = 0; i < 6; i++) {
+		const l = mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.42, 6), std(0x5a3a22), hk[0] + (i % 3 - 1) * 0.12, hy + 0.12 + Math.floor(i / 3) * 0.05, hk[1], g);
+		l.rotation.z = Math.PI / 2;
+		l.rotation.y = i * 0.9;
+	}
+	const fire = [];
+	for (let i = 0; i < 5; i++) fire.push(kit.flame(g, hk[0] + (i % 3 - 1) * 0.1, hy + 0.14, hk[1] + (i > 2 ? 0.08 : -0.05), 3.4 + (i % 2) * 0.8, 1.2));
+	const fl = kit.light(hk[0], hy + 0.6, hk[1], 4, 6, 0xff8a30);
+	ctx.smokeFrom.push(V(hk[0], hy + 0.55, hk[1]));
+	// the elder's brass plate of samagri and the ghee pot beside the kund
+	mesh(lathe([[0, 0], [0.13, 0.004], [0.14, 0.02], [0.125, 0.018], [0, 0.008]], 20), M.brass, hk[0] - 0.55, hy + 0.01, hk[1] - 0.45, g);
+	heap(g, [[new THREE.SphereGeometry(0.008, 5, 4), std(0x8a5a2a), 0.6], [new THREE.SphereGeometry(0.01, 5, 4), M.marigold, 0.4]], 40, domeSampler(hk[0] - 0.55, hy + 0.02, hk[1] - 0.45, 0.1, 0.03), 31);
+	mesh(lathe([[0, 0], [0.06, 0], [0.07, 0.06], [0.05, 0.1], [0, 0.1]], 14), M.brass, hk[0] + 0.55, hy, hk[1] - 0.45, g);
+	// a few of the batch's water cans by the shore, a folded mat
+	for (const [x, z, r] of [[2.6, 2.4, 0.3], [2.9, 2.2, 1.0], [3.3, 2.6, 2.1]]) {
+		const can = mesh(new THREE.BoxGeometry(0.22, 0.3, 0.13), std(0xf2f0ea, { roughness: 0.5 }), x, floor(x, z) + 0.15, z, g);
+		can.rotation.y = r;
+		mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.04, 8), std(0x2a5ab8), x + 0.05, floor(x, z) + 0.32, z, g);
+	}
+	mesh(new THREE.BoxGeometry(0.9, 0.03, 0.6), std(0x8a2a2a, { roughness: 1 }), -2.2, floor(-2.2, 4.3) + 0.015, 4.3, g);
+	// the traveller's own can, filled, set down on the shore once it is
+	const mine = new THREE.Group();
+	mesh(new THREE.BoxGeometry(0.2, 0.28, 0.12), std(0xf2f0ea, { roughness: 0.5 }), 0, 0.14, 0, mine);
+	mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.04, 8), std(0x2a5ab8), 0.05, 0.3, 0, mine);
+	mine.position.set(1.05, floor(1.05, 1.9), 1.9);
+	mine.rotation.y = 0.4;
+	leftBehind(ctx, { can: mine });
+	// prayer flags on two poles along the shore
+	flagStrings(ctx, [[V(-5, floor(-5, 1.8) + 2.2, 1.8), V(3.8, floor(3.8, 2.2) + 2.0, 2.2), 0.5], [V(-5, floor(-5, 1.8) + 2.2, 1.8), V(-8, floor(-8, 5) + 0.2, 5), 0.2]]);
+	for (const [x, z] of [[-5, 1.8], [3.8, 2.2]]) mesh(new THREE.CylinderGeometry(0.04, 0.05, 2.3, 6), std(0x6a4a2e), x, floor(x, z) + 1.15, z, g);
+	ctx.ticks.push((dt, t, F, S) => {
+		// the fire flares as ghee is offered (the havan step sets S.fire each frame)
+		const k = 1 + (S && S.fire ? S.fire : 0);
+		if (S) S.fire = 0;
+		fire.forEach((f, i) => f.f.scale.multiplyScalar(k * (1 + Math.sin(t * 5 + i) * 0.05)));
+		fl.intensity = 4 * k * (0.9 + Math.sin(t * 11) * 0.1);
+	});
+	const C = (p, l) => ({ p, l });
+	const F = (fit, az, el, pad = 1) => ({ fit, dir: [az, el], pad });
+	const dip = [0.2, -1.6];
+	return {
+		outdoor: true, place: "The snan at Mansarovar", fog: new THREE.FogExp2(0xb8cce0, 0.006), exposure: 0.92,
+		rooms: [[-14, 14, 0.25, 9, -14, 14]], floor, deityPts: [[0, 0.3, -3], [0, 1.5, -6]], pts: { kund: [hk[0], hy + 0.3, hk[1]], dip: [dip[0], 0.2, dip[1]], edge: [1.4, 0.2, 0.6], wash: [0.7, 0.3, 1.6] },
+		mark: "tripundra", priestMark: "tripundra",
+		start: [1.2, 7.4], enterPath: [[1.2, 7.4], [0.7, 3.2]], staffRest: [1.45, 3.05], staffTilt: [-0.1, 0.06], sandals: [1.05, 3.55], washFace: [0.6, -6],
+		dipPath: [[0.7, 3.2], [0.5, 1.2], dip], dip, water: 0,
+		kund: hk, havanT: [hk[0], hk[1] + 0.85], havanPath: [dip, [0.3, 0.9], [-0.9, 4.2], [hk[0], hk[1] + 0.85]], priestSit: [hk[0], hk[1] - 0.85],
+		fillPath: [[hk[0], hk[1] + 0.85], [-0.4, 3.0], [1.3, 1.25]], fillAt: [1.3, -0.12, 0.45],
+		toFront: [[1.3, 1.25], [0.4, 2.3]], front: [0.4, 2.3], target: [0, -60],
+		bowPath: [[0.4, 2.3], [0.4, 2.7]], bowFace: [0.4, -60],
+		priestHome: [-3.1, 3.9], priestFace: [-2.2, 3.4],
+		props: () => kailashProps(ctx),
+		tick: (dt, t, F, S) => ctx.ticks.forEach((f) => f(dt, t, F, S)),
+		cams: {
+			enter: F(["T", "wash"], 140, 14, 1.3),
+			dip: F(["T", "dip"], 18, 10, 1.6),
+			arghya: C([1.6, 1.4, 1.8], [0, 1.6, -5]),
+			havan: F(["T", "P", "kund"], 70, 22, 1.15),
+			fill: F(["T", "edge"], 120, 16, 1.4),
+			darshan: C([1.5, 1.1, 5.6], [0, 1.9, -6]),
+			bow: F(["T"], 115, 24, 1.3),
+		},
+	};
+}
+
+function dirapuk(ctx) {
+	const { g, M, kit } = ctx;
+	// the stony flat below the camp, the north face filling the head of the valley; the gompa's shrine at the side
+	const floor = (x, z) => (fbm(x * 0.25 + 5, z * 0.25, 3) - 0.5) * 0.18 + Math.max(0, -z - 7) * 0.12 + Math.max(0, x - 6) * 0.18;
+	backdrop(ctx, "dirapuk", [0x1c2c58, 0xe8b07a, 0x4a3a30]);
+	outdoorLight(ctx, { sun: 0xffb070, sunI: 3.4, dir: [0.9, 0.25, 0.1], sky: 0x9aa8d0, ground: 0x6a4a3a, hemi: 1.3 });
+	groundGrid(ctx, floor, (x, z, y) => (fbm(x * 0.4, z * 0.4, 2) > 0.55 ? 0x6e6a52 : 0x8a7a66));
+	stones(ctx, 360, 21, floor, (x, z) => Math.hypot(x, z - 1.5) > 2.4 && !(x > 1.8 && x < 5.4 && z > -2.6 && z < 1.4), [0.06, 0.6], 0x7a6e64);
+	const top = cairn(ctx, 0, 0, floor, 1.2, 0.7, 0.45);
+	// a juniper burner (sang) by the cairn, its sweet smoke rising
+	mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.5, 10), std(0xf0ece4, { roughness: 0.9 }), -0.95, floor(-0.95, 0.1) + 0.25, 0.1, g);
+	ctx.smokeFrom.push(V(-0.95, floor(-0.95, 0.1) + 0.55, 0.1));
+	kit.light(-0.95, 0.9, 0.1, 1.2, 3, 0xff7a30);
+	// flags from a pole behind the cairn
+	flagStrings(ctx, flagPole(ctx, 0, -0.9, 3.4, floor, 5.5, 9, 41, Math.PI * 0.55, Math.PI * 1.45));
+	// the gompa's little shrine: whitewashed walls under a maroon frieze, black-framed door, the altar inside
+	const wx = 3.6, wz = -1.2, white = std(0xf2eee4, { roughness: 0.95 }), maroon = std(0x6a1c1c, { roughness: 0.9 }), black = std(0x1c1a18);
+	const fy = floor(wx, wz);
+	box(g, wx - 1.7, wx + 1.7, fy - 0.2, fy + 2.4, wz - 1.1, wz - 0.9, white);
+	box(g, wx - 1.7, wx - 1.5, fy - 0.2, fy + 2.4, wz - 1.1, wz + 1.4, white);
+	box(g, wx + 1.5, wx + 1.7, fy - 0.2, fy + 2.4, wz - 1.1, wz + 1.4, white);
+	box(g, wx - 1.8, wx + 1.8, fy + 2.4, fy + 2.75, wz - 1.2, wz + 1.5, maroon);
+	box(g, wx - 1.9, wx + 1.9, fy + 2.75, fy + 2.85, wz - 1.3, wz + 1.6, black);
+	for (const sx of [-1, 1]) box(g, wx + sx * 1.6 - 0.06, wx + sx * 1.6 + 0.06, fy, fy + 2.4, wz + 1.38, wz + 1.46, black);
+	// the altar table with its rows of butter lamps, a khata on the image's niche, a thangka
+	box(g, wx - 1.2, wx + 1.2, fy, fy + 0.85, wz - 0.85, wz - 0.4, std(0x7a2a1a, { roughness: 0.7 }));
+	box(g, wx - 0.5, wx + 0.5, fy + 0.85, fy + 1.9, wz - 0.98, wz - 0.9, std(0xffffff, { map: thangkaTex(), roughness: 0.8 }));
+	box(g, wx - 0.6, wx + 0.6, fy + 1.92, fy + 1.97, wz - 0.95, wz - 0.85, std(0xf6f2ea, { roughness: 1 }));
+	const lamps = butterLamps(ctx, wx, fy + 0.85, wz - 0.78, 3, 9, [2, 5]);
+	ctx.ticks ||= [];
+	ctx.ticks.push((dt, t, F) => {
+		const on = F.has("lamp");
+		lamps.lit.f.f.visible = lamps.lit.f.h.visible = on;
+	});
+	const C = (p, l) => ({ p, l });
+	const F = (fit, az, el, pad = 1) => ({ fit, dir: [az, el], pad });
+	return {
+		outdoor: true, place: "Dirapuk, under the north face", fog: new THREE.FogExp2(0x9a8aa0, 0.005), exposure: 1.1,
+		rooms: [[-14, 14, 0.25, 9, -14, 14]], floor, deityPts: [[0, top, 0], [0, top + 0.4, 0]], pts: { cairn: [0, top, 0], altar: [wx, fy + 0.9, wz - 0.7] },
+		mark: "tripundra", priestMark: "tripundra", highDeity: true,
+		start: [0.6, 6.2], staffRest: [0.9, 3.4], staffTilt: [-0.1, 0], sandals: [0.7, 3.5],
+		toFront: [[0.6, 6.2], [0.45, 2.6]], front: [0.45, 2.6], target: [0, -60],
+		aartiSpot: [0.45, 2.4], priestHome: [-1.7, 1.5], priestFace: [0, -60], priestAarti: [-0.35, 1.05],
+		lampPath: [[0.45, 2.4], [2.6, 1.8], [wx - 0.2, wz + 0.55]], lampAt: lamps.lit.p, lampFace: [wx - 0.2, -10],
+		bowPath: [[wx - 0.2, wz + 0.55], [1.6, 2.6], [0.45, 2.75]], bowFace: [0, -60],
+		props: () => kailashProps(ctx),
+		tick: (dt, t, F, S) => ctx.ticks.forEach((f) => f(dt, t, F, S)),
+		cams: {
+			darshan: C([1.7, 0.9, 6.4], [0, 4.6, -8]),
+			aarti: F(["T", "P", "D"], 30, 12, 1.2),
+			flame: F(["T", "P"], -110, 10, 1.15),
+			lamp: F(["T", "altar"], 15, 14, 1.25),
+			bow: F(["T"], 110, 26, 1.3),
+		},
+	};
+}
+
+function dolmala(ctx) {
+	const { g, M, kit } = ctx;
+	// the saddle of the pass: rock and old snow; on the right the ground drops away towards Gauri Kund
+	const floor = (x, z) => (fbm(x * 0.3 + 9, z * 0.3, 3) - 0.5) * 0.25 - Math.pow(Math.max(0, x - 4.2), 1.25) * 0.5 + Math.max(0, -x - 5) * 0.35 + Math.max(0, -z - 6) * 0.2;
+	backdrop(ctx, "dolmala", [0x2a5aa8, 0xd4e0ec, 0x7a7a80]);
+	outdoorLight(ctx, { dir: [-0.3, 0.75, 0.5], sunI: 3.8, hemi: 2.0, sky: 0xd0dcec, ground: 0xb0aca8 });
+	groundGrid(ctx, floor, (x, z, y) => (fbm(x * 0.5 + 2, z * 0.5, 3) > 0.62 ? 0xe8ecf0 : 0x7a726a));
+	stones(ctx, 420, 31, floor, (x, z) => Math.hypot(x + 0.4, z + 0.6) > 2.4 && Math.hypot(x - 1, z - 3) > 2.2 && Math.hypot(x + 3.3, z - 2.6) > 1.2, [0.08, 0.7], 0x6e6660);
+	// the Dolma stone, a great boulder half buried in flags and khatas
+	const sx = -0.4, sz = -0.6, sy = floor(sx, sz);
+	const rock = mesh(new THREE.IcosahedronGeometry(1, 2), std(0x6a625c, { roughness: 0.9, map: gritTex() }), sx, sy + 0.55, sz, g);
+	rock.scale.set(1.1, 0.95, 0.9);
+	const rp = rock.geometry.attributes.position;
+	for (let i = 0; i < rp.count; i++) {
+		const k = 1 + Math.sin(rp.getX(i) * 5 + rp.getY(i) * 3) * 0.07 + Math.cos(rp.getZ(i) * 4) * 0.06;
+		rp.setXYZ(i, rp.getX(i) * k, rp.getY(i) * k, rp.getZ(i) * k);
+	}
+	rock.geometry.computeVertexNormals();
+	// the mass of flags: strings from a pole on the stone out to cairns all round, and more over the stone itself
+	const strings = flagPole(ctx, sx, sz - 0.2, 4.2, floor, 7, 26, 51);
+	for (let i = 0; i < 14; i++) {
+		const a = (i / 14) * Math.PI * 2, b = a + 1.3;
+		strings.push([V(sx + Math.sin(a) * 1.0, sy + 1.2, sz + Math.cos(a) * 0.9), V(sx + Math.sin(b) * 1.15, sy + 0.25, sz + Math.cos(b) * 1.0), 0.08]);
+	}
+	flagStrings(ctx, strings);
+	// khatas draped on the stone
+	for (let i = 0; i < 8; i++) {
+		const a = i * 0.8 + 0.3;
+		const k = mesh(new THREE.BoxGeometry(0.1, 0.01, 0.6), std(0xf6f2ea, { roughness: 1, side: THREE.DoubleSide }), sx + Math.sin(a) * 0.95, sy + 0.95, sz + Math.cos(a) * 0.82, g);
+		k.rotation.set(0.9, a, 0);
+	}
+	// Shiva Sthal: clothes, hair and tokens left on the ground by the pilgrims
+	const R = rand(61);
+	for (let i = 0; i < 40; i++) {
+		const x = -3.4 + (R() - 0.5) * 2.4, z = 2.4 + (R() - 0.5) * 1.8;
+		const c = mesh(new THREE.BoxGeometry(0.2 + R() * 0.3, 0.02, 0.15 + R() * 0.2), std([0x8a2a2a, 0x2a4a8a, 0xd8d0c0, 0x3a6a3a, 0xc8862a, 0x5a3a5a][i % 6], { roughness: 1 }), x, floor(x, z) + 0.02, z, g);
+		c.rotation.set((R() - 0.5) * 0.2, R() * 3, (R() - 0.5) * 0.2);
+	}
+	// what the traveller leaves: a piece of cloth at Shiva Sthal, a string of flags tied onto the stone's
+	const cloth = mesh(new THREE.BoxGeometry(0.16, 0.025, 0.12), std(0x8a2a2a, { roughness: 1 }), -3.25, floor(-3.25, 2.75) + 0.02, 2.75, g);
+	cloth.rotation.y = 0.5;
+	leftBehind(ctx, { token: cloth, tied: flagStrings(ctx, [[V(-0.45, sy + 1.98, 0.08), V(-1.9, floor(-1.9, 2.3) + 0.12, 2.3), 0.18]]) });
+	// the falling snow
+	const N = ctx.low ? 500 : 1200, sp = new Float32Array(N * 3);
+	const Rs = rand(71);
+	for (let i = 0; i < N; i++) sp.set([(Rs() - 0.5) * 24, Rs() * 9, (Rs() - 0.5) * 24], i * 3);
+	const sg = new THREE.BufferGeometry();
+	sg.setAttribute("position", new THREE.BufferAttribute(sp, 3));
+	const snow = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.035, map: glow(), transparent: true, depthWrite: false, opacity: 0.9 }));
+	snow.frustumCulled = false;
+	g.add(snow);
+	ctx.ticks ||= [];
+	ctx.ticks.push((dt, t) => {
+		for (let i = 0; i < N; i++) {
+			let y = sp[i * 3 + 1] - dt * (0.5 + (i % 7) * 0.06);
+			if (y < -1) y += 10;
+			sp[i * 3 + 1] = y;
+			sp[i * 3] += Math.sin(t * 0.7 + i) * dt * 0.15 + dt * 0.25;
+			if (sp[i * 3] > 12) sp[i * 3] -= 24;
+		}
+		sg.attributes.position.needsUpdate = true;
+	});
+	const C = (p, l) => ({ p, l });
+	const F = (fit, az, el, pad = 1) => ({ fit, dir: [az, el], pad });
+	return {
+		outdoor: true, place: "The Dolma La", fog: new THREE.FogExp2(0xd0dae6, 0.012), exposure: 0.88,
+		rooms: [[-14, 14, 0.25, 9, -14, 14]], floor, deityPts: [[sx, sy + 1.4, sz], [sx, sy + 0.2, sz + 0.8]], pts: { stone: [sx, sy + 1.2, sz], sthal: [-3.4, 0.1, 2.4], edge: [6, -1, 2] },
+		mark: "tripundra", priestMark: "tripundra",
+		start: [0.9, 6.6], staffRest: [1.2, 3.0], staffTilt: [-0.1, 0], sandals: [0.9, 3.2],
+		toFront: [[0.9, 6.6], [0.3, 2.4]], front: [0.3, 2.4], target: [sx, sz],
+		tokenPath: [[0.3, 2.4], [-2.6, 2.9]], tokenAt: [-3.25, 2.75], tokenFace: [-3.6, 2.6],
+		flagPath: [[-2.6, 2.9], [-0.9, 1.6], [-0.4, 0.95]], tieAt: [-0.45, sy + 2.05, 0.05],
+		embrace: [-0.4, 0.75], surf: (x, y, z) => () => V(sx + x, sy + y, sz + 1.02 + z), hugLean: 0.62,
+		gauriPath: [[-0.4, 0.75], [1.8, 2.4], [3.8, 2.3]], gauriFace: [14, 1.5],
+		priestHome: [2.6, 0.6], priestFace: [sx, sz],
+		props: () => kailashProps(ctx),
+		tick: (dt, t, F, S) => ctx.ticks.forEach((f) => f(dt, t, F, S)),
+		cams: {
+			darshan: F(["T", "stone"], 25, 12, 1.15),
+			token: F(["T", "sthal"], -60, 18, 1.4),
+			flags: F(["T", "stone"], 55, 14, 1.2),
+			embrace: F(["T", "D"], 75, 14, 1.3),
+			gauri: C([1.7, 2.2, 4.4], [9, -3.2, 1.2]),
+		},
+	};
+}
+
+function yamdwar(ctx) {
+	const { g } = ctx;
+	// the gravel flat at Tarboche: the Yam Dwar chorten gate, the great flagpole and a long wall of mani stones
+	const floor = (x, z) => (fbm(x * 0.25 + 1, z * 0.25 + 4, 3) - 0.5) * 0.12;
+	backdrop(ctx, "yamdwar", [0x1e4f9e, 0xbcd2e8, 0x7a6a58]);
+	outdoorLight(ctx, { dir: [0.45, 0.7, 0.5], sunI: 5.2, hemi: 1.6, sky: 0xc4daf2, ground: 0x9a8a70 });
+	groundGrid(ctx, floor, (x, z, y) => (fbm(x * 0.5, z * 0.5 + 3, 2) > 0.6 ? 0x8a8466 : 0xa2927a));
+	stones(ctx, 300, 41, floor, (x, z) => Math.abs(x) > 3.4 || z > 3.6 || z < -6.5, [0.05, 0.4], 0x968a7e);
+	const white = std(0xf4f0e8, { roughness: 0.95 }), maroon = std(0x7a1e1e, { roughness: 0.9 }), gold = ctx.M.gold;
+	// the gate: a square base with a passage through it, stepped up to the round body and spire of a chorten
+	const gz = -1.5, y0 = floor(0, gz);
+	box(g, -1.4, -0.55, y0 - 0.1, y0 + 2.1, gz - 1.3, gz + 1.3, white);
+	box(g, 0.55, 1.4, y0 - 0.1, y0 + 2.1, gz - 1.3, gz + 1.3, white);
+	box(g, -1.4, 1.4, y0 + 2.1, y0 + 2.5, gz - 1.3, gz + 1.3, white);
+	box(g, -1.5, 1.5, y0 + 2.5, y0 + 2.62, gz - 1.4, gz + 1.4, maroon);
+	for (let i = 0; i < 3; i++) box(g, -1.2 + i * 0.25, 1.2 - i * 0.25, y0 + 2.62 + i * 0.18, y0 + 2.8 + i * 0.18, gz - 1.2 + i * 0.25, gz + 1.2 - i * 0.25, white);
+	mesh(lathe([[0, 0], [0.62, 0], [0.7, 0.2], [0.66, 0.6], [0.5, 0.82], [0.2, 0.9], [0, 0.9]], 24), white, 0, y0 + 3.16, gz, g);
+	mesh(new THREE.CylinderGeometry(0.06, 0.2, 1.3, 12), gold, 0, y0 + 4.7, gz, g);
+	for (let i = 0; i < 8; i++) mesh(new THREE.TorusGeometry(0.17 - i * 0.013, 0.025, 6, 16), gold, 0, y0 + 4.15 + i * 0.13, gz, g).rotation.x = Math.PI / 2;
+	mesh(new THREE.SphereGeometry(0.08, 10, 8), gold, 0, y0 + 5.45, gz, g);
+	// the passage's painted ceiling and its doorway frames
+	box(g, -0.55, 0.55, y0 + 1.95, y0 + 2.1, gz - 1.3, gz + 1.3, std(0x2a4a7a, { roughness: 0.8 }));
+	flagStrings(ctx, [[V(0, y0 + 5.2, gz), V(-4.5, floor(-4.5, 2.5) + 0.2, 2.5), 0.4], [V(0, y0 + 5.2, gz), V(4.5, floor(4.5, 2.5) + 0.2, 2.5), 0.4], [V(0, y0 + 5.2, gz), V(4.2, floor(4.2, -6) + 0.2, -6), 0.4]]);
+	// Tarboche: the great flagpole, hung with strings of flags out to the ground all round
+	const tp = [-6.6, -5.8];
+	const strings = flagPole(ctx, tp[0], tp[1], 11, floor, 8.5, 40, 81);
+	strings.push([V(tp[0], floor(...tp) + 10.5, tp[1]), V(-2.75, floor(-2.75, -2.05) + 0.9, -2.05), 1.2]);
+	flagStrings(ctx, strings, [0.24, 0.18], 0.3);
+	mesh(new THREE.BoxGeometry(0.4, 0.9, 0.4), std(0x8a8076, { map: gritTex() }), -2.75, floor(-2.75, -2.05) + 0.45, -2.05, g);
+	// the khata the traveller ties on, left hanging from the string
+	const kh = mesh(new THREE.BoxGeometry(0.1, 0.5, 0.008), std(0xf8f4ec, { roughness: 1, side: THREE.DoubleSide }), -2.68, 1.36, -1.9, g);
+	kh.rotation.y = 0.7;
+	leftBehind(ctx, { tied: kh });
+	// the mani wall
+	for (let i = 0; i < 26; i++) {
+		const x = -9 + i * 0.7, z = -7.2 + Math.sin(i * 0.3) * 0.2;
+		mesh(new THREE.BoxGeometry(0.7, 0.75, 0.9), std(0x8a8076, { map: gritTex() }), x, floor(x, z) + 0.37, z, g);
+	}
+	const C = (p, l) => ({ p, l });
+	const F = (fit, az, el, pad = 1) => ({ fit, dir: [az, el], pad });
+	return {
+		outdoor: true, place: "Yam Dwar and Tarboche", fog: new THREE.FogExp2(0xbcd0e2, 0.006), exposure: 0.92,
+		rooms: [[-14, 14, 0.25, 9, -14, 14]], floor, deityPts: [[0, y0 + 1, gz + 1.3], [0, y0 + 4, gz]], pts: { gate: [0, y0 + 2.4, gz], pole: [-2.75, 1.6, -2.05] },
+		mark: "tripundra", priestMark: "tripundra",
+		start: [0.7, 6.6], staffRest: [1.0, 3.4], staffTilt: [-0.1, 0], sandals: [0.8, 3.5],
+		toFront: [[0.7, 6.6], [0.4, 3.2]], front: [0.4, 3.2], target: [0, -60],
+		gatePath: [[0.4, 3.2], [0, 0.6], [0, -3.4], [1.1, -4.2], [2.5, -2.8], [2.5, -0.2], [1.5, 1.6], [0.5, 2.4]],
+		tiePath: [[0.5, 2.4], [-1.6, 0.4], [-2.2, -1.25]], tieAt: [-2.68, 1.62, -1.9], tieFace: [-6.6, -5.8],
+		bowPath: [[-2.2, -1.25], [-0.4, 1.8], [0.4, 2.8]], bowFace: [0, -60],
+		priestHome: [2.4, 3.2], priestFace: [0, -60],
+		props: () => kailashProps(ctx),
+		tick: (dt, t, F, S) => (ctx.ticks || []).forEach((f) => f(dt, t, F, S)),
+		cams: {
+			darshan: C([1.6, 1.0, 7.4], [0, 2.6, -6]),
+			gate: { orbit: [0, gz], back: 2.6, out: 1.6, side: 0.8, h: 1.6, ahead: 1.0, lookH: 1.1 },
+			tie: F(["T", "pole"], 40, 14, 1.3),
+			bow: F(["T"], 115, 24, 1.3),
+		},
+	};
+}
+// The things carried in these rituals: a water can for the lake's water, a white khata, a string of prayer flags
+// folded up, a piece of cloth to leave, a taper to light a butter lamp with.
+function kailashProps(ctx) {
+	const P = {}, g = ctx.g;
+	const add = (name, o, spec = {}) => {
+		o.visible = false;
+		g.add(o);
+		P[name] = Object.assign({ o }, spec);
+	};
+	const can = new THREE.Group();
+	mesh(new THREE.BoxGeometry(0.2, 0.28, 0.12), std(0xf2f0ea, { roughness: 0.5 }), 0, -0.18, 0, can);
+	mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.04, 8), std(0x2a5ab8), 0.05, -0.02, 0, can);
+	mesh(new THREE.TorusGeometry(0.035, 0.01, 6, 12, Math.PI), std(0xf2f0ea), -0.03, -0.035, 0, can);
+	add("can", can, { off: [0, 0, 0.03] });
+	const khata = new THREE.Group();
+	mesh(new THREE.BoxGeometry(0.11, 0.42, 0.008), std(0xf8f4ec, { roughness: 1, side: THREE.DoubleSide }), 0, -0.2, 0.02, khata);
+	add("khata", khata, { off: [0, 0, 0.04] });
+	const flags = new THREE.Group();
+	FLAG_COLS.forEach((c, i) => mesh(new THREE.BoxGeometry(0.16, 0.02, 0.12), std(c, { roughness: 0.9 }), 0, -0.02 + i * 0.022, 0, flags));
+	add("flags", flags, { off: [0, 0.02, 0.06] });
+	const cloth = new THREE.Group();
+	mesh(new THREE.BoxGeometry(0.14, 0.03, 0.1), std(0x8a2a2a, { roughness: 1 }), 0, 0, 0, cloth);
+	add("cloth", cloth, { off: [0, -0.01, 0.05] });
+	const taper = new THREE.Group();
+	mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.22, 5), std(0xe8d8a8), 0, 0.06, 0.06, taper).rotation.x = 0.9;
+	ctx.kit.flame(taper, 0, 0.14, 0.15, 0.6, 0.5);
+	add("taper", taper, { off: [0, 0, 0.02] });
+	// what is left behind: the cloth at Shiva Sthal, a string of flags tied on, a khata on Tarboche's strings
+	return P;
+}
+// A string of flags from a and the cloth on the ground, shown once the step that leaves them has done so.
+function leftBehind(ctx, items) {
+	const out = {};
+	for (const [name, o] of Object.entries(items)) {
+		o.visible = false;
+		ctx.g.add(o);
+		out[name] = o;
+	}
+	(ctx.ticks ||= []).push((dt, t, F) => {
+		for (const [name, o] of Object.entries(out)) o.visible = F.has(name);
+	});
+	return out;
+}
+// thangka: a painted scroll of a seated figure in a red and gold border
+let _thangka;
+function thangkaTex() {
+	if (_thangka) return _thangka;
+	_thangka = texOf(canvas(128, 160, (g, W, H) => {
+		g.fillStyle = "#7a1c14";
+		g.fillRect(0, 0, W, H);
+		g.fillStyle = "#c8962a";
+		g.fillRect(8, 8, W - 16, H - 16);
+		g.fillStyle = "#2a5a6a";
+		g.fillRect(14, 14, W - 28, H - 28);
+		g.fillStyle = "#e8b04a";
+		g.beginPath();
+		g.arc(W / 2, H * 0.42, 26, 0, Math.PI * 2);
+		g.fill();
+		g.fillStyle = "#d8a070";
+		g.beginPath();
+		g.arc(W / 2, H * 0.36, 10, 0, Math.PI * 2);
+		g.fill();
+		g.fillStyle = "#8a2a1a";
+		g.beginPath();
+		g.ellipse(W / 2, H * 0.58, 22, 16, 0, 0, Math.PI * 2);
+		g.fill();
+	}));
+	KEEP.add(_thangka);
+	return _thangka;
+}
+
 const BUILD = { bhimashankar, shirdi, kedarnath, tirupati: tirumala, badrinath };
+// the Kailash journey's stops with rituals of their own (the others have none to go in for)
+Object.assign(BUILD, { mansarovar, dirapuk, dolmala, yamdwar });
 
 // ---------- the rituals ----------
 // Each step: { title, note, mantra?, latin?, sets?: [flags], run(S, t) }. run sets the actors' targets,
@@ -3067,6 +3840,195 @@ function stepsFor(key, L) {
 		},
 	});
 
+	// ---------- the Kailash journey: rituals out of doors ----------
+	// Into the lake: wading out over the pebbles (slowly, the water is icy), three dips with the hands folded, down on
+	// the knees with the head bowed under, then water cupped and poured over the head.
+	const dipStep = (text) => ({
+		...text, sets: ["barefoot", "staffDown", "wet"],
+		run(S, t) {
+			idlePriest(S, t);
+			S.cam = cam("dip");
+			const tw = walk(S.T, t, L.dipPath, 0, 0.42);
+			const u = t - tw;
+			S.T.face = L.target;
+			S.T.arms = 0.4;
+			if (u < 0) {
+				// the water's cold: arms in, shoulders up
+				S.T.pose = P(STAND, { shL: -0.3, shLz: 0.25, elL: -1.5, shR: -0.3, shRz: -0.25, elR: -1.5, nod: 0.2 });
+				return;
+			}
+			S.T.rate = 9;
+			const D = 3.2, n = Math.floor(u / D), v = u - n * D;
+			const under = P(KNEEL, NA, { lean: 1.45, nod: 0.9 });
+			if (n < 3) {
+				if (v < 1.1) S.T.pose = P(kneelDown(v / 1.1), NA);
+				else if (v < 2.0) S.T.pose = kf(v, [[1.1, P(KNEEL, NA)], [1.45, under], [1.75, under], [2.0, P(KNEEL, NA)]]);
+				else S.T.pose = P(kneelDown(1 - (v - 2.0) / 1.2), NA);
+				if (v > 1.4 && v < 1.8) S.emit.push({ from: () => V(S.TA.pos.x + (Math.random() - 0.5) * 0.3, L.water + 0.02, S.TA.pos.z + 0.25 + (Math.random() - 0.5) * 0.3), v: [0, 1.5, 0], spread: 0.2, rate: 160, color: 0xdcf2f6, size: 0.02, kill: L.water - 0.02 });
+				if (v > 2.0 && v < 2.8) S.emit.push({ from: S.at("head", 0, 0.0, 0.05), v: [0, -0.4, 0], spread: 0.2, rate: 40, color: 0xcfe8f0, size: 0.014, kill: L.water });
+				return;
+			}
+			// water poured over the head from cupped hands, three times
+			const w = u - 3 * D;
+			const low = P(STAND, own({ lean: 0.55, nod: 0.45, shR: -0.75, shRz: -0.1, elR: -0.5, shL: -0.75, shLz: 0.1, elL: -0.5, ...PALMS_UP }));
+			const over = P(STAND, own({ shR: -2.45, shRz: 0.05, elR: -0.7, shL: -2.45, shLz: -0.05, elL: -0.7, nod: -0.05 }));
+			const c = w % 2.2;
+			S.T.pose = w < 6.6 ? kf(c, [[0, low], [1.0, over], [1.6, over], [2.2, low]]) : kf(w, [[6.6, low], [7.6, NAMASTE]]);
+			S.T.cupped = w < 6.6;
+			if (w < 6.6 && c > 1.0 && c < 1.7) S.emit.push({ from: S.at("head", 0, 0.12, 0.02), v: [0, -0.3, 0], spread: 0.18, rate: 90, color: 0xcfe8f0, size: 0.015, kill: L.water });
+		},
+	});
+	// Standing in the lake, water from the lota offered towards the sun and Kailash.
+	const arghya = (text) => ({
+		...text,
+		run(S, t) {
+			idlePriest(S, t);
+			S.cam = cam("arghya");
+			S.T.x = L.dip[0];
+			S.T.z = L.dip[1];
+			S.T.face = L.target;
+			const up = P(STAND, own({ shR: -1.7, shRz: -0.12, elR: -0.8, shL: -1.5, shLz: 0.2, shLy: 0.45, elL: -0.9, nod: -0.15, lean: -0.04 }));
+			S.T.pose = kf(t, [[0, NAMASTE], [1.0, P(STAND, own({ shR: -0.7, elR: -1.2, shL: -0.6, elL: -1.2 }))], [2.2, up], [6.8, up], [7.6, NAMASTE], [8.4, BOWED], [9.4, NAMASTE]]);
+			S.hold.tR = t > 0.6 && t < 7.4 ? "lota" : null;
+			S.tilt.lota = num(t, [[2.2, 0], [3.0, 1.5], [6.0, 1.7], [6.8, 0]]);
+			if (t > 3.0 && t < 6.2) S.emit.push({ from: S.spout("lota"), v: S.fwd(0.35, 0.1), spread: 0.01, rate: 120, color: 0xd6eef2, size: 0.016, kill: L.water });
+		},
+	});
+	// The havan: sitting at the fire with the elder, ghee and samagri offered into it at each svaha.
+	const havan = (text) => ({
+		...text,
+		run(S, t) {
+			S.cam = cam("havan");
+			const tw = walk(S.T, t, L.havanPath, 0, 0.7);
+			const u = t - tw;
+			S.T.face = L.kund;
+			const fire = () => V(L.kund[0], L.floor(L.kund[0], L.kund[1]) + 0.3, L.kund[1] + 0.12);
+			// the elder comes to his place across the fire and sits; he leads the mantras
+			const pw = walk(S.P, t, [L.priestHome, L.priestSit], 0, 0.6);
+			S.P.face = L.kund;
+			const pu = t - pw;
+			const pose = (k, arms) => P(sitDown(k), arms);
+			S.P.pose = pu < 0 ? NAMASTE : pu < 1.8 ? pose(pu / 1.8, NA) : P(SIT, NA, { nod: 0.15 + Math.sin(t * 1.3) * 0.04 });
+			S.P.rate = 12;
+			if (u < 0) return;
+			S.T.rate = 12;
+			const offer = P(SIT, own({ lean: 0.38, nod: 0.3, shR: -1.05, shRz: -0.1, elR: -0.35, shL: -0.6, shLz: 0.25, shLy: 0.5, elL: -1.5 }));
+			const hold = P(SIT, own({ shR: -0.55, elR: -1.25, shL: -0.6, shLz: 0.25, shLy: 0.5, elL: -1.5, nod: 0.12 }));
+			const end = 1.8 + 3 * 2.8;
+			if (u < 1.8) S.T.pose = pose(u / 1.8, NA);
+			else if (u < end) {
+				const v = (u - 1.8) % 2.8;
+				S.T.pose = kf(v, [[0, hold], [0.8, offer], [1.4, offer], [2.0, hold], [2.8, hold]]);
+				if (v > 0.5 && v < 1.6) S.T.reach = own({ R: { p: fire, w: v < 1.45 ? 1 : 0, rate: 5 } });
+				// svaha: the offering goes in, the fire flares, sparks fly up
+				if (v > 1.15 && v < 2.0) {
+					S.fire = 0.55 * Math.sin(((v - 1.15) / 0.85) * Math.PI);
+					S.emit.push({ from: () => fire().add(V(0, 0.1, -0.1)), v: [0, 1.8, 0], spread: 0.15, rate: 40, color: 0xffb040, size: 0.018, kill: -5 });
+				}
+				if (u > 2.95) S.every("svaha", 2.8, u - 1.8 - 1.15, () => S.ghanti());
+				// the elder pours ghee with each svaha
+				const pv = (u - 1.8 + 1.4) % 2.8;
+				S.hold.pR = "ghee";
+				if (pv > 0.6 && pv < 1.6) S.P.reach = own({ R: { p: fire, w: pv < 1.45 ? 1 : 0, rate: 5 } });
+			} else if (u < end + 1.6) S.T.pose = P(SIT, NA);
+			else S.T.pose = pose(1 - (u - end - 1.6) / 1.8, NA);
+			if (u > end + 1.6) S.P.pose = pose(Math.max(0, 1 - (u - end - 1.6) / 1.8), NA);
+		},
+	});
+	// Lake water to take home: down at the water's edge to fill a can.
+	const fillCan = (text) => ({
+		...text, sets: ["can"],
+		run(S, t) {
+			idlePriest(S, t);
+			S.cam = cam("fill");
+			const tw = walk(S.T, t, L.fillPath, 0, 0.75);
+			const u = t - tw;
+			S.T.face = [L.fillAt[0], L.fillAt[2] - 2];
+			S.hold.tR = u < 6.4 ? "can" : null;
+			if (u < 0) return;
+			S.T.rate = 10;
+			const reachP = P(kneelDown(0.75), own({ lean: 0.75, nod: 0.5, shR: -1.0, elR: -0.2, shL: -0.4, elL: -0.6 }));
+			if (u < 1.2) S.T.pose = P(kneelDown((u / 1.2) * 0.75), own({ shR: -0.4, elR: -0.4 }));
+			else if (u < 4.4) S.T.pose = reachP;
+			else if (u < 5.6) S.T.pose = P(kneelDown(0.75 * (1 - (u - 4.4) / 1.2)), own({ shR: -0.3, elR: -0.5 }));
+			else S.T.pose = kf(u, [[5.6, P(STAND, own({ shR: -0.2, elR: -0.3 }))], [7.0, NAMASTE]]);
+			if (u > 1.0 && u < 4.6) S.T.reach = own({ R: { p: V(...L.fillAt), w: u < 4.3 ? 1 : 0, rate: 4 } });
+			S.tilt.can = num(u, [[1.2, 0], [1.8, 0.9], [3.8, 0.9], [4.4, 0]]);
+			if (u > 1.8 && u < 3.8) S.emit.push({ from: () => V(L.fillAt[0], L.water + 0.01, L.fillAt[2]), v: [0, 0.25, 0], spread: 0.12, rate: 20, color: 0xeaf6f8, size: 0.012, kill: L.water - 0.01 });
+			if (u > 4.4 && u < 5.6) S.emit.push({ from: S.at("hand" + RIGHT, 0, -0.25, 0), v: [0, -0.2, 0], spread: 0.05, rate: 20, color: 0xcfe8f0, size: 0.012, kill: L.water });
+		},
+	});
+	// A butter lamp lit with a taper at the gompa's altar, among the rows already burning.
+	const butterLamp = (text) => ({
+		...text, sets: ["lamp"],
+		run(S, t) {
+			idlePriest(S, t);
+			S.cam = cam("lamp");
+			const tw = walk(S.T, t, L.lampPath, 0, 0.75);
+			const u = t - tw;
+			S.T.face = L.lampFace;
+			S.hold.tR = u > -1 && u < 3.6 ? "taper" : null;
+			if (u < 0) return;
+			const light = P(STAND, own({ lean: 0.35, nod: 0.45, shR: -1.05, shRz: -0.05, elR: -0.45, shL: -0.55, shLz: 0.25, shLy: 0.5, elL: -1.5 }));
+			S.T.pose = kf(u, [[0, NAMASTE], [1.0, light], [2.8, light], [3.6, NAMASTE], [4.6, BOWED], [5.6, NAMASTE]]);
+			if (u > 0.6 && u < 3.2) S.T.reach = own({ R: { p: () => L.lampAt.clone().add(V(0, 0.14, 0.06)), w: u < 2.9 ? 1 : 0, rate: 4, pt: V(0, -0.02, 0.13) } });
+			if (u > 2.0) S.flag("lamp");
+		},
+	});
+	// Something of yourself left at Shiva Sthal.
+	const token = (text) => ({
+		...text, sets: ["token"],
+		run(S, t) {
+			idlePriest(S, t);
+			S.cam = cam("token");
+			const tw = walk(S.T, t, L.tokenPath, 0, 0.7);
+			const u = t - tw;
+			S.T.face = L.tokenFace;
+			S.hold.tR = u < 2.4 ? "cloth" : null;
+			if (u < 0) return;
+			S.T.rate = 10;
+			const lay = P(KNEEL, own({ lean: 0.85, nod: 0.5, shR: -1.0, elR: -0.3, shL: -0.55, shLz: 0.25, shLy: 0.5, elL: -1.5 }));
+			if (u < 1.3) S.T.pose = P(kneelDown(u / 1.3), NA);
+			else if (u < 3.6) S.T.pose = kf(u, [[1.3, P(KNEEL, NA)], [2.0, lay], [2.6, lay], [3.6, P(KNEEL, NA)]]);
+			else if (u < 4.9) S.T.pose = P(kneelDown(1 - (u - 3.6) / 1.3), NA);
+			else S.T.pose = kf(u, [[4.9, NAMASTE], [5.8, BOWED], [6.8, NAMASTE]]);
+			const at = V(L.tokenAt[0], L.floor(L.tokenAt[0], L.tokenAt[1]) + 0.06, L.tokenAt[1]);
+			if (u > 1.4 && u < 2.9) S.T.reach = own({ R: { p: at, w: u < 2.6 ? 1 : 0, rate: 4 } });
+			if (u > 2.4) S.flag("token");
+		},
+	});
+	// Prayer flags tied on: up on the toes to a string over the stone (or Tarboche's), and the new flags left there.
+	const tieOn = (path, face, prop) => (text) => ({
+		...text, sets: ["tied"],
+		run(S, t) {
+			idlePriest(S, t);
+			S.cam = cam("tie") || cam("flags");
+			const tw = walk(S.T, t, L[path], 0, 0.7);
+			const u = t - tw;
+			S.T.face = L[face];
+			S.hold.tR = u < 3.4 ? prop : null;
+			if (u < 0) return;
+			const up = P(STAND, tiptoe(1), own({ shR: -2.65, shRz: 0.1, elR: -0.4, shL: -2.55, shLz: -0.1, elL: -0.45, nod: -0.35 }));
+			S.T.pose = kf(u, [[0, STAND], [0.9, up], [3.2, up], [4.0, NAMASTE], [5.0, BOWED], [6.0, NAMASTE]]);
+			const at = V(...L.tieAt);
+			if (u > 0.5 && u < 3.4) S.T.reach = own({ R: { p: at, w: u < 3.1 ? 1 : 0, rate: 4 }, L: { p: () => at.clone().add(V(0.12, -0.05, 0.05)), w: u < 3.1 ? 1 : 0, rate: 4 } });
+			if (u > 2.4) S.flag("tied");
+		},
+	});
+	// A walk with folded hands along a path (through Yam Dwar, to the edge above Gauri Kund), facing on at the end.
+	const walkOn = (name, path, face, speed = 0.62) => (text) => ({
+		...text,
+		run(S, t) {
+			idlePriest(S, t);
+			S.cam = cam(name);
+			const tw = walk(S.T, t, L[path], 0, speed);
+			const u = t - tw;
+			S.T.arms = 0.25;
+			S.T.pose = u < 0 ? P(NAMASTE, { nod: 0.1 }) : kf(u, [[0, NAMASTE], [1.0, BOWED], [2.0, NAMASTE]]);
+			if (u > 0) S.T.face = L[face];
+		},
+	});
+
 	const txt = {
 		shoes: { title: "Leave sandals and staff", note: "Footwear never goes into a shrine. Lean the staff by the door, slip off your sandals and rinse your hands and feet before stepping in." },
 		bell: { title: "Ring the bell", note: "A brass bell hangs at the threshold. Ring it as you enter: its sound announces you to the deity and is said to clear the mind." },
@@ -3119,6 +4081,35 @@ function stepsFor(key, L) {
 		markStep({ title: "Udi and prasad", note: "The pujari touches udi, the sacred ash of Baba's dhuni, to your forehead and gives prasad. Baba gave udi to all who came to him, for healing and protection." }),
 		dhuni({ title: "Dwarkamai and the dhuni", note: "In the old mosque where Baba lived, the dhuni he lit still burns behind its grill, near the stone he sat on and his portrait. Bow to the fire and take a pinch of its udi.", mantra: "सबका मालिक एक", latin: "Sabka Malik Ek" }),
 		bow({ title: "Bow and take leave", note: "Kneel and bow before Baba's portrait and his stone, then rise with folded hands, carrying his teaching: shraddha and saburi, faith and patience.", mantra: "श्रद्धा सबुरी", latin: "Shraddha, Saburi" }),
+	];
+	if (key === "mansarovar") return [
+		enter({ title: "Sandals and staff on the shore", note: "At Qugu the camp is a few steps from the water. Leave the staff and sandals on the pebbles and rinse your hands and feet before going in." }),
+		dipStep({ title: "The snan: three dips", note: "Wade out over the pebbles into water that is icy even in July, and dip three times with the hands folded, the head going under, then pour water over the head. No soap is used in the lake.", ...OM_SHIVA }),
+		arghya({ title: "Arghya towards Kailash", note: "Standing in the lake, offer water from the lota towards the sun and towards Kailash, white across the water to the north.", ...OM_SHIVA }),
+		havan({ title: "Havan on the shore", note: "Back on the shore an elder of the batch lights a small havan in a square of stones. Ghee and samagri go into the fire at each svaha.", mantra: "ॐ नमः शिवाय स्वाहा", latin: "Om Namah Shivaya Svaha" }),
+		fillCan({ title: "Water to take home", note: "Pilgrims fill cans with Mansarovar's water to take home, for their families and for puja." }),
+		darshan({ title: "Darshan of Kailash across the lake", note: "From the southern shore Kailash stands across the water to the north, with the snows of Gurla Mandhata behind you. Fold your hands.", ...OM_SHIVA }),
+		bow({ title: "Bow and take leave", note: "Kneel, then lie face down towards Kailash in sashtanga pranam, and rise with folded hands.", mantra: "जय मानसरोवर", latin: "Jai Mansarovar" }),
+	];
+	if (key === "dirapuk") return [
+		darshan({ title: "The north face", note: "From the camp at Dirapuk the north face of Kailash rises straight from its glaciers: dark rock banded with snow, the great gully down its middle. In the evening it catches the last of the sun.", ...OM_SHIVA }),
+		aarti({ title: "Aarti to Kailash", note: "As the light goes the batch gathers at a cairn of mani stones facing the mountain, and an elder waves the lamp in slow circles before it while the others sing.", ...KARPURA }),
+		takeFlame(txt.flame),
+		butterLamp({ title: "A butter lamp at the gompa", note: "In the small shrine of the Dirapuk gompa, built round a cave, rows of butter lamps burn before the image. Light one from a taper and set it among them.", mantra: "ॐ मणि पद्मे हूँ", latin: "Om Mani Padme Hum" }),
+		bow({ title: "Prostration towards the mountain", note: "Lie face down towards the north face in sashtanga pranam. Some Tibetan pilgrims go the whole way round like this, a body's length at a time, over two or three weeks.", mantra: "जय कैलाशपति", latin: "Jai Kailashpati" }),
+	];
+	if (key === "dolmala") return [
+		darshan({ title: "The top of the pass", note: "At about 5,630 m the Dolma La is the highest point of the parikrama. The great Dolma stone is buried in prayer flags; the air is thin and cold, and snow can fall on any day.", ...OM_SHIVA }),
+		token({ title: "Shiva Sthal", note: "Just below the pass, at Shiva Sthal, pilgrims leave something of themselves, a piece of clothing or a lock of hair, as a sign of leaving the old life behind." }),
+		tieOn("flagPath", "target", "flags")({ title: "Prayer flags on the Dolma stone", note: "Tie a string of prayer flags onto those already on the stone. Blue, white, red, green and yellow, they stand for sky, air, fire, water and earth; the wind carries their prayers.", mantra: "ॐ मणि पद्मे हूँ", latin: "Om Mani Padme Hum" }),
+		embrace({ title: "The forehead to the stone", note: "Kneel and touch the forehead to the Dolma stone. Here Parvati is honoured as Dolma, Tara, who is said to have shown the way over the pass.", mantra: "जय माँ गौरी", latin: "Jai Maa Gauri" }),
+		walkOn("gauri", "gauriPath", "gauriFace")({ title: "Gauri Kund below", note: "Down the far side lies Gauri Kund (Thukje Chenpo Tso), the emerald lake where Parvati is said to have bathed, often still frozen in summer. Pilgrims climb down to its shore for its water.", mantra: "जय माँ गौरी", latin: "Jai Maa Gauri" }),
+	];
+	if (key === "yamdwar") return [
+		darshan({ title: "Kailash from Yam Dwar", note: "At Tarboche, where the bus from Darchen stops, the parikrama begins. The south-west face of Kailash stands above the ridges ahead.", ...OM_SHIVA }),
+		walkOn("gate", "gatePath", "target")({ title: "Through Yam Dwar", note: "Walk through the chorten gate of Yama, the god of death, leaving the world behind, and on round it clockwise. From here Kailash is kept on the right hand all the way round." }),
+		tieOn("tiePath", "tieFace", "khata")({ title: "A khata on Tarboche's flags", note: "The great Tarboche flagpole is raised anew each year at Saga Dawa and hung with thousands of prayer flags. Tie a white khata onto one of its strings." }),
+		bow({ title: "Prostration towards Kailash", note: "Lie face down towards the mountain in sashtanga pranam before setting out up the Lha Chu valley.", mantra: "बम बम भोले", latin: "Bam Bam Bhole" }),
 	];
 	return [
 		enter({ title: "Bathe in Tapt Kund", note: "Before darshan pilgrims bathe in Tapt Kund, the hot spring below the temple steps, said to be the seat of Agni. Then leave sandals and staff at the door." }),
@@ -3226,8 +4217,11 @@ export class Sanctum {
 		ctx.kit = new Kit(ctx);
 		scene.add(new THREE.HemisphereLight(0x8a7a6a, 0x1a120c, { kedarnath: 0.35, badrinath: 0.1, shirdi: 0.5 }[key] ?? 0.22));
 		this.L = BUILD[key](ctx);
+		// out of doors (the Kailash journey): the sky dome behind everything, a light haze instead of the room's dark
+		if (this.L.outdoor) scene.fog = this.L.fog;
 		this.steps = stepsFor(key, this.L);
 		this.props = buildProps(ctx);
+		if (this.L.props) Object.assign(this.props, this.L.props());
 		// the traveller: as outside, in saffron kurta, white dhoti, the angavastram, the tilak and a saffron pheta
 		const TJ = person({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, sleeve: 0.6 });
 		TJ.skinMat = TJ.palmL.material;
@@ -3242,13 +4236,16 @@ export class Sanctum {
 		// Maharashtrian pujari at Bhimashankar, an archaka at Tirumala, the Rawals of Kedarnath and Badrinath)
 		// (at Shirdi a white dhoti and a saffron shawl over the bare shoulders)
 		const skinP = { bhimashankar: SKIN[2], shirdi: SKIN[4], kedarnath: SKIN[6], tirupati: SKIN[3], badrinath: SKIN[1] }[key] ?? SKIN[2];
-		const PJ = person({ skin: skinP, top: skinP, bottom: 0xf2eee2, sash: 0xf4efe0, pujari: true, mark: "none", shawl: key === "shirdi" ? 0xe8822a : undefined, moustache: key === "bhimashankar" || key === "shirdi" ? 0x1b1612 : 0 });
-		for (const f of PJ.feet) f.visible = false;
-		if (PJ.shawl && key !== "shirdi") PJ.shawl.visible = false;
+		// (out of doors on the Kailash journey, an elder of the batch in a woollen jacket and cap, a shawl and shoes)
+		const PJ = this.L.outdoor
+			? person({ skin: SKIN[2], top: 0x5a3a2e, bottom: 0x5a5650, sash: 0x8a1c1c, shawl: 0x8a1c1c, head: "cap", headColor: 0x3a3a48, capBand: 0x7a1d24, beard: 0xcfcac2, mark: "none", sleeve: 1, pyjama: true })
+			: person({ skin: skinP, top: skinP, bottom: 0xf2eee2, sash: 0xf4efe0, pujari: true, mark: "none", shawl: key === "shirdi" ? 0xe8822a : undefined, moustache: key === "bhimashankar" || key === "shirdi" ? 0x1b1612 : 0 });
+		if (!this.L.outdoor) for (const f of PJ.feet) f.visible = false;
+		if (PJ.shawl && key !== "shirdi" && !this.L.outdoor) PJ.shawl.visible = false;
 		PJ.head.add(markPatch(this.L.priestMark || "tripundra"));
 		g.add(PJ.root);
 		this.priest = new Actor(PJ, this.L.floor);
-		this.priest.bare = true;
+		this.priest.bare = !this.L.outdoor;
 		// incense smoke and the streams of water, ghee and coins
 		this.smoke = [];
 		const ns = this.low ? 18 : 40;
@@ -3281,6 +4278,13 @@ export class Sanctum {
 		// warm reflections for the metal: a dark room with a few lamp-bright spots
 		const pm = new THREE.PMREMGenerator(this.renderer);
 		const es = new THREE.Scene();
+		if (this.L.outdoor) {
+			// out of doors the metal and the water see the open sky, the bright sun and the tawny ground
+			es.add(skyDome(0x4a7ac8, 0xd8e4ee, 0x7a6a58));
+			const sun = new THREE.Mesh(new THREE.SphereGeometry(3, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(14, 12, 9) }));
+			sun.position.set(30, 40, 20);
+			es.add(sun);
+		} else {
 		// (at Shirdi the room is white marble under electric light, so the metal sees a bright room)
 		const back = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 20), new THREE.MeshBasicMaterial({ color: key === "shirdi" ? new THREE.Color(0.32, 0.3, 0.27) : new THREE.Color(0.03, 0.02, 0.014), side: THREE.BackSide }));
 		es.add(back);
@@ -3294,6 +4298,7 @@ export class Sanctum {
 		const cool = new THREE.Mesh(new THREE.PlaneGeometry(3, 2.5), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.55, 0.62), side: THREE.DoubleSide }));
 		cool.position.set(0, 1.5, 9.8);
 		es.add(cool);
+		}
 		this.envRT = pm.fromScene(es, 0.03);
 		this.env = this.envRT.texture;
 		pm.dispose();
@@ -3390,6 +4395,11 @@ export class Sanctum {
 		const $ = (s) => root.querySelector(s);
 		this.ui = { kicker: $(".sn-kicker"), title: $(".sn-title"), note: $(".sn-note"), mantra: $(".sn-mantra"), deva: $(".m-deva"), latin: $(".m-latin"), dots: $(".sn-dots"), back: $(".sn-back"), next: $(".sn-next"), panel: $(".sn-panel") };
 		$(".sn-place-n").textContent = `${this.shrine.name} · ${this.shrine.deva}`;
+		if (this.L.place) {
+			// out of doors: no temple to be inside
+			$(".sn-place-k").textContent = this.L.place;
+			root.setAttribute("aria-label", `The rituals at ${this.shrine.name}`);
+		}
 		this.steps.forEach((s, i) => {
 			const b = document.createElement("button");
 			b.type = "button";
@@ -3566,6 +4576,7 @@ export class Sanctum {
 		if (this.auto && !this.leaving) this._autoStep(S, dt);
 		this._props(S);
 		this._effects(S, dt, this.time);
+		if (L.tick) L.tick(dt, this.time, this.flags, S);
 		this._camera(S, dt, this.time, snap);
 		this.snap = false;
 	}
@@ -3813,7 +4824,7 @@ export class Sanctum {
 		const prev = { tm: r.toneMapping, ex: r.toneMappingExposure, sh: r.shadowMap.enabled, ac: r.autoClear, ca: r.getClearAlpha() };
 		r.getClearColor(this._cc);
 		r.toneMapping = THREE.ACESFilmicToneMapping;
-		r.toneMappingExposure = { kedarnath: 1.3, badrinath: 1.05, tirupati: 1.3, shirdi: 1.1 }[this.key] ?? 1.35;
+		r.toneMappingExposure = (this.L && this.L.exposure) || ({ kedarnath: 1.3, badrinath: 1.05, tirupati: 1.3, shirdi: 1.1 }[this.key] ?? 1.35);
 		r.shadowMap.enabled = !this.low;
 		r.autoClear = true;
 		r.setClearColor(0x060403, 1);
