@@ -1839,10 +1839,10 @@ export class Traveller {
 
 // ---------- the crowd ----------
 // A pilgrim of many kinds, posed and merged into one geometry with vertex colours: one draw call each.
-// place: a shrine key ("bhimashankar", "kedarnath", "tirupati", "badrinath") or a region ("maharashtra",
+// place: a shrine key ("bhimashankar", "shirdi", "kedarnath", "tirupati", "badrinath") or a region ("maharashtra",
 // "tirumala", "garhwal"), to dress the pilgrims as people there dress; anything else gives a mix from the plains.
 const PLACES = {
-	bhimashankar: ["maharashtra", "shaiva"], kedarnath: ["garhwal", "shaiva"], tirupati: ["tirumala", "vaishnava"], badrinath: ["garhwal", "vaishnava"],
+	bhimashankar: ["maharashtra", "shaiva"], kedarnath: ["garhwal", "shaiva"], tirupati: ["tirumala", "vaishnava"], badrinath: ["garhwal", "vaishnava"], shirdi: ["maharashtra"],
 	maharashtra: ["maharashtra"], tirumala: ["tirumala", "vaishnava"], garhwal: ["garhwal"],
 };
 const WOOL = [0x6a2a2a, 0x5a4a3e, 0x8a7a6a, 0x3a3a48, 0x7a3a22, 0x4a5240, 0x9a8a72, 0x5a2034];

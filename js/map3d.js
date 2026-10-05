@@ -38,7 +38,7 @@
 //      - lon, lat     traveller position in degrees.
 //      - heading      compass degrees, 0 = north, 90 = east. headingFromWorld(dx, dz) converts a world direction.
 //      - mode         "walk" | "bike" | "train" | "jeep" | "car" | "darshan" (anything else shows as "On the way").
-//      - leg          0..3, the chapter index (ROUTE[leg] ends at SHRINES[leg]). 4 or more means the yatra is complete.
+//      - leg          0..N-1, the chapter index (ROUTE[leg] ends at SHRINES[leg]). N or more means the yatra is complete.
 //      - doneFraction 0..1 of the current leg. Only used when lon/lat are missing; otherwise the position is snapped
 //                     onto the leg so the done line always ends exactly at the traveller.
 //      - label        optional text for the mode pill, e.g. the HUD's "By jeep up the Mandakini to Gaurikund".
@@ -50,7 +50,7 @@
 //        mapView.close()
 //        mapView.toggle()
 //        mapView.isOpen              boolean
-//        mapView.flyToShrine(i)      cinematic 3D fly-to (also keys 1-4 while the map is open; 0 = all India)
+//        mapView.flyToShrine(i)      cinematic 3D fly-to (also keys 1 to the number of shrines while the map is open; 0 = all India)
 //        mapView.setFollow(bool)     camera follows the traveller; any drag releases it (also key F)
 //        mapView.set3D(bool)         3D terrain and tilt on or off (also key D)
 //        mapView.setRoute(legs)      replace the drawn route, e.g. with the in-game road polyline per chapter
@@ -88,10 +88,10 @@ export const ATTRIBUTION = {
 
 // The station list from roads.js buildStations (kept in step by hand; pass `stations` to override).
 const STATIONS = [
-	[73.86, 18.52, "पुणे जंक्शन", "PUNE JN"], [75.91, 17.68, "सोलापुर", "SOLAPUR"], [78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"],
-	[78.04, 15.83, "कर्नूल सिटी", "KURNOOL CITY"], [79.42, 13.63, "तिरुपति", "TIRUPATI"], [79.09, 21.15, "नागपुर", "NAGPUR"],
-	[78.57, 25.45, "झाँसी जंक्शन", "JHANSI JN"], [77.21, 28.61, "नई दिल्ली", "NEW DELHI"], [78.16, 29.95, "हरिद्वार जंक्शन", "HARIDWAR JN"],
-	[78.29, 30.09, "योग नगरी ऋषिकेश", "YOG NAGARI RISHIKESH"],
+	[74.48, 19.78, "साईनगर शिर्डी", "SAINAGAR SHIRDI"], [74.43, 20.25, "मनमाड जंक्शन", "MANMAD JN"], [77.3, 19.15, "हजूर साहिब नांदेड़", "H.S. NANDED"],
+	[78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"], [77.37, 15.17, "गुंतकल जंक्शन", "GUNTAKAL JN"], [78.82, 14.47, "कडपा", "KADAPA"],
+	[79.42, 13.63, "तिरुपति", "TIRUPATI"], [79.09, 21.15, "नागपुर", "NAGPUR"], [78.57, 25.45, "झाँसी जंक्शन", "JHANSI JN"],
+	[77.21, 28.61, "नई दिल्ली", "NEW DELHI"], [78.16, 29.95, "हरिद्वार जंक्शन", "HARIDWAR JN"],
 ];
 
 // Cinematic views. center is where the camera looks; bearing is the direction it faces.
@@ -101,6 +101,8 @@ const VIEWS = {
 	bhimashankar: { center: [73.535, 19.072], zoom: 12.4, pitch: 66, bearing: 75, exaggeration: 1.6, offset: 0.08, alt: 950 },
 	// Tirumala: low over the Alipiri foothills, looking north-north-west up onto the seven hills of the Seshachalam.
 	// Their relief is only about 700 m, so it is exaggerated more than the Himalaya.
+	// Shirdi: low over the flat cane country south of the town, looking north to the Samadhi Mandir.
+	shirdi: { center: [74.477, 19.766], zoom: 15, pitch: 62, bearing: 10, exaggeration: 1.2, offset: 0.04, alt: 504 },
 	tirupati: { center: [79.352, 13.672], zoom: 13, pitch: 72, bearing: -20, exaggeration: 1.8, offset: 0.06, alt: 840 },
 	// Kedarnath: from down the Mandakini valley, looking north to the temple under the Kedarnath peaks.
 	kedarnath: { center: [79.067, 30.735], zoom: 12.1, pitch: 64, bearing: -14, exaggeration: 1.4, offset: 0.04, alt: 3583 },
@@ -331,7 +333,7 @@ export class MapView {
 		const k = e.key;
 		let handled = true;
 		if (k === "Escape" || (this.hotkey && k.toLowerCase() === this.hotkey)) this.close();
-		else if (k >= "1" && k <= "4" && k.length === 1) this.flyToShrine(+k - 1);
+		else if (k >= "1" && k <= String(Math.min(9, SHRINES.length)) && k.length === 1) this.flyToShrine(+k - 1);
 		else if (k === "0") this.flyToIndia();
 		else if (k === "f" || k === "F") this.setFollow(!this.follow);
 		else if (k === "d" || k === "D") this.set3D(!this.is3D);
@@ -704,7 +706,7 @@ export class MapView {
 		}
 		const done = q.leg >= this.legs.length;
 		const target = SHRINES[Math.min(q.leg, SHRINES.length - 1)];
-		this.statusEl.textContent = done ? "Yatra complete · four darshans" : `Leg ${q.leg + 1} of ${this.legs.length} · ${label} · to ${target ? target.name : ""}`;
+		this.statusEl.textContent = done ? `Yatra complete · ${SHRINES.length} darshans` : `Leg ${q.leg + 1} of ${this.legs.length} · ${label} · to ${target ? target.name : ""}`;
 		this.shrineMarkers.forEach((m, i) => m.getElement().classList.toggle("m3d-visited", i < q.leg || (i === q.leg && q.mode === "darshan")));
 		if (force || now - this.lastLine > 250) {
 			this.lastLine = now;

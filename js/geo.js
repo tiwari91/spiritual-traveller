@@ -1,4 +1,4 @@
-// Geography: a coarse outline of India, major rivers, cities, the four shrines and the pilgrim route.
+// Geography: a coarse outline of India, major rivers, cities, the shrines and the pilgrim route.
 // Coordinates are [longitude, latitude] in degrees. Projection: 1 degree = 40 world units,
 // x grows east from 82E, z grows south from 22N (so north is -z).
 export const SCALE = 40;
@@ -56,6 +56,11 @@ export const RIVERS = [
 export const CITIES = [
 	{ name: "Pune", lon: 73.86, lat: 18.52, size: 3 },
 	{ name: "Solapur", lon: 75.91, lat: 17.68, size: 1 },
+	{ name: "Sangamner", lon: 74.21, lat: 19.57, size: 1 },
+	{ name: "Manmad", lon: 74.43, lat: 20.25, size: 1 },
+	{ name: "Aurangabad", lon: 75.34, lat: 19.88, size: 2 },
+	{ name: "Nanded", lon: 77.3, lat: 19.15, size: 1 },
+	{ name: "Guntakal", lon: 77.37, lat: 15.17, size: 1 },
 	{ name: "Hyderabad", lon: 78.49, lat: 17.39, size: 3 },
 	{ name: "Kurnool", lon: 78.04, lat: 15.83, size: 1 },
 	{ name: "Tirupati", lon: 79.42, lat: 13.63, size: 2 },
@@ -80,7 +85,8 @@ export const CITIES = [
 	{ name: "Kochi", lon: 76.27, lat: 9.93, size: 2 },
 ];
 
-// The four shrines, with what the darshan card says.
+// The shrines, in the order of the yatra, with what the darshan card says. rest: where the traveller stands for
+// darshan in the shrine's local frame (x across, z out from the door), clear of the crowd; floor: the height there.
 export const SHRINES = [
 	{
 		key: "bhimashankar", name: "Bhimashankar", deva: "भीमाशंकर", lon: 73.535, lat: 19.072, facing: Math.PI / 2,
@@ -91,7 +97,18 @@ export const SHRINES = [
 		access: "About 110 km by road from Pune via Rajgurunagar (Khed), three to four hours by car or MSRTC bus. The last climb runs through the Bhimashankar Wildlife Sanctuary.",
 		note: "One of the twelve Jyotirlingas and the source of the Bhima river. The black-stone Nagara shikhara was raised in the 18th century under Nana Phadnavis, and the great bell in the courtyard is linked to Chimaji Appa. The forest around it shelters the Indian giant squirrel, the shekru, Maharashtra's state animal.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Har Har Mahadev",
-		hour: 8.6, weather: "monsoon",
+		hour: 8.6, weather: "monsoon", rest: [0.5, 3.45], floor: 0.03,
+	},
+	{
+		key: "shirdi", name: "Shirdi", deva: "शिर्डी", lon: 74.477, lat: 19.766, facing: Math.PI / 2,
+		deity: "Sai Baba of Shirdi, at his samadhi", kind: "Samadhi Mandir",
+		state: "Rahata taluka, Ahilyanagar (Ahmednagar) district, Maharashtra, on the dry Deccan plateau east of the Sahyadri",
+		altitude: "about 504 m (1,654 ft)",
+		season: "Open all year, from the Kakad aarti at dawn to the Shej aarti at 10 pm. October to March is the most comfortable; Ram Navami, Guru Purnima and Vijayadashami (Baba's Punyatithi) bring the biggest crowds.",
+		access: "About 180 km by road from Bhimashankar via Manchar, Narayangaon, Sangamner and Rahata, four to five hours by taxi or MSRTC bus. Sainagar Shirdi station, a terminus on the branch from Puntamba, is about 3 km from the temple, with trains to the south such as the weekly Shirdi–Tirupati Express (17418) via Manmad and Secunderabad.",
+		note: "Sai Baba lived some sixty years in Shirdi, most of them in the old mosque he called Dwarkamai, where the dhuni he kept burning still gives the udi (sacred ash). He died in 1918 and was laid to rest in the stone wada Gopalrao Buti had built, now the Samadhi Mandir; the white marble murti by Balaji Vasant Talim has sat above the samadhi since 1954. Close by are the Chavadi, where he slept on alternate nights, and Gurusthan under its neem tree, where he was first seen as a youth. The aarti is sung four times a day: Kakad at dawn, Madhyan at noon, Dhoop at sunset and Shej at night.",
+		mantra: "ॐ साईं राम", mantraLatin: "Om Sai Ram", greeting: "Sabka Malik Ek",
+		hour: 12.0, weather: "clear", rest: [0.35, 3.6], floor: 0.05,
 	},
 	{
 		key: "tirupati", name: "Tirumala", deva: "तिरुमला", lon: 79.347, lat: 13.683, facing: Math.PI / 2,
@@ -102,7 +119,7 @@ export const SHRINES = [
 		access: "Walk the Alipiri footpath from Tirupati town (about 3,550 steps, roughly 9 km, three to four hours) or the shorter Srivari Mettu (about 2,400 steps), or ride the 20-odd km ghat road by bus or taxi. Renigunta airport and Tirupati station are close by.",
 		note: "The Ananda Nilayam, the gold-covered vimana over the sanctum, rises inside the white gopuram of the Mahadwaram with the golden dhvajastambha before it. It is one of the most visited shrines on earth; pilgrims leave with the Tirupati laddu and the cry of Govinda in their ears.",
 		mantra: "ॐ नमो वेङ्कटेशाय", mantraLatin: "Om Namo Venkatesaya", greeting: "Govinda, Govinda",
-		hour: 16.6, weather: "clear",
+		hour: 16.6, weather: "clear", rest: [0.15, 4.1], floor: 0.15,
 	},
 	{
 		key: "kedarnath", name: "Kedarnath", deva: "केदारनाथ", lon: 79.067, lat: 30.735, facing: 0,
@@ -113,7 +130,7 @@ export const SHRINES = [
 		access: "The road ends at Sonprayag; shared jeeps go on to Gaurikund, then a 16 km trek climbs to the temple (six to eight hours, on foot, pony or palki). Helicopters fly from Phata, Sersi and Guptkashi. Yatra registration with the Uttarakhand government is required.",
 		note: "The highest of the twelve Jyotirlingas. The Pandavas are said to have sought Shiva here; he hid as a bull and the hump remained as the lingam. The grey stone temple survived the 2013 flood behind the Bhim Shila boulder, and Adi Shankara's samadhi, rebuilt in 2021, stands behind it.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Jai Baba Kedar",
-		hour: 6.7, weather: "snow",
+		hour: 6.7, weather: "snow", rest: [0.55, 3.75], floor: 0.05,
 	},
 	{
 		key: "badrinath", name: "Badrinath", deva: "बद्रीनाथ", lon: 79.493, lat: 30.744, facing: Math.PI / 2,
@@ -124,16 +141,22 @@ export const SHRINES = [
 		access: "Motorable all the way: about 300 km from Rishikesh up the Alaknanda via Devprayag, Rudraprayag, Chamoli and Joshimath, and roughly 220 km by road from Kedarnath. Mana, the last village before Tibet, is 3 km beyond.",
 		note: "The northern dham and the northern seat of Adi Shankara, who is said to have recovered the black shaligram image of Vishnu from the river. Pilgrims bathe in the Tapt Kund hot spring below the painted facade before darshan, with Neelkanth's snow pyramid above the valley.",
 		mantra: "ॐ नमो नारायणाय", mantraLatin: "Om Namo Narayanaya", greeting: "Jai Badri Vishal",
-		hour: 9.4, weather: "clear",
+		hour: 9.4, weather: "clear", rest: [0.25, 2.85], floor: 0,
 	},
 ];
 
-// Route waypoints, Pune to Badrinath. Each chapter ends at its shrine.
+// Route waypoints, Pune to Badrinath. Each chapter ends at its shrine (ROUTE[i] ends at SHRINES[i]); secs is about
+// how long the leg takes at 1x, which sets the pace along it.
 export const ROUTE = [
-	{ title: "Pune to the Sahyadri", kicker: "Dawn · by road", mode: "By road, 110 km", pts: [[73.86, 18.52], [73.95, 18.75], [73.93, 18.98], [73.75, 19.07], [73.535, 19.072]] },
-	{ title: "South to the seven hills", kicker: "Across the Deccan", mode: "By rail and road", pts: [[73.535, 19.072], [73.75, 19.0], [73.9, 18.6], [74.7, 18.1], [75.91, 17.68], [77.2, 17.5], [78.49, 17.39], [78.04, 15.83], [78.6, 14.7], [79.42, 13.63], [79.347, 13.683]] },
-	{ title: "North to the Himalaya", kicker: "Through the night", mode: "By rail and road", pts: [[79.347, 13.683], [79.42, 13.63], [78.8, 15.0], [78.49, 17.39], [78.9, 19.3], [79.09, 21.15], [79.0, 23.3], [78.57, 25.45], [77.9, 27.2], [77.21, 28.61], [77.7, 29.3], [78.16, 29.95], [78.29, 30.09], [78.60, 30.15], [78.98, 30.28], [79.02, 30.45], [79.02, 30.62], [79.067, 30.735]] },
-	{ title: "Down the Mandakini, up the Alaknanda", kicker: "Morning in the hills", mode: "By road, about 220 km", pts: [[79.067, 30.735], [79.02, 30.62], [79.02, 30.45], [78.98, 30.28], [79.33, 30.40], [79.57, 30.55], [79.55, 30.68], [79.493, 30.744]] },
+	{ title: "Pune to the Sahyadri", secs: 28, kicker: "Dawn · by road", mode: "By road, 110 km", pts: [[73.86, 18.52], [73.95, 18.75], [73.93, 18.98], [73.75, 19.07], [73.535, 19.072]] },
+	// back down the Bhimashankar road to Manchar, then north on the Pune–Nashik highway (NH60) to Sangamner, Loni and Rahata
+	{ title: "Down the Sahyadri to Shirdi", secs: 40, kicker: "Late morning · by road", mode: "By road, about 180 km", pts: [[73.535, 19.072], [73.75, 19.07], [73.93, 18.98], [73.97, 19.12], [74.08, 19.19], [74.16, 19.4], [74.21, 19.57], [74.45, 19.59], [74.48, 19.71], [74.477, 19.766]] },
+	// out of Shirdi to the east, then the line of the Shirdi–Tirupati Express (17418), drawn as a smooth sweep: Puntamba
+	// (the real train runs up to Manmad and back down to Aurangabad; the drawn line cuts across), Jalna, Parbhani, Nanded,
+	// Nizamabad, Secunderabad, then by Raichur, Guntakal, Gooty and Kadapa to Tirupati (past Renigunta)
+	{ title: "South to the seven hills", secs: 85, overnight: true, kicker: "Overnight across the Deccan", mode: "By rail and road", pts: [[74.477, 19.766], [74.7, 19.82], [75.34, 19.88], [75.88, 19.84], [76.77, 19.27], [77.3, 19.15], [78.09, 18.67], [78.5, 17.44], [77.35, 16.2], [77.27, 15.63], [77.37, 15.17], [77.63, 15.12], [78.01, 14.91], [78.82, 14.47], [79.42, 13.63], [79.347, 13.683]] },
+	{ title: "North to the Himalaya", secs: 110, kicker: "Through the night", mode: "By rail and road", pts: [[79.347, 13.683], [79.42, 13.63], [78.8, 15.0], [78.49, 17.39], [78.9, 19.3], [79.09, 21.15], [79.0, 23.3], [78.57, 25.45], [77.9, 27.2], [77.21, 28.61], [77.7, 29.3], [78.16, 29.95], [78.29, 30.09], [78.60, 30.15], [78.98, 30.28], [79.02, 30.45], [79.02, 30.62], [79.067, 30.735]] },
+	{ title: "Down the Mandakini, up the Alaknanda", secs: 34, kicker: "Morning in the hills", mode: "By road, about 220 km", pts: [[79.067, 30.735], [79.02, 30.62], [79.02, 30.45], [78.98, 30.28], [79.33, 30.40], [79.57, 30.55], [79.55, 30.68], [79.493, 30.744]] },
 ];
 // Gaurikund, where the road gives way to the 16 km footpath.
 export const GAURIKUND = [79.02, 30.62];

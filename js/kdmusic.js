@@ -25,6 +25,7 @@ export const TRACKS = {
 	tirupati: { id: "e5jylnA2KdQ", title: "Govinda Hare (NYC Kirtan, 2023)" },
 	kedarnath: { id: "sn1otVlvVrM", title: "Jai Shiva Omkara" },
 	badrinath: { id: "a3XaLpZSW14", title: "Narayana / For Your Love" },
+	// Shirdi: Krishna Das has no chant for Sai Baba, so the Samadhi Mandir's own (synthesised) aarti plays there
 };
 const watchUrl = (id) => "https://www.youtube.com/watch?v=" + id;
 const API_TIMEOUT = 12000; // the API script and the player's onReady
@@ -113,6 +114,8 @@ export class KDMusic {
 		this.key = key;
 		if (this.mode !== "kd" || !TRACKS[key]) {
 			this.halt(0.8);
+			// say why, a moment after the darshan's own greeting
+			if (this.mode === "kd" && this.audio.on && this.onNotice) setTimeout(() => this.key === key && this.onNotice("No Krishna Das track for this shrine; the temple's own aarti plays"), 2800);
 			return false;
 		}
 		this.start();

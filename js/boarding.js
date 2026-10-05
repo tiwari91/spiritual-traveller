@@ -386,7 +386,7 @@ export class Journey {
 			o.scene.add(v.group);
 		}
 		this.sound = new TrainSound(o.audio);
-		this.rakes = o.roads.rails.map((r) => new Rake(r.leg === 0 ? "icf" : "lhb", r, o.scene, this.sound));
+		this.rakes = o.roads.rails.map((r) => new Rake(r.stock, r, o.scene, this.sound));
 		this.walkers = [0, 1, 2, 3].map((i) => new Walker(911 + i * 37));
 		this.crowd = [0, 1, 2, 3, 4, 5].map((i) => P.crowdFigure(733 + i * 13));
 		for (const w of this.walkers) o.scene.add(w.group);
@@ -408,7 +408,7 @@ export class Journey {
 		this.lastKey = "";
 	}
 	get rake() {
-		return this.rakes.find((r) => r.rail.leg === this.app.leg - 1) || null;
+		return this.rakes.find((r) => r.rail.chapter === this.app.leg) || null;
 	}
 	// ---------- the plan of the leg: where the traveller changes from one way of travelling to the next ----------
 	plan() {
@@ -442,10 +442,17 @@ export class Journey {
 		return { prev, next };
 	}
 	// ---------- lanes, in metres right of the road's centre ----------
-	half(s) {
+	halfAt(s) {
 		const r = this.roads.road(s, 0, _rp);
-		// as main.js has it: no road here (a path, or the open route), no verge to keep to
+		// no road here (a path, or the open route), no verge to keep to
 		return r ? (r.kind === "nh" ? 3.75 : r.kind === "ghat" ? 3.5 : r.kind === "hill" ? 2.75 : 0) : 0;
+	}
+	// half the road's width, eased over a few metres where a road begins or ends (at a bus stand, onto a path),
+	// so someone walking along its verge drifts across rather than jumping sideways
+	half(s) {
+		let h = 0;
+		for (let k = -4; k <= 4; k++) h += this.halfAt(s + k * 0.3);
+		return h / 9;
 	}
 	walkLane(s) {
 		return -(this.half(s) + 0.6);
@@ -510,14 +517,14 @@ export class Journey {
 		this.dep = null;
 		for (const v of Object.values(this.v)) v.group.visible = false;
 		for (const r of this.rakes) {
-			const ch = r.rail.leg + 1;
+			const ch = r.rail.chapter, T = this.roads.trains[ch];
 			if (app.leg < ch || app.state !== "travel") r.home(app.leg > ch ? r.stops.length - 1 : 0);
 			else if (app.leg > ch) r.home(r.stops.length - 1);
 			else if (this.modeAt(app.s) === "train") {
 				r.runAt(sToA(r.rail, app.s));
 				this.onTrain = true;
 				this.openT = 9;
-			} else r.home(app.s < this.roads.at.trainFrom2 && ch === 2 ? 0 : app.s < this.roads.at.trainFrom && ch === 1 ? 0 : r.stops.length - 1);
+			} else r.home(app.s < T.from ? 0 : r.stops.length - 1);
 		}
 		this.lastS = app.s;
 	}
@@ -588,7 +595,7 @@ export class Journey {
 		}
 		const at = r.step(dtS, true);
 		if (at) {
-			if (at.kind === "end") this.change({ s: app.s, from: "train", to: this.modeAt(this.roads.at[app.leg === 1 ? "trainTo" : "trainTo2"] + 0.01), st: at });
+			if (at.kind === "end") this.change({ s: app.s, from: "train", to: this.modeAt(this.roads.trains[app.leg].to + 0.01), st: at });
 			else {
 				this.halt = { t: 0, st: at };
 				this.passengers(r, at);
@@ -922,7 +929,7 @@ Object.assign(Journey.prototype, {
 	},
 	epTrainOff(T) {
 		const r = this.rake, st = r.stops.at(-1), c = r.cars[r.tc], d = r.td, S = c.S;
-		T.s = this.roads.at[this.app.leg === 1 ? "trainTo" : "trainTo2"];
+		T.s = this.roads.trains[this.app.leg].to;
 		const kind = T.to === "train" || !veh(T.to) ? "auto" : T.to;
 		const v = this.v[kind];
 		const door = v.door ? v.doors[v.doorR] : null;

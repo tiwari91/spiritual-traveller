@@ -2,8 +2,6 @@
 import { ROUTE, SHRINES, toWorld } from "./geo.js";
 import { clamp, lerp } from "./util.js";
 
-// Leg durations in seconds of Yatra at Easy pace; the pilgrim's speed is set so each leg takes about this long.
-const LEG_SECONDS = [28, 70, 110, 34];
 
 export class Route {
 	constructor(world) {
@@ -44,7 +42,7 @@ export class Route {
 				pts.push({ x, y, z, s, leg: c });
 			}
 			chapters.push({ index: c, title: leg.title, kicker: leg.kicker, mode: leg.mode, s0: start, s1: s, shrine: SHRINES[c] });
-			this.legSpeed.push((s - start) / LEG_SECONDS[c]);
+			this.legSpeed.push((s - start) / leg.secs);
 		}
 		this.pts = pts;
 		this.length = s;

@@ -37,6 +37,8 @@ export const RAIL = {
 export function region(lon, lat) {
 	if (lat > 29.95 && lon > 78.25) return "garhwal";
 	if (lat > 29.6) return "doon";
+	// the Ahmednagar Deccan round Sangamner, Rahata and Shirdi: black soil, cane and onion, flat-roofed villages
+	if (lon >= 74.1 && lon < 75.2 && lat > 18.9 && lat < 20.35) return "nagar";
 	if (lat > 18.3 && lon < 74.3) return "sahyadri";
 	if (lat > 25) return "gangetic";
 	if (lat > 19.5) return "central";
@@ -49,7 +51,7 @@ function roadKind(lon, lat) {
 	if ((lat > 18.85 && lon < 74.0) || Math.hypot(lon - 79.38, lat - 13.66) < 0.09) return "ghat";
 	return "nh";
 }
-const SOIL = { sahyadri: "#8a4a2c", deccan: "#9a7a52", south: "#8e6a48", central: "#8c7656", gangetic: "#9b8a68", doon: "#7d7360", garhwal: "#7c776e" };
+const SOIL = { sahyadri: "#8a4a2c", deccan: "#9a7a52", nagar: "#8c7454", south: "#8e6a48", central: "#8c7656", gangetic: "#9b8a68", doon: "#7d7360", garhwal: "#7c776e" };
 
 const pick = (R, a) => a[Math.floor(R() * a.length)];
 
@@ -660,29 +662,44 @@ export class Roads {
 			}
 			return bs;
 		};
+		// legs by the shrine they end at, so nothing here depends on how many legs there are
+		const leg = (key) => ch.find((c) => c.shrine.key === key);
 		// where the traveller can change from one kind of transport to the next
 		this.at = {
-			pune: near(73.86, 18.52, ch[1]),
-			tirupatiIn: near(79.42, 13.63, ch[1]),
-			tirupatiOut: near(79.42, 13.63, ch[2]),
-			rishikesh: near(78.29, 30.09, ch[2]),
-			gauri: near(GAURIKUND[0], GAURIKUND[1], ch[2]),
-			gauriBack: near(GAURIKUND[0], GAURIKUND[1], ch[3]),
-			rudraBack: near(78.98, 30.28, ch[3]),
+			mancharOut: near(73.93, 18.98, leg("shirdi")),
+			tirupatiIn: near(79.42, 13.63, leg("tirupati")),
+			tirupatiOut: near(79.42, 13.63, leg("kedarnath")),
+			rishikesh: near(78.29, 30.09, leg("kedarnath")),
+			gauri: near(GAURIKUND[0], GAURIKUND[1], leg("kedarnath")),
+			gauriBack: near(GAURIKUND[0], GAURIKUND[1], leg("badrinath")),
+			rudraBack: near(78.98, 30.28, leg("badrinath")),
 		};
 		const A = this.at;
-		// stretches of road and rail; the return legs reuse the road they came up, so it is not drawn twice
-		this.roadRuns = [[0.4, ch[0].s1 - 2.8], [ch[1].s0 + 2.8, ch[1].s1 - 3.2], [A.tirupatiOut, A.gauri], [A.rudraBack, ch[3].s1 - 2.6]];
-		this.trekRun = [A.gauri, ch[2].s1 - 3.2];
+		// stretches of road and rail; the return legs reuse the road they came up (down from Bhimashankar to Manchar,
+		// Tirumala to Tirupati, Kedarnath to Rudraprayag), so it is not drawn twice
+		this.roadRuns = [[0.4, ch[0].s1 - 2.8], [A.mancharOut, leg("shirdi").s1 - 3.2], [leg("tirupati").s0 + 2.8, leg("tirupati").s1 - 3.2], [A.tirupatiOut, A.gauri], [A.rudraBack, leg("badrinath").s1 - 2.6]];
+		this.trekRun = [A.gauri, leg("kedarnath").s1 - 3.2];
 		this.rivers = riverLines();
 		// Roads stop well short of each temple, at a bus stand; the last stretch is a pilgrim path on foot.
 		this.shrinePos = route.chapters.map((c) => route.at(c.s1, {}));
-		this.clearR = [9, 10.5, 9, 9];
+		this.clearR = route.chapters.map((c) => CLEAR[c.shrine.key] ?? 9);
 		const offShrine = (p) => this.shrinePos.every((w, i) => Math.hypot(p.x - w.x, p.z - w.z) > this.clearR[i]);
 		this.roads = [];
 		for (const [a, b] of this.roadRuns) for (const run of split(samplePath(route, world, a, b, 0), offShrine)) this.roads.push(bridges(run, this.rivers, world, 1.8));
+		// on foot near each end of a leg: from the temple door out to the bus stand, and from the bus stand in
+		const dist = (s, w) => {
+			const p = route.at(s, {});
+			return Math.hypot(p.x - w.x, p.z - w.z);
+		};
+		this.legWalk = route.chapters.map((c, i) => {
+			let out = c.s0, inn = c.s1;
+			if (i > 0) while (out < c.s1 && dist(out, this.shrinePos[i - 1]) < this.clearR[i - 1] + 0.3) out += 0.05;
+			while (inn > c.s0 && dist(inn, this.shrinePos[i]) < this.clearR[i] + 0.3) inn -= 0.05;
+			return { out, in: inn };
+		});
 		this.walks = [];
 		this.stands = [];
+		const kedar = ch.indexOf(leg("kedarnath"));
 		route.chapters.forEach((c, i) => {
 			const w = this.shrinePos[i];
 			let sA = c.s1;
@@ -694,7 +711,7 @@ export class Roads {
 				}
 			}
 			// at Kedarnath the path from the bus stand joins the trek at Gaurikund
-			const end = i === 2 ? A.gauri : c.s1 - 3.0;
+			const end = i === kedar ? A.gauri : c.s1 - 3.0;
 			if (end - sA < 0.8) return;
 			const path = bridges(samplePath(route, world, sA - 0.3, end + 0.2, 0, { kind: "trek" }), this.rivers, world, 0.5);
 			if (path.length > 2) {
@@ -702,17 +719,32 @@ export class Roads {
 				this.stands.push({ s: sA, shrine: i });
 			}
 		});
+		// and where a leg sets out from a temple by a new road (not back the way it came), a path out to its own bus stand
+		route.chapters.forEach((c, i) => {
+			if (i === 0) return;
+			const a = route.at(c.s0 + 4, {}), b = route.at(ch[i - 1].s1 - 4, {});
+			if (Math.hypot(a.x - b.x, a.z - b.z) < 1.5) return;
+			const out = this.legWalk[i].out;
+			if (out - c.s0 < 4) return;
+			const path = bridges(samplePath(route, world, c.s0 + 2.8, out + 0.5, 0, { kind: "trek" }), this.rivers, world, 0.5);
+			if (path.length > 2) {
+				this.walks.push(path);
+				this.stands.push({ s: out, shrine: i, out: true });
+			}
+		});
 		this.trek = bridges(samplePath(route, world, this.trekRun[0], this.trekRun[1], 0, { kind: "trek" }), this.rivers, world, 0.5);
 		// The railway: a smooth line of gentle curves beside the road, kept off the roads it runs beside,
 		// carried over the roads it crosses, clear of every shrine, and swung out from the road at each
 		// station so the platform, the station building and its forecourt fit between the two.
-		this.railRuns = [[A.pune - 20, A.tirupatiIn], [A.tirupatiOut, A.rishikesh + 4]];
-		const shrines = route.chapters.map((c) => route.at(c.s1, {}));
-		const clear = (p) => shrines.every((w) => Math.hypot(p.x - w.x, p.z - w.z) > 10.5);
+		const shrines = this.shrinePos;
+		const clear = (p) => shrines.every((w, i) => Math.hypot(p.x - w.x, p.z - w.z) > this.clearR[i] + 0.8);
 		const roadLines = [...this.roads, this.trek, ...this.walks].map((pts) => ({ pts, w: (KIND[pts[0]?.kind || "nh"].paved + 2 * KIND[pts[0]?.kind || "nh"].shoulder) * M, over: true }));
 		const alongside = [...this.roads, this.trek, ...this.walks];
 		this.rails = [];
-		this.railRuns.forEach(([a, b], leg) => {
+		for (const L of LINES) {
+			const c = leg(L.to);
+			if (!c) continue;
+			const [a, b] = L.to === "tirupati" ? [c.s0, A.tirupatiIn] : [A.tirupatiOut, A.rishikesh + 4];
 			// a first pass finds where the line can run and where its stations stand, the second swings it out at them
 			let line = null, plan = null;
 			for (let pass = 0; pass < 2; pass++) {
@@ -721,29 +753,27 @@ export class Roads {
 				if (!line) break;
 				arcLength(line);
 				bridges(line, [...this.rivers, ...roadLines], world, 0.9, 16);
-				if (!plan) plan = this.planStations(line, leg);
+				if (!plan) plan = this.planStations(line, L);
 			}
-			if (!line) return;
+			if (!line) continue;
 			// the line ends a little beyond each terminal's platform, at a buffer stop
 			const first = plan.stops[0], end = plan.stops.at(-1);
 			const sa = aToS(line, sToA(line, first.s) - RAIL.platLen / 2 - 3.2), sb = aToS(line, sToA(line, end.s) + RAIL.platLen / 2 + 3.2);
 			line = line.filter((p) => p.s >= sa && p.s <= sb);
 			arcLength(line);
 			railProfile(line, world);
-			line.leg = leg;
+			line.chapter = c.index;
+			line.stock = L.stock;
 			line.stops = plan.stops.map((st) => this.layoutStation(line, Object.assign({}, st, { a: sToA(line, st.s) })));
 			this.rails.push(line);
-		});
-		// where the traveller changes onto and off the train: at each terminal station's forecourt
-		const ofLeg = (l) => this.rails.find((r) => r.leg === l);
-		this.at.trainFrom = ofLeg(0) ? ofLeg(0).stops[0].sRoad : A.pune;
-		this.at.trainTo = ofLeg(0) ? ofLeg(0).stops.at(-1).sRoad : A.tirupatiIn;
-		this.at.trainFrom2 = ofLeg(1) ? ofLeg(1).stops[0].sRoad : A.tirupatiOut;
-		this.at.trainTo2 = ofLeg(1) ? ofLeg(1).stops.at(-1).sRoad : A.rishikesh;
+		}
+		// where the traveller changes onto and off the train on each leg: at each terminal station's forecourt
+		this.trains = {};
+		for (const r of this.rails) this.trains[r.chapter] = { rail: r, from: r.stops[0].sRoad, to: r.stops.at(-1).sRoad };
 		this.stations = this.rails.flatMap((r) => r.stops);
-		// the short autorickshaw hops: across Pune to the station, and from Tirupati station to Alipiri
-		this.at.puneCity = this.at.trainFrom - 14;
-		this.at.alipiri = lerp(this.at.trainTo, ch[1].s1 - 14, 0.5);
+		// the short autorickshaw hop from Tirupati station to Alipiri, at the foot of the ghat road
+		const tt = this.trains[ch.indexOf(leg("tirupati"))];
+		this.at.alipiri = lerp(tt ? tt.to : A.tirupatiIn, leg("tirupati").s1 - 14, 0.5);
 		for (const p of this.roads) this.buildRoad(p);
 		this.buildRoad(this.trek);
 		for (const p of this.walks) {
@@ -1019,7 +1049,9 @@ export class Roads {
 	}
 	// The bus stand where the road ends: a paved yard with buses, pilgrim jeeps and autos parked in rows.
 	busStand(st) {
-		const r = Roads.lookup(this.roads, st.s - 0.6) || this.route.at(st.s - 0.6, {});
+		// beside the end of the road coming in, or the start of the road going out
+		const sr = st.out ? st.s + 0.6 : st.s - 0.6;
+		const r = Roads.lookup(this.roads, sr) || this.route.at(sr, {});
 		const l = Math.hypot(r.dx, r.dz) || 1;
 		const dx = r.dx / l, dz = r.dz / l;
 		const yaw = Math.atan2(dx, dz);
@@ -1051,7 +1083,7 @@ export class Roads {
 	// ---------- the railway ----------
 	// Where each line's stations stand: a terminal at each end, with the whole train on the platform and a buffer
 	// stop behind it, and halts where the line passes the towns, each platform clear of any bridge.
-	planStations(line, leg) {
+	planStations(line, spec) {
 		const L = RAIL.platLen, A = line.A;
 		// a platform wants straight track and no bridge under it: the cost of standing one centred at ac
 		const bend = line.map((p, i) => {
@@ -1060,9 +1092,10 @@ export class Roads {
 			const cr = Math.abs(ax * bz - az * bx);
 			return cr < 1e-9 ? 0 : (2 * cr) / (Math.hypot(ax, az) * Math.hypot(bx, bz) * Math.hypot(c.x - a.x, c.z - a.z));
 		});
-		const cost = (ac, ideal) => {
+		const cost = (ac, ideal, w = 1.5) => {
 			if (ac - L / 2 < 0.8 || ac + L / 2 > A - 0.8) return Infinity;
-			let c = Math.abs(ac - ideal) * 0.3, lo = Infinity, hi = -Infinity;
+			// the station stands in its town: drifting along the line costs more than a slope or a bend
+			let c = Math.abs(ac - ideal) * w, lo = Infinity, hi = -Infinity;
 			for (let i = 0; i < line.length; i++) {
 				const p = line[i];
 				if (p.a < ac - L / 2 - 3 || p.a > ac + L / 2 + 3) continue;
@@ -1074,21 +1107,33 @@ export class Roads {
 			// and level ground, so the platform is not on a hillside
 			return c + (hi - lo) * 150;
 		};
-		const best = (ideal, lo, hi, ok = () => true) => {
+		const best = (ideal, lo, hi, ok = () => true, w = 1.5) => {
 			let bc = Infinity, ba = null;
 			for (let x = lo; x <= hi; x += 0.5) {
 				if (!ok(x)) continue;
-				const c = cost(x, ideal);
+				const c = cost(x, ideal, w);
 				if (c < bc) (bc = c), (ba = x);
 			}
 			return ba;
 		};
-		const ends = leg === 0 ? [["पुणे जंक्शन", "PUNE JN"], ["तिरुपति", "TIRUPATI"]] : [["तिरुपति", "TIRUPATI"], ["हरिद्वार जंक्शन", "HARIDWAR JN"]];
+		const ends = spec.ends;
 		const o = 1.2 + L / 2, e = A - 1.2 - L / 2;
-		const stops = [{ hi: ends[0][0], name: ends[0][1], kind: "origin", ac: best(o, o, o + 60) ?? o }];
-		const last = { hi: ends[1][0], name: ends[1][1], kind: "end", ac: best(e, e - 40, e) ?? e };
+		// the distance along the line nearest a town
+		const nearA = (lon, lat) => {
+			const t = toWorld(lon, lat);
+			let bd = Infinity, ba = 0;
+			for (const p of line) {
+				const d = Math.hypot(p.x - t.x, p.z - t.z);
+				if (d < bd) (bd = d), (ba = p.a);
+			}
+			return ba;
+		};
+		// each terminal as near its own town as the line comes, on the best straight, level stretch there
+		const io = clamp(nearA(ends[0][0], ends[0][1]), o, e), ie = clamp(nearA(ends[1][0], ends[1][1]), o, e);
+		const stops = [{ hi: ends[0][2], name: ends[0][3], kind: "origin", ac: best(io, Math.max(o, io - 25), Math.min(e, io + 45), undefined, 4) ?? io }];
+		const last = { hi: ends[1][2], name: ends[1][3], kind: "end", ac: best(ie, Math.max(o, ie - 45), Math.min(e, ie + 25), undefined, 4) ?? ie };
 		const room = L + 12;
-		for (const [lon, lat, hi, en] of HALTS[leg]) {
+		for (const [lon, lat, hi, en] of spec.halts) {
 			const t = toWorld(lon, lat);
 			let near = null, bd = 6;
 			for (const p of line) {
@@ -1482,10 +1527,22 @@ export function wireAt(pts, x) {
 	const i = search(m, "a", x), a = m[i], b = m[i + 1] || a;
 	return lerp(a.y, b.y, clamp((x - a.a) / (b.a - a.a || 1), 0, 1));
 }
-const HALTS = [
-	[[75.91, 17.68, "सोलापुर", "SOLAPUR"], [78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"], [78.04, 15.83, "कर्नूल सिटी", "KURNOOL CITY"]],
-	[[78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"], [79.09, 21.15, "नागपुर", "NAGPUR"], [78.57, 25.45, "झाँसी जंक्शन", "JHANSI JN"], [77.21, 28.61, "नई दिल्ली", "NEW DELHI"]],
+// The lines the trains run on, by the shrine their leg ends at: the terminals' name boards (Hindi, English) and the
+// halts where the line passes a town (left out where there is no room for a platform between its neighbours).
+// To Tirupati, the line of the weekly Sainagar Shirdi–Tirupati Express (17418): Puntamba, Manmad, Aurangabad,
+// Nanded, Secunderabad, then by Raichur and Guntakal to Kadapa and Tirupati (the drawn line sweeps past Manmad).
+const LINES = [
+	{
+		to: "tirupati", stock: "icf", ends: [[74.48, 19.78, "साईनगर शिर्डी", "SAINAGAR SHIRDI"], [79.42, 13.63, "तिरुपति", "TIRUPATI"]],
+		halts: [[77.3, 19.15, "हजूर साहिब नांदेड़", "H.S. NANDED"], [78.5, 17.44, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"], [77.37, 15.17, "गुंतकल जंक्शन", "GUNTAKAL JN"], [78.82, 14.47, "कडपा", "KADAPA"]],
+	},
+	{
+		to: "kedarnath", stock: "lhb", ends: [[79.42, 13.63, "तिरुपति", "TIRUPATI"], [78.16, 29.95, "हरिद्वार जंक्शन", "HARIDWAR JN"]],
+		halts: [[78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"], [79.09, 21.15, "नागपुर", "NAGPUR"], [78.57, 25.45, "झाँसी जंक्शन", "JHANSI JN"], [77.21, 28.61, "नई दिल्ली", "NEW DELHI"]],
+	},
 ];
+// How far around each shrine the roads stop, at a bus stand, and the last stretch is on foot (world units).
+const CLEAR = { tirupati: 10.5, shirdi: 6.5 };
 // Platform paving: the white coping at the edge, the yellow line, then square pavers.
 let _plat;
 function platformTexture() {

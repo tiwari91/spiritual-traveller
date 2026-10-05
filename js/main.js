@@ -17,7 +17,7 @@ import { Aarti } from "./aarti.js";
 import { KDMusic } from "./kdmusic.js";
 import { MapView } from "./map3d.js";
 import { Audio } from "./audio.js";
-import { CITIES, GAURIKUND, INDIA, LANKA, SHRINES, toGeo, toWorld } from "./geo.js";
+import { CITIES, INDIA, LANKA, ROUTE, SHRINES, toGeo, toWorld } from "./geo.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
 
 const $ = (id) => document.getElementById(id);
@@ -30,14 +30,12 @@ const TIMES = [["Auto", null], ["Dawn", 6.4], ["Noon", 12.5], ["Dusk", 18.2], ["
 const WEATHERS = ["Auto", "Clear", "Monsoon", "Snow"];
 // How to travel: the usual pilgrim's mix, as much by train as possible, or the whole way by motorbike or car.
 const TRANSPORT = ["Mixed", "Train", "Bike", "Car"];
-// Where the traveller stands for darshan, in each shrine's local frame (x across, z out from the door),
-// clear of Nandi and the crowd, and the floor height there.
-const REST = { bhimashankar: [0.5, 3.45], tirupati: [0.15, 4.1], kedarnath: [0.55, 3.75], badrinath: [0.25, 2.85] };
-const FLOOR = { bhimashankar: 0.03, tirupati: 0.15, kedarnath: 0.05, badrinath: 0 };
+// How many shrines (and legs) the yatra has: each leg ends at its shrine.
+const N = SHRINES.length;
 // How each stretch is travelled, and what the HUD calls it.
 const MODES = { walk: "On foot", bike: "By motorbike", train: "By train", jeep: "By jeep", car: "By taxi", auto: "By autorickshaw" };
 
-const app = { transport: 0, inside: [false, false, false, false], ready: false, frames: 0, t: 0, state: "loading", s: 0, leg: 0, at: -1, playing: true, speed: 0, time: 0, weather: 0, visited: [false, false, false, false], params };
+const app = { transport: 0, inside: SHRINES.map(() => false), ready: false, frames: 0, t: 0, state: "loading", s: 0, leg: 0, at: -1, playing: true, speed: 0, time: 0, weather: 0, visited: SHRINES.map(() => false), params };
 window.app = app;
 
 // ---------- renderer ----------
@@ -97,20 +95,7 @@ async function init() {
 	sky = new Sky(scene);
 	if (LOW) sky.sun.shadow.mapSize.set(1024, 1024);
 	Object.assign(app, { world, route, sky, landmarks, scene, roads, scenery, traffic, ride, journey, traveller });
-	// where the road gives way to the footpath below Kedarnath
-	const gk = toWorld(GAURIKUND[0], GAURIKUND[1]);
-	const c2 = route.chapters[2];
-	let best = Infinity;
-	for (const p of route.pts) if (p.s >= c2.s0 && p.s <= c2.s1) {
-		const d = (p.x - gk.x) ** 2 + (p.z - gk.z) ** 2;
-		if (d < best) { best = d; app.sGauri = p.s; }
-	}
-	// where the traveller changes from one kind of transport to the next
-	// where the traveller changes from one kind of transport to the next
-	app.sPune = roads.at.pune;
-	app.sTirupatiIn = roads.at.tirupatiIn;
-	app.sTirupatiOut = roads.at.tirupatiOut;
-	app.sRishikesh = roads.at.rishikesh;
+	// where the road gives way to the footpath below Kedarnath, going up and coming back down
 	app.sGauri = roads.at.gauri;
 	app.sGauriBack = roads.at.gauriBack;
 	app.transport = clamp(store.get("transport", 0), 0, TRANSPORT.length - 1);
@@ -148,7 +133,7 @@ async function init() {
 	app.state = "intro";
 	if (params.has("shrine")) {
 		begin();
-		jump(clamp(parseInt(params.get("shrine"), 10) - 1 || 0, 0, 3));
+		jump(clamp(parseInt(params.get("shrine"), 10) - 1 || 0, 0, N - 1));
 	} else if (params.has("s")) {
 		begin();
 		app.s = clamp(parseFloat(params.get("s")) || 0, 0, route.length - 0.01);
@@ -164,13 +149,25 @@ async function init() {
 }
 
 // ---------- time and weather ----------
+// The hour at each shrine, counted on from dawn at Pune: always later than the last, and a whole day on for a
+// leg ridden through the night (Shirdi's noon to Tirumala's evening is the next day, by the overnight express).
+let HOURS;
 function autoHour(s) {
-	const c = route.chapters;
-	const keys = [[0, 6.5], [c[0].s1, 8.6], [c[1].s1, 16.6], [c[2].s1, 30.7], [c[3].s1, 33.4]];
+	if (!HOURS) {
+		HOURS = [[0, 6.5]];
+		route.chapters.forEach((c, i) => {
+			const prev = HOURS[HOURS.length - 1][1];
+			let h = c.shrine.hour;
+			while (h <= prev) h += 24;
+			if (ROUTE[i].overnight && h < prev + 20) h += 24;
+			HOURS.push([c.s1, h]);
+		});
+	}
+	const keys = HOURS;
 	for (let k = 0; k < keys.length - 1; k++) {
 		if (s <= keys[k + 1][0]) return lerp(keys[k][1], keys[k + 1][1], clamp((s - keys[k][0]) / (keys[k + 1][0] - keys[k][0] || 1), 0, 1)) % 24;
 	}
-	return 9.4;
+	return keys[keys.length - 1][1] % 24;
 }
 function currentHour() {
 	if (app.fixedHour !== undefined) return app.fixedHour;
@@ -213,7 +210,7 @@ function begin() {
 }
 function chapterCard(i) {
 	const c = route.chapters[i];
-	showCard(`Leg ${i + 1} of 4 · ${c.kicker}`, c.title, `${c.mode} to ${c.shrine.name}`);
+	showCard(`Leg ${i + 1} of ${N} · ${c.kicker}`, c.title, `${c.mode} to ${c.shrine.name}`);
 }
 function arrive(i) {
 	app.state = "darshan";
@@ -223,7 +220,7 @@ function arrive(i) {
 	app.visited[i] = true;
 	app.darshanT = 0;
 	const s = SHRINES[i];
-	$("d-kicker").textContent = `Darshan ${i + 1} of 4 · ${s.kind}`;
+	$("d-kicker").textContent = `Darshan ${i + 1} of ${N} · ${s.kind}`;
 	$("d-name").textContent = s.name;
 	$("d-deva").textContent = s.deva;
 	$("d-deity").textContent = s.deity;
@@ -235,7 +232,7 @@ function arrive(i) {
 	$("d-access").textContent = s.access;
 	$("d-note").textContent = s.note;
 	$("d-greet").textContent = s.greeting;
-	$("continue").textContent = i === 3 ? "Complete the yatra" : `Continue to ${SHRINES[i + 1].name}`;
+	$("continue").textContent = i === N - 1 ? "Complete the yatra" : `Continue to ${SHRINES[i + 1].name}`;
 	$("enter").innerHTML = app.inside[i] ? "Go inside again <span>the rituals play by themselves (E)</span>" : "Going inside… <span>the rituals play by themselves</span>";
 	$("darshan").querySelector(".d-scroll").scrollTop = 0;
 	$("darshan").classList.add("show");
@@ -270,7 +267,7 @@ function next() {
 	if (app.state === "intro") return begin();
 	if (app.state !== "darshan") return;
 	closeDarshan();
-	if (app.at === 3) {
+	if (app.at === N - 1) {
 		app.state = "finale";
 		showFinale();
 		return;
@@ -293,8 +290,8 @@ function restart() {
 	$("finale").hidden = true;
 	closeDarshan();
 	closeMenu();
-	app.visited = [false, false, false, false];
-	app.inside = [false, false, false, false];
+	app.visited = SHRINES.map(() => false);
+	app.inside = SHRINES.map(() => false);
 	app.at = -1;
 	app.state = "restart";
 	begin();
@@ -311,7 +308,7 @@ function showFinale() {
 		li.lastChild.textContent = s.mantraLatin;
 		ul.appendChild(li);
 	}
-	$("finale-km").textContent = `About ${Math.round(route.km(route.length) / 10) * 10} km along the drawn line from Pune, through the Sahyadri, the Deccan and the Gangetic plain to the Garhwal Himalaya. Har Har Mahadev. Govinda, Govinda. Jai Badri Vishal.`;
+	$("finale-km").textContent = `About ${Math.round(route.km(route.length) / 10) * 10} km along the drawn line from Pune, through the Sahyadri, the Deccan and the Gangetic plain to the Garhwal Himalaya. Har Har Mahadev. Om Sai Ram. Govinda, Govinda. Jai Badri Vishal.`;
 	$("finale").hidden = false;
 	$("finale-again").focus();
 }
@@ -366,8 +363,6 @@ function cameraGoal() {
 	const p = route.at(app.s, tmp);
 	const c = route.chapters[app.leg];
 	const near = smoothstep(26, 3, Math.min(c.s1 - app.s, app.s - c.s0));
-	// close enough to see the road, the railway and the villages go by
-	const far = [24, 62, 72, 28][app.leg];
 	// for a few seconds after the traveller changes transport, the camera comes down alongside
 	const vehicle = ["bike", "jeep", "car", "auto"].includes(app.travelMode);
 	const chase = vehicle ? smoothstep(7, 3, app.modeT || 0) : 0;
@@ -380,7 +375,6 @@ function cameraGoal() {
 	g.yaw = Math.atan2(-p.dx, -p.dz) + 0.6;
 	g.pitch = app.travelMode === "walk" ? 0.24 : 0.3;
 	g.dist = closeDist * (innerWidth < innerHeight ? 1.45 : 1);
-	void far;
 	void close;
 	// getting on and off, close and low; on the train, alongside the line (boarding.js)
 	const jc = app.debugCam || journey.camera();
@@ -401,7 +395,9 @@ function occlusion(to) {
 	occRay.camera = camera; // sprites need it to be tested at all
 	occRay.near = 0.25;
 	occRay.far = d;
-	const solid = [roads.group, scenery.group, ...landmarks.map((l) => l.root)];
+	// the roads and stations, the roadside, its trees and the temples with their forests (the taxi, jeep or auto the
+	// traveller is getting into is looked through, as through its windows, rather than come up against)
+	const solid = [roads.group, scenery.group, scenery.trees.group, ...landmarks.map((l) => l.root), ...landmarks.map((l) => l.decor)];
 	if (journey && journey.rake) for (const c of journey.rake.cars || []) solid.push(c.group);
 	const hits = occRay.intersectObjects(solid, true);
 	for (const h of hits) {
@@ -425,7 +421,20 @@ function updateCamera(dt) {
 	const k = rig.snap ? 1 : 1 - Math.exp(-dt * 1.8), ky = rig.snap ? 1 : 1 - Math.exp(-dt * 1.1);
 	// while travelling the camera stays locked on the moving traveller (a slow ease would fall behind a
 	// train or a car and leave them at the edge of the frame); elsewhere it eases
-	rig.target.lerp(g.target, rig.snap ? 1 : 1 - Math.exp(-dt * (app.state === "travel" ? 25 : 4)));
+	// while travelling the target rides with the traveller exactly (at 8x a train covers a body length a frame, and
+	// any lag leaves them out of the shot); only a change of framing, from one shot to the next, is eased
+	if (app.state === "travel") {
+		const me = traveller.group.position;
+		rig.off = rig.off || new THREE.Vector3();
+		const want = g.target.clone().sub(me);
+		if (rig.snap || !rig.offOk) rig.off.copy(want);
+		else rig.off.lerp(want, 1 - Math.exp(-dt * 5));
+		rig.offOk = true;
+		rig.target.copy(me).add(rig.off);
+	} else {
+		rig.offOk = false;
+		rig.target.lerp(g.target, rig.snap ? 1 : 1 - Math.exp(-dt * 4));
+	}
 	rig.yaw = angLerp(rig.yaw, yaw, ky);
 	rig.pitch = lerp(rig.pitch, pitch, k);
 	rig.dist = Math.exp(lerp(Math.log(rig.dist), Math.log(dist), k));
@@ -520,6 +529,8 @@ function loop(now) {
 		}
 		if (params.get("auto") === "1" && app.darshanT > 14) next();
 	}
+	// the traveller first, then the camera on them, so the shot never runs a frame behind
+	updateTraveller(dt);
 	updateCamera(dt);
 	// a snow peak the camera has strayed into is hidden rather than filling the screen
 	for (const l of landmarks) for (const m of l.decor.children) {
@@ -536,7 +547,6 @@ function loop(now) {
 		}
 		m.visible = app.state === "darshan" || !blocks;
 	}
-	updateTraveller(dt);
 	aarti.update(dt, app.t, camera);
 	// sky, light and weather
 	focus.copy(rig.target);
@@ -574,34 +584,35 @@ function loop(now) {
 	if (!app.mapOpen) renderer.render(scene, camera);
 	if (app.frames % 6 === 0 && app.state !== "loading") {
 		const tp = traveller.group.position, p = route.at(app.s, {});
-		app.mapView.setProgressWorld({ x: tp.x, z: tp.z, dx: p.dx, dz: p.dz, mode: app.mode, leg: app.state === "finale" ? 4 : app.leg, doneFraction: progressFraction(), state: app.state === "intro" ? "intro" : undefined, label: $("where").textContent });
+		app.mapView.setProgressWorld({ x: tp.x, z: tp.z, dx: p.dx, dz: p.dz, mode: app.mode, leg: app.state === "finale" ? N : app.leg, doneFraction: progressFraction(), state: app.state === "intro" ? "intro" : undefined, label: $("where").textContent });
 	}
 	if (app.frames % 2 === 0) updateLabels();
 	if (app.frames % 4 === 0) updateHud(hour);
 }
 
 // ---------- the traveller ----------
-// Motorbike up to Bhimashankar; a taxi back down to Pune station and between Tirupati and the hill; the train
-// across the Deccan, and across India to Rishikesh;
-// a jeep up the Garhwal valleys to Gaurikund and on to Badrinath; on foot up to Kedarnath and for the
-// last stretch to every temple door.
+// Each leg by the shrine it ends at: a motorbike up to Bhimashankar; a taxi down the ghat and north to Shirdi; an
+// auto to Sainagar Shirdi station, the express south to Tirupati, an auto to Alipiri and a taxi up the ghat; a taxi
+// down to Tirupati station, the train north to Haridwar and a jeep up the Garhwal valleys to Gaurikund; and on to
+// Badrinath by jeep. On foot up to Kedarnath, and for the last stretch to every temple door and the first away from it.
 function modeAt(s) {
-	const c = route.chapters[app.leg];
+	const c = route.chapters[app.leg], key = c.shrine.key, w = roads.legWalk[app.leg];
 	if (s > c.s1 - 2.6 || s < c.s0 + 1.2) return "walk";
-	// no vehicle goes near a temple: from the bus stand it is the pilgrim path on foot
-	const here = route.at(s, {});
-	if (roads.shrinePos.some((w, i) => Math.hypot(here.x - w.x, here.z - w.z) < roads.clearR[i] + 0.3)) return "walk";
+	// no vehicle goes near a temple: between the door and the bus stand it is the pilgrim path on foot
+	if (s < w.out || s > w.in) return "walk";
 	// the 16 km up to Kedarnath, and back down, are on foot whatever else you choose
-	if (app.leg === 2 && s > app.sGauri) return "walk";
-	if (app.leg === 3 && s < app.sGauriBack) return "walk";
+	if (key === "kedarnath" && s > app.sGauri) return "walk";
+	if (key === "badrinath" && s < app.sGauriBack) return "walk";
 	const choice = TRANSPORT[app.transport];
 	if (choice === "Bike") return "bike";
 	if (choice === "Car") return "jeep";
-	// no railway climbs to Bhimashankar, so even by train it starts by road
-	if (app.leg === 0) return choice === "Train" ? "car" : "bike";
-	// a taxi down to Pune, an auto across town to the station, the train, an auto to Alipiri, a taxi up the ghat
-	if (app.leg === 1) return s < roads.at.puneCity ? "car" : s < roads.at.trainFrom ? "auto" : s < roads.at.trainTo ? "train" : s < roads.at.alipiri ? "auto" : "car";
-	if (app.leg === 2) return s < roads.at.trainFrom2 ? "car" : s < roads.at.trainTo2 ? "train" : "jeep";
+	const T = roads.trains[app.leg];
+	// no railway climbs to Bhimashankar, nor runs from there to Shirdi, so even by train those are by road
+	if (key === "bhimashankar") return choice === "Train" ? "car" : "bike";
+	if (key === "shirdi") return "car";
+	// an auto to the station, the train, an auto to Alipiri, a taxi up the ghat
+	if (key === "tirupati") return !T ? "car" : s < T.from ? "auto" : s < T.to ? "train" : s < roads.at.alipiri ? "auto" : "car";
+	if (key === "kedarnath") return !T ? "jeep" : s < T.from ? "car" : s < T.to ? "train" : "jeep";
 	return "jeep";
 }
 const travPos = new THREE.Vector3(), tp = {}, rp = {};
@@ -626,18 +637,17 @@ function updateTraveller(dt) {
 	const pre = app.state === "travel" ? modeAt(app.s) : "walk";
 	// on foot the traveller keeps to the left verge; vehicles run near the middle of the road
 	const onRoad = roads.road(app.s, 0, {});
-	const half = onRoad ? (onRoad.kind === "nh" ? 3.75 : onRoad.kind === "ghat" ? 3.5 : onRoad.kind === "hill" ? 2.75 : 0) : 0;
 	// vehicles ride just left of the centre line, clear of oncoming traffic on the right
 	// on the narrow Garhwal roads keep further left, so an oncoming bus has room on a bend
 	const narrow = onRoad && onRoad.kind === "hill";
 	const myLane = pre === "bike" ? (narrow ? -1.1 : -0.6) : narrow ? -1.55 : -1.15;
-	const p = pre === "walk" ? roadPoint(app.s, -(half + 0.6)) : roadPoint(app.s, myLane);
+	const p = pre === "walk" ? roadPoint(app.s, journey.walkLane(app.s)) : roadPoint(app.s, myLane);
 	let yaw = Math.atan2(p.dx, p.dz);
 	travPos.set(p.x, p.y, p.z);
 	let atShrine = false;
 	for (const l of landmarks) {
 		const d = Math.hypot(p.x - l.pos.x, p.z - l.pos.z);
-		const [rx, rz] = REST[l.shrine.key];
+		const [rx, rz] = l.shrine.rest;
 		const R = Math.hypot(rx, rz);
 		if (d > R + 2) continue;
 		// walk off the road to the spot before the door, then turn to face the shrine
@@ -646,7 +656,7 @@ function updateTraveller(dt) {
 		const k = app.state === "darshan" ? 1 : smoothstep(R + 2, R * 0.55, d);
 		travPos.x = lerp(p.x, wx, k);
 		travPos.z = lerp(p.z, wz, k);
-		travPos.y = world.height(travPos.x, travPos.z) + FLOOR[l.shrine.key] * k;
+		travPos.y = world.height(travPos.x, travPos.z) + l.shrine.floor * k;
 		// the door is at about z = 1.9 in front of the sanctum
 		const door = { x: l.pos.x + 1.9 * sn, z: l.pos.z + 1.9 * c };
 		const face = Math.atan2(door.x - travPos.x, door.z - travPos.z);
@@ -709,7 +719,8 @@ function buildUI() {
 		el.dataset.i = i;
 	});
 	for (const c of CITIES) {
-		if (c.name === "Tirupati") continue;
+		// a town at a shrine goes by the shrine's own label
+		if (SHRINES.some((s) => Math.hypot(s.lon - c.lon, s.lat - c.lat) < 0.3)) continue;
 		const w = toWorld(c.lon, c.lat);
 		add(c.name, w.x, world.height(w.x, w.z) + 1.5, w.z, "city", c.size >= 3 ? 320 : 150);
 	}
@@ -738,7 +749,7 @@ function buildUI() {
 		nodes.appendChild(b);
 	};
 	mk(0, "Pune", "start", restart);
-	SHRINES.forEach((s, i) => mk(((i + 1) / 4) * 100, s.name, "shrine", () => jump(i)));
+	SHRINES.forEach((s, i) => mk(((i + 1) / N) * 100, s.name, "shrine", () => jump(i)));
 	if (coarse) $("hint").textContent = "Drag to look around · pinch to zoom · tap a shrine on the progress bar to go there";
 	// minimap base
 	drawMapBase();
@@ -816,7 +827,7 @@ function cycleTransport() {
 	app.transport = (app.transport + 1) % TRANSPORT.length;
 	$("transport-label").textContent = TRANSPORT[app.transport];
 	store.set("transport", app.transport);
-	const say = ["The usual way: motorbike, train and jeep, on foot to Kedarnath", "By train wherever the line goes, taxis and jeeps for the rest", "By motorbike the whole way, on foot to Kedarnath", "By car the whole way, on foot to Kedarnath"];
+	const say = ["The usual way: motorbike, taxi, train and jeep, on foot to Kedarnath", "By train wherever the line goes, taxis and jeeps for the rest", "By motorbike the whole way, on foot to Kedarnath", "By car the whole way, on foot to Kedarnath"];
 	toast(say[app.transport]);
 }
 function toggleSound() {
@@ -875,7 +886,7 @@ function progressFraction() {
 	if (app.state === "intro") return 0;
 	if (app.state === "finale") return 1;
 	const c = route.chapters[app.leg];
-	return (app.leg + clamp((app.s - c.s0) / (c.s1 - c.s0), 0, 1)) / 4;
+	return (app.leg + clamp((app.s - c.s0) / (c.s1 - c.s0), 0, 1)) / N;
 }
 function updateHud() {
 	$("fill").style.width = (progressFraction() * 100).toFixed(2) + "%";
@@ -885,16 +896,20 @@ function updateHud() {
 	else if (app.state === "travel") {
 		const c = route.chapters[app.leg];
 		let mode = MODES[app.mode] || c.mode;
-		if (app.leg === 2 && app.s > app.sGauri) mode = "On foot from Gaurikund, 16 km";
-		else if (app.mode === "train") mode = app.leg === 2 ? "By train to Haridwar" : "By train to Tirupati";
-		else if (app.mode === "jeep" && TRANSPORT[app.transport] === "Car") mode = "By car";
-		else if (app.mode === "jeep" && app.leg === 2) mode = "By jeep up the Mandakini to Gaurikund";
-		else if (app.mode === "bike") mode = app.leg === 0 ? "By motorbike, 110 km" : "By motorbike";
-		else if (app.mode === "car" && TRANSPORT[app.transport] === "Car") mode = "By car";
-		else if (app.mode === "car" && app.leg === 0) mode = "By taxi; no railway climbs to Bhimashankar";
-		else if (app.mode === "auto") mode = app.s < roads.at.trainFrom ? "By auto across Pune to the station" : "By auto from Tirupati station to Alipiri";
-		else if (app.mode === "car") mode = app.leg === 1 ? (app.s < roads.at.puneCity ? "By taxi down to Pune" : "By taxi up the ghat road to Tirumala") : "By taxi down to Tirupati station";
-		else if (app.mode === "walk" && app.leg === 3 && app.s < app.sGauriBack) mode = "On foot down to Gaurikund";
+		const key = c.shrine.key, T = roads.trains[app.leg], w = roads.legWalk[app.leg], own = TRANSPORT[app.transport] === "Car";
+		if (key === "kedarnath" && app.s > app.sGauri) mode = "On foot from Gaurikund, 16 km";
+		else if (app.mode === "train") mode = key === "tirupati" ? "By the Sainagar Shirdi–Tirupati Express" : "By train to Haridwar";
+		else if ((app.mode === "jeep" || app.mode === "car") && own) mode = "By car";
+		else if (app.mode === "jeep" && key === "kedarnath") mode = "By jeep up the Mandakini to Gaurikund";
+		else if (app.mode === "jeep" && key === "badrinath") mode = "By jeep up the Alaknanda to Badrinath";
+		else if (app.mode === "bike") mode = key === "bhimashankar" ? "By motorbike, 110 km" : key === "shirdi" ? "By motorbike, about 180 km" : "By motorbike";
+		else if (app.mode === "car" && key === "bhimashankar") mode = "By taxi; no railway climbs to Bhimashankar";
+		else if (app.mode === "car" && key === "shirdi") mode = app.s < roads.at.mancharOut ? "By taxi down the ghat to Manchar" : TRANSPORT[app.transport] === "Train" ? "By taxi; no railway runs from here to Shirdi" : "By taxi up the Nashik highway to Shirdi";
+		else if (app.mode === "auto") mode = T && app.s < T.from ? "By auto to Sainagar Shirdi station" : "By auto from Tirupati station to Alipiri";
+		else if (app.mode === "car") mode = key === "tirupati" ? "By taxi up the ghat road to Tirumala" : "By taxi down to Tirupati station";
+		else if (app.mode === "walk" && key === "badrinath" && app.s < app.sGauriBack) mode = "On foot down to Gaurikund";
+		else if (app.mode === "walk" && app.leg > 0 && app.s < w.out + 0.5) mode = `On foot from the ${SHRINES[app.leg - 1].name} temple to the bus stand`;
+		else if (app.mode === "walk" && app.s > w.in - 0.5) mode = "On foot up to the temple door";
 		where = `To ${c.shrine.name} · ${mode}${app.playing ? "" : " · paused"}`;
 	}
 	const we = $("where");
@@ -1038,7 +1053,7 @@ function installInput() {
 			if (app.state === "intro") begin();
 			else if (app.state === "finale") $("finale").hidden = true;
 			else togglePlay();
-		} else if (k.length === 1 && k >= "1" && k <= "4") jump(+k - 1);
+		} else if (k.length === 1 && k >= "1" && k <= String(Math.min(9, N))) jump(+k - 1);
 		else if (k === "0") restart();
 		else if (k === "+" || k === "=") setSpeed(app.speed + 1);
 		else if (k === "-" || k === "_") setSpeed(app.speed - 1);
