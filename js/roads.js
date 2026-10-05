@@ -685,7 +685,16 @@ export class Roads {
 		this.clearR = route.chapters.map((c) => CLEAR[c.shrine.key] ?? 9);
 		const offShrine = (p) => this.shrinePos.every((w, i) => Math.hypot(p.x - w.x, p.z - w.z) > this.clearR[i]);
 		this.roads = [];
-		for (const [a, b] of this.roadRuns) for (const run of split(samplePath(route, world, a, b, 0), offShrine)) this.roads.push(bridges(run, this.rivers, world, 1.8));
+		// a road stops short of each temple, but never in the middle of a bridge: one cut off on its deck (Badrinath's,
+		// over the Alaknanda) is carried on across it to the far bank, so nobody steps off the deck into the river
+		for (const [a, b] of this.roadRuns) {
+			const pts = bridges(samplePath(route, world, a, b, 0), this.rivers, world, 1.8);
+			const keep = pts.map(offShrine);
+			for (let i = 1; i < pts.length; i++) if (!keep[i] && keep[i - 1] && pts[i].bridge > 0.02) keep[i] = true;
+			for (let i = pts.length - 2; i >= 0; i--) if (!keep[i] && keep[i + 1] && pts[i].bridge > 0.02) keep[i] = true;
+			const kept = new Set(pts.filter((p, i) => keep[i]));
+			for (const run of split(pts, (p) => kept.has(p))) this.roads.push(run);
+		}
 		// on foot near each end of a leg: from the temple door out to the bus stand, and from the bus stand in
 		const dist = (s, w) => {
 			const p = route.at(s, {});
@@ -697,6 +706,10 @@ export class Roads {
 			while (inn > c.s0 && dist(inn, this.shrinePos[i]) < this.clearR[i] + 0.3) inn -= 0.05;
 			return { out, in: inn };
 		});
+		// A pilgrim path on foot from a to b. Its bridges are found over a few units either side, so a path that
+		// starts or ends where the road was cut off on a bridge (Badrinath's, over the Alaknanda) carries the same
+		// deck on, rather than dropping from it to the ground below.
+		const footPath = (a, b) => bridges(samplePath(route, world, Math.max(0, a - STEP * 17), Math.min(route.length, b + STEP * 17), 0, { kind: "trek" }), this.rivers, world, 0.5).filter((p) => p.s >= a - 1e-3 && p.s <= b + 1e-3);
 		this.walks = [];
 		this.stands = [];
 		const kedar = ch.indexOf(leg("kedarnath"));
@@ -713,7 +726,7 @@ export class Roads {
 			// at Kedarnath the path from the bus stand joins the trek at Gaurikund
 			const end = i === kedar ? A.gauri : c.s1 - (COURT[c.shrine.key] ?? 3.0);
 			if (end - sA < 0.8) return;
-			const path = bridges(samplePath(route, world, sA - 0.3, end + 0.2, 0, { kind: "trek" }), this.rivers, world, 0.5);
+			const path = footPath(sA - 0.3, end + 0.2);
 			if (path.length > 2) {
 				this.walks.push(path);
 				this.stands.push({ s: sA, shrine: i });
@@ -726,7 +739,7 @@ export class Roads {
 			if (Math.hypot(a.x - b.x, a.z - b.z) < 1.5) return;
 			const out = this.legWalk[i].out;
 			if (out - c.s0 < 4) return;
-			const path = bridges(samplePath(route, world, c.s0 + (COURT[ch[i - 1].shrine.key] ?? 2.8), out + 0.5, 0, { kind: "trek" }), this.rivers, world, 0.5);
+			const path = footPath(c.s0 + (COURT[ch[i - 1].shrine.key] ?? 2.8), out + 0.5);
 			if (path.length > 2) {
 				this.walks.push(path);
 				this.stands.push({ s: out, shrine: i, out: true });
@@ -1050,7 +1063,8 @@ export class Roads {
 	// The bus stand where the road ends: a paved yard with buses, pilgrim jeeps and autos parked in rows.
 	busStand(st) {
 		// beside the end of the road coming in, or the start of the road going out
-		const sr = st.out ? st.s + 0.6 : st.s - 0.6;
+		// set back from where the road ends, so a taxi or auto stopping there for the traveller has the kerb to itself
+		const sr = st.out ? st.s + 3.8 : st.s - 3.8;
 		const r = Roads.lookup(this.roads, sr) || this.route.at(sr, {});
 		const l = Math.hypot(r.dx, r.dz) || 1;
 		const dx = r.dx / l, dz = r.dz / l;
