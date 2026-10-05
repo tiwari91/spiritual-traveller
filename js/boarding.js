@@ -558,9 +558,19 @@ export class Journey {
 			const { prev, next } = this.around(app.s);
 			let pace = this.route.legSpeed[app.leg] * (0.22 + 0.78 * smoothstep(0, 10, Math.min(c.s1 - app.s, app.s - c.s0)));
 			if (mode === "walk") {
-				// on foot at a person's pace (a brisk 1.4 m/s at 1x), so the steps carry the body and nothing slides
-				pace = Math.min(pace, WALK * 1.08);
+				// on foot at a person's pace (a brisk 1.4 m/s at 1x), so the steps carry the body and nothing slides.
+				// Where the footpath winds away from the road (a bus stand to a temple door), one unit along the route
+				// can be several on the ground: measure that from the last frame and slow the route pace to match.
+				const g = app.traveller && app.traveller.group.position;
+				if (g && this.walkFrom && app.s - this.walkFrom.s > 1e-4) {
+					const r = Math.hypot(g.x - this.walkFrom.x, g.z - this.walkFrom.z) / (app.s - this.walkFrom.s);
+					this.groundPerS = (this.groundPerS || 1) + (Math.min(4, r) - (this.groundPerS || 1)) * 0.35;
+				}
+				if (g) this.walkFrom = { s: app.s, x: g.x, z: g.z };
+				pace = Math.min(pace, (WALK * 1.08) / Math.max(1, this.groundPerS || 1));
 			} else {
+				this.walkFrom = null;
+				this.groundPerS = 1;
 				if (mode === "auto") pace = Math.min(pace, 2.0);
 				// brake to a stop at the next change, pull away gently from the last
 				const D = 2 + 0.9 * Math.min(pace, 6);
@@ -667,8 +677,9 @@ Object.assign(Journey.prototype, {
 		const S = st && st.steps;
 		if (!S || !S.n) return p.y;
 		const dx = Math.sin(st.yaw), dz = Math.cos(st.yaw);
-		const u = (p.x - st.x) * dz - (p.z - st.z) * dx;
-		if (u < S.u0 - 0.02 || u > S.u1 + 0.02) return p.y;
+		const u = (p.x - st.x) * dz - (p.z - st.z) * dx, v = (p.x - st.x) * dx + (p.z - st.z) * dz;
+		// only on the flight itself: it is 1.4 wide, and an auto can set down beside it, level with its treads
+		if (u < S.u0 - 0.02 || u > S.u1 + 0.02 || Math.abs(v) > 0.72) return p.y;
 		const k = Math.min(S.n - 1, Math.max(0, Math.floor(((u - S.u0) / (S.u1 - S.u0)) * S.n)));
 		return S.top - (S.rise * (k + 1)) / S.n;
 	},
