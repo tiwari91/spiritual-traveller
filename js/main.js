@@ -264,6 +264,8 @@ function arrive(i) {
 	});
 	rig.userYaw = 0;
 	rig.userPitch = 0;
+	rig.pan.x = rig.pan.y = 0;
+	rig.userT = -1e9;
 	refreshMarks();
 }
 function enterTemple(auto = false) {
@@ -335,7 +337,11 @@ function showFinale() {
 }
 
 // ---------- camera ----------
-const rig = { target: new THREE.Vector3(), yaw: 0, pitch: 0.8, dist: 80, userYaw: 0, userPitch: 0, zoom: 1, snap: true, view: { x: 0, y: 0 } };
+const rig = { target: new THREE.Vector3(), yaw: 0, pitch: 0.8, dist: 80, userYaw: 0, userPitch: 0, zoom: 1, snap: true, view: { x: 0, y: 0 }, pan: { x: 0, y: 0 }, userT: -1e9 };
+// (on the Kailash journey: for a while after the user has turned, panned or zoomed the camera, it is theirs; the
+// shot is not swapped to the other side, swung round or cut away from under them)
+const userHolds = () => KAILASH && app.t - rig.userT < 8;
+const userTook = () => (rig.userT = app.t);
 const tmp = {};
 const angLerp = (a, b, t) => {
 	let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
@@ -598,6 +604,7 @@ function clearForests() {
 	}
 }
 const occRay = new THREE.Raycaster(), occDir = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0), lookAt = new THREE.Vector3(), panF = new THREE.Vector3(), panR = new THREE.Vector3(), panU = new THREE.Vector3();
 // On the Kailash journey the hills, the camps and the roadside are merged into a few large meshes whose bounds take in
 // the whole view, so every sight line the camera tests (occlusion, bodyHidden, the coach shots) went through all their
 // triangles: a camera looking round for a clear view tried a dozen angles in one frame, took 150 to 200 ms, and the
@@ -698,7 +705,7 @@ function updateCamera(dt) {
 	// cut, and now and then on the way, swapping sides only for a clearly better view.
 	// (Not while the camera has gone round or up to see past something: that is judged below, from the same side.)
 	const avoiding = Math.abs(rig.swing || 0) > 0.1 || (rig.rise || 0) > 0.05;
-	if (app.state === "travel" && !app.debugCam && !journey.camera() && (rig.snap || rig.camKey !== null || (app.frames % 20 === 0 && !avoiding))) {
+	if (app.state === "travel" && !app.debugCam && !journey.camera() && !userHolds() && (rig.snap || rig.camKey !== null || (app.frames % 20 === 0 && !avoiding))) {
 		const side = rig.side || 1, at = (sg) => {
 			const yw = g.yaw + 1.2 * (sg === side ? 0 : sg), cp = Math.cos(g.pitch);
 			return flank(new THREE.Vector3(g.target.x + Math.sin(yw) * cp * g.dist, g.target.y + Math.sin(g.pitch) * g.dist, g.target.z + Math.cos(yw) * cp * g.dist), g.target);
@@ -799,7 +806,7 @@ function updateCamera(dt) {
 		// until that too is blocked. Following, when they are hidden it cuts there (or swings quickly, if it is near);
 		// a framed shot (getting on or off) may swing round to the side, never up, and on a platform it holds.
 		const hidden = !jc && rig.hid >= 2;
-		if ((hidden && app.frames % 3 === 0) || (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5 && !(jc || {}).fixed)) {
+		if (!userHolds() && ((hidden && app.frames % 3 === 0) || (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5 && !(jc || {}).fixed))) {
 			const gy = g.yaw + rig.userYaw, gp = g.pitch + rig.userPitch, back = -(rig.side || 1) * 0.6;
 			// following, straight behind (down a lane between stalls) comes first, then higher, then round
 			const tries = jc
@@ -860,9 +867,20 @@ function updateCamera(dt) {
 		rig.rise = 0;
 		rig.hid = 0;
 	}
+	// the user's pan (Kailash): the camera and its aim moved together, across the frame and up it, by a share of the
+	// distance between them (so it is a nudge up close and a sweep from high up)
+	lookAt.copy(rig.target);
+	if (KAILASH && (rig.pan.x || rig.pan.y)) {
+		panF.subVectors(rig.target, camera.position).normalize();
+		panR.crossVectors(panF, UP).normalize();
+		panU.crossVectors(panR, panF).normalize();
+		panR.multiplyScalar(rig.pan.x * rig.dist).addScaledVector(panU, rig.pan.y * rig.dist);
+		camera.position.add(panR);
+		lookAt.add(panR);
+	}
 	// (on the Kailash journey's steep ground, coming in past a bank can bring the lens down to the ground: never into it)
 	if (KAILASH) camera.position.y = Math.max(camera.position.y, world.height(camera.position.x, camera.position.z) + 0.08);
-	camera.lookAt(rig.target);
+	camera.lookAt(lookAt);
 	// keep the shrine clear of the darshan panel
 	const open = app.state === "darshan";
 	const wide = innerWidth > 720;
@@ -1289,6 +1307,7 @@ function buildUI() {
 	};
 	mk(0, START, "start", restart);
 	SHRINES.forEach((s, i) => mk(((i + 1) / N) * 100, s.name, "shrine", () => jump(i)));
+	if (KAILASH) installScrub();
 	if (coarse) $("hint").textContent = `Drag to look around · pinch to zoom · tap a ${KAILASH ? "stop" : "shrine"} on the progress bar to go there`;
 	// minimap base
 	drawMapBase();
@@ -1424,6 +1443,84 @@ function updateLabels() {
 			l.on = on;
 		}
 	}
+}
+// ---------- scrubbing along the way (Kailash) ----------
+// Drag along the progress bar, or turn the wheel over it, and the traveller is moved backwards or forwards along the
+// way, the journey going on from wherever they are let go; the stop markers still jump to their stops with a tap.
+function installScrub() {
+	const bar = $("progress"), track = bar.querySelector(".track");
+	bar.style.touchAction = "none";
+	bar.title = "Drag, or scroll, to move along the way";
+	let drag = null;
+	const fracAt = (x) => {
+		const r = track.getBoundingClientRect();
+		return clamp((x - r.left) / Math.max(1, r.width), 0, 1);
+	};
+	const at = (f) => {
+		const i = Math.min(N - 1, Math.floor(f * N));
+		const c = route.chapters[i];
+		return [i, c.s0 + (f * N - i) * (c.s1 - c.s0)];
+	};
+	bar.addEventListener("pointerdown", (e) => {
+		if (e.target.closest(".node") || (e.button !== undefined && e.button !== 0)) return;
+		e.preventDefault();
+		bar.setPointerCapture(e.pointerId);
+		drag = { id: e.pointerId, playing: app.state === "travel" ? app.playing : true };
+		closeMenu();
+		scrubTo(...at(fracAt(e.clientX)));
+		app.playing = false;
+		updatePlay();
+	});
+	bar.addEventListener("pointermove", (e) => {
+		if (drag && e.pointerId === drag.id) scrubTo(...at(fracAt(e.clientX)));
+	});
+	const up = (e) => {
+		if (!drag || e.pointerId !== drag.id) return;
+		const d = drag;
+		drag = null;
+		if (app.state === "travel") {
+			app.playing = d.playing;
+			updatePlay();
+		}
+	};
+	bar.addEventListener("pointerup", up);
+	bar.addEventListener("pointercancel", up);
+	bar.addEventListener("wheel", (e) => {
+		e.preventDefault();
+		if (app.state === "intro" || app.state === "finale") return;
+		const c = route.chapters[app.leg];
+		// a notch of the wheel is a sixtieth of the leg
+		const d = ((Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX) * (c.s1 - c.s0)) / 6000;
+		scrubTo(app.leg, (app.state === "darshan" ? c.s1 : app.s) + d);
+	}, { passive: false });
+}
+// The traveller set down at s on leg i, travelling, the journey's vehicles and halts taken up from there (off the
+// end of a leg is the start of the next, and back off its start the end of the last; the stops themselves are
+// reached by travelling on, or with a tap on their marker).
+function scrubTo(i, s) {
+	if (app.state === "intro") begin();
+	$("finale").hidden = true;
+	let c = route.chapters[i];
+	if (s < c.s0 && i > 0) {
+		c = route.chapters[--i];
+		s = c.s1 - 0.1;
+	} else if (s > c.s1 - 0.05 && i < N - 1) {
+		c = route.chapters[++i];
+		s = c.s0 + 0.02;
+	}
+	s = clamp(s, c.s0, c.s1 - 0.05);
+	if (app.state === "darshan") closeDarshan();
+	const far = app.state !== "travel" || i !== app.leg || Math.abs(s - app.s) > 4;
+	app.state = "travel";
+	app.at = -1;
+	app.leg = i;
+	app.s = s;
+	app.leave = null;
+	hideCard();
+	// the journey takes it from here: whatever was getting on or off, or halted, is dropped and the vehicles reset
+	journey.lastKey = null;
+	journey.advance(0);
+	if (far) rig.snap = true;
 }
 function progressFraction() {
 	if (app.state === "intro") return 0;
@@ -1569,13 +1666,15 @@ function installInput() {
 	let pinch = 0;
 	canvas.addEventListener("pointerdown", (e) => {
 		canvas.setPointerCapture(e.pointerId);
-		ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+		// (a right or middle button, or shift held, pans the camera on the Kailash journey)
+		ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, pan: KAILASH && (e.button === 2 || e.button === 1 || e.shiftKey) });
 		if (ptrs.size === 2) {
 			const [a, b] = [...ptrs.values()];
 			pinch = Math.hypot(a.x - b.x, a.y - b.y);
 		}
 		closeMenu();
 	});
+	if (KAILASH) canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 	canvas.addEventListener("pointermove", (e) => {
 		const p = ptrs.get(e.pointerId);
 		if (!p) return;
@@ -1583,14 +1682,20 @@ function installInput() {
 		p.x = e.clientX;
 		p.y = e.clientY;
 		if (ptrs.size === 1) {
-			rig.userYaw -= dx * 0.005;
-			rig.userPitch = clamp(rig.userPitch + dy * 0.004, -1.2, 1.2);
+			if (p.pan) panBy(dx, dy);
+			else {
+				rig.userYaw -= dx * 0.005;
+				rig.userPitch = clamp(rig.userPitch + dy * 0.004, -1.2, 1.2);
+			}
 		} else if (ptrs.size === 2) {
 			const [a, b] = [...ptrs.values()];
 			const d = Math.hypot(a.x - b.x, a.y - b.y);
 			if (pinch > 0) rig.zoom = clamp(rig.zoom * (pinch / d), zoomFloor(), ZMAX);
 			pinch = d;
+			// (two fingers moving together pan: each finger's move counts for half)
+			if (KAILASH) panBy(dx / 2, dy / 2);
 		}
+		userTook();
 	});
 	const up = (e) => {
 		ptrs.delete(e.pointerId);
@@ -1601,6 +1706,7 @@ function installInput() {
 	canvas.addEventListener("wheel", (e) => {
 		e.preventDefault();
 		rig.zoom = clamp(rig.zoom * Math.exp(e.deltaY * 0.0012), zoomFloor(), ZMAX);
+		userTook();
 	}, { passive: false });
 	canvas.addEventListener("dblclick", resetView);
 	addEventListener("keydown", (e) => {
@@ -1630,10 +1736,10 @@ function installInput() {
 		else if (k === "c" || k === "C") resetView();
 		else if (k === "?") $("help").hidden = false;
 		else if (k === "Escape") { closeMenu(); $("finale").hidden = true; }
-		else if (k === "ArrowLeft") rig.userYaw += 0.12;
-		else if (k === "ArrowRight") rig.userYaw -= 0.12;
-		else if (k === "ArrowUp") rig.userPitch = clamp(rig.userPitch + 0.08, -1.2, 1.2);
-		else if (k === "ArrowDown") rig.userPitch = clamp(rig.userPitch - 0.08, -1.2, 1.2);
+		else if (k === "ArrowLeft") (e.shiftKey && KAILASH ? panBy(-40, 0) : (rig.userYaw += 0.12), userTook());
+		else if (k === "ArrowRight") (e.shiftKey && KAILASH ? panBy(40, 0) : (rig.userYaw -= 0.12), userTook());
+		else if (k === "ArrowUp") (e.shiftKey && KAILASH ? panBy(0, -40) : (rig.userPitch = clamp(rig.userPitch + 0.08, -1.2, 1.2)), userTook());
+		else if (k === "ArrowDown") (e.shiftKey && KAILASH ? panBy(0, 40) : (rig.userPitch = clamp(rig.userPitch - 0.08, -1.2, 1.2)), userTook());
 		else if (k === "PageUp" || k === "]") zoomBy(0.8);
 		else if (k === "PageDown" || k === "[") zoomBy(1.25);
 		else return;
@@ -1664,11 +1770,21 @@ function zoomIn() {
 }
 function zoomBy(k) {
 	rig.zoom = clamp(rig.zoom * k, zoomFloor(), ZMAX);
+	userTook();
+}
+// the camera panned by a drag of dx, dy pixels: a share of the distance to the traveller, so the same drag is a nudge
+// up close and a sweep from high up; up to a frame and a half either way
+function panBy(dx, dy) {
+	rig.pan.x = clamp(rig.pan.x - dx * 0.0022, -1.5, 1.5);
+	rig.pan.y = clamp(rig.pan.y + dy * 0.0022, -1.5, 1.5);
+	userTook();
 }
 function resetView() {
 	rig.userYaw = 0;
 	rig.userPitch = 0;
 	rig.zoom = 1;
+	rig.pan.x = rig.pan.y = 0;
+	rig.userT = -1e9;
 }
 
 app.THREE = THREE;
