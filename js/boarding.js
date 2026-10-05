@@ -932,8 +932,8 @@ Object.assign(Journey.prototype, {
 		const t = new THREE.Vector3(p.x, p.y + 0.38, p.z);
 		// in the forecourt and on the steps: from the forecourt; on the platform: from behind along it, just
 		// in from the edge, under the canopy, with the train standing alongside
-		if (u > st.building.u1 - 0.1) this.cam = { target: t, yaw: yawR + Math.PI / 2 + 0.5 * dir, pitch: 0.16, dist: 4.4 };
-		else this.cam = { target: t, yaw: yawR + (dir > 0 ? Math.PI + 0.16 : -0.16), pitch: 0.1, dist: 4.2 };
+		if (u > st.building.u1 - 0.1) this.cam = { target: t, yaw: yawR + Math.PI / 2 + 0.5 * dir, pitch: 0.16, dist: 4.4, fixed: true };
+		else this.cam = { target: t, yaw: yawR + (dir > 0 ? Math.PI + 0.16 : -0.16), pitch: 0.1, dist: 4.2, fixed: true };
 	},
 	coachPt(r, x, y, z) {
 		const c = r.cars[r.tc];

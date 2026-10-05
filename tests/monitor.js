@@ -122,7 +122,15 @@ function frame(ts) {
 	// the camera: above the ground, and nothing solid between it and the traveller
 	const gy = app.world.height(cam.position.x, cam.position.z);
 	if (cam.position.y < gy + 0.03) issue("camera-underground", { dy: +(cam.position.y - gy).toFixed(3) });
-	if (tr.visible && mon.frames % 4 === 0) {
+	// stepping into the coach: inside it, out of sight behind its side, like anyone getting on a train
+	let inCoach = false;
+	if (st.ep && /train/.test(st.ep) && J.rake && J.rake.cars[J.rake.tc]) {
+		const c = J.rake.cars[J.rake.tc];
+		const q = c.group.worldToLocal(pos.clone());
+		inCoach = Math.abs(q.x) < c.S.W / 2 - 0.1;
+	}
+	if (inCoach) mon.blockRun = 0;
+	if (tr.visible && !inCoach && mon.frames % 4 === 0) {
 		// Three sight lines (feet, chest, head). It counts as blocked only when most of the traveller is hidden,
 		// and only when that lasts about half a second: a leaf or a coach edge crossing a corner of the shot is not.
 		const solid = [app.roads.group, app.scenery.group, app.scenery.trees.group, ...app.landmarks.map((l) => l.root), ...app.landmarks.map((l) => l.decor)];
