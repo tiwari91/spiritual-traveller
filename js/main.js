@@ -649,11 +649,13 @@ function roadPoint(s, lane) {
 	s = clamp(s, 0, route.length - 0.01);
 	const r = roads.road(s, lane, rp);
 	// on the tarmac itself, not the bare ground under it, so wheels and feet are not sunk into the road (traffic.js)
-	if (r) return (r.y = roadSurface(roads, s, lane)), r;
+	// or a footbridge's deck, where the path crosses a river beyond the end of the road
+	if (r) return (r.y = Math.max(roadSurface(roads, s, lane), roads.deckAt(r.x, r.z))), r;
 	const p = route.at(s, tp);
 	p.x += -p.dz * lane * M;
 	p.z += p.dx * lane * M;
-	p.y = surfaceAt(roads, p.x, p.z); // on a road laid for another stretch of the route (the way back down), its tarmac
+	// on a road or a footbridge laid for another stretch of the route (the way back down), its tarmac or its deck
+	p.y = Math.max(surfaceAt(roads, p.x, p.z), roads.deckAt(p.x, p.z));
 	return p;
 }
 function setOn(obj, p, scale, yaw = Math.atan2(p.dx, p.dz)) {
@@ -702,7 +704,9 @@ function updateTraveller(dt) {
 			travPos.x = lerp(p.x, wx, k);
 			travPos.z = lerp(p.z, wz, k);
 		}
-		travPos.y = world.height(travPos.x, travPos.z) + l.shrine.floor * k;
+		// stepping down off a bridge deck as the way turns to the door (Kedarnath's, over the Mandakini), not dropping from it
+		const base = world.height(travPos.x, travPos.z) + l.shrine.floor * k;
+		travPos.y = Math.max(base, lerp(p.y, base, k));
 		// the door is at about z = 1.9 in front of the sanctum
 		const door = { x: l.pos.x + 1.9 * sn, z: l.pos.z + 1.9 * c };
 		const face = Math.atan2(door.x - travPos.x, door.z - travPos.z);
@@ -732,6 +736,21 @@ function updateTraveller(dt) {
 	traveller.group.visible = app.state !== "intro" && app.state !== "finale" && (placed ? traveller.group.visible : true);
 	if (!placed) {
 		journey.release();
+		// on foot along the route, where one path hands over to the next (a road's verge to the trek, a road deck
+		// to a footbridge) the two can disagree by a hand's breadth: never step more than the walk carries, and let
+		// the difference ease out over a moment instead
+		const ds = Math.abs(app.s - (app.walkS ?? app.s));
+		if (app.state === "travel" && mode === "walk" && moving && app.walkShown && ds < 0.5) {
+			const lim = 0.015 + ds * Math.max(1, journey.groundPerS || 1) * 1.4;
+			app.walkFix.multiplyScalar(Math.exp(-dt * 3));
+			const want = travPos.clone().add(app.walkFix), step = want.clone().sub(app.walkShown);
+			if (step.length() > lim) want.copy(app.walkShown).addScaledVector(step, lim / step.length());
+			app.walkFix.copy(want).sub(travPos);
+			travPos.copy(want);
+		} else if (!moving && app.state === "travel" && mode === "walk" && app.walkFix) travPos.add(app.walkFix);
+		else app.walkFix = new THREE.Vector3();
+		app.walkShown = travPos.clone();
+		app.walkS = app.s;
 		traveller.group.position.copy(travPos);
 		traveller.group.scale.setScalar(ls);
 		// the stride's cadence follows the ground actually covered (rate 1 is about 1.3 m/s), scaled for the figure's size

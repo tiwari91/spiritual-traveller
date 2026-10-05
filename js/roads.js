@@ -745,7 +745,8 @@ export class Roads {
 				this.stands.push({ s: out, shrine: i, out: true });
 			}
 		});
-		this.trek = bridges(samplePath(route, world, this.trekRun[0], this.trekRun[1], 0, { kind: "trek" }), this.rivers, world, 0.5);
+		// the trek from Gaurikund, bridged like the paths: where it starts just over the Mandakini it starts on the deck
+		this.trek = footPath(this.trekRun[0], this.trekRun[1]);
 		// The railway: a smooth line of gentle curves beside the road, kept off the roads it runs beside,
 		// carried over the roads it crosses, clear of every shrine, and swung out from the road at each
 		// station so the platform, the station building and its forecourt fit between the two.
@@ -826,6 +827,32 @@ export class Roads {
 		p.z += p.dx * lane * M;
 		if (!p.bridge) p.y = this.world.height(p.x, p.z);
 		return Object.assign(out, p);
+	}
+	// The deck of a footbridge (on the trek or a pilgrim path) under x, z, or -Infinity: for a pilgrim on the way
+	// back along a path laid for the way in, which the road surface by position does not cover.
+	deckAt(x, z) {
+		if (!this.decks) {
+			this.decks = [];
+			for (const pts of [this.trek, ...this.walks]) for (let i = 0; i < pts.length - 1; i++) if (pts[i].bridge > 0.01 || pts[i + 1].bridge > 0.01) this.decks.push([pts[i], pts[i + 1]]);
+		}
+		// the path and the verge a pilgrim keeps to where a road has just ended beside it
+		const half = (KIND.trek.paved / 2 + KIND.trek.shoulder + 3.5) * M;
+		// on a segment of the deck; failing that, a little past the end of one (where the path from the bus stand
+		// hands over to the trek, the deck runs on across the gap between them)
+		for (const reach of [0, 0.6]) {
+			let y = -Infinity;
+			for (const [A, B] of this.decks) {
+				if (Math.abs(A.x - x) > 2 || Math.abs(A.z - z) > 2) continue;
+				const ex = B.x - A.x, ez = B.z - A.z, l2 = ex * ex + ez * ez || 1e-9;
+				const t = ((x - A.x) * ex + (z - A.z) * ez) / l2;
+				if (t < -reach || t > 1 + reach) continue;
+				if (Math.abs((x - A.x) * ez - (z - A.z) * ex) / Math.sqrt(l2) > half) continue;
+				const u = clamp(t, 0, 1), ground = this.world.height(x, z), br = lerp(A.bridge, B.bridge, u), py = lerp(A.y, B.y, u);
+				y = Math.max(y, lerp(Math.max(ground, py - 0.4), py, br) + KIND.trek.lift);
+			}
+			if (y > -Infinity) return y;
+		}
+		return -Infinity;
 	}
 	rail(s, out = {}) {
 		const p = Roads.lookup(this.rails, s);

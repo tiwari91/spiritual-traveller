@@ -101,7 +101,7 @@ function frame(ts) {
 		const nearShrine = app.landmarks.some((l) => Math.hypot(l.pos.x - pos.x, l.pos.z - pos.z) < 7);
 		const r = app.roads.road(app.s, 0, {});
 		if (!nearStation && !nearShrine && !(r && r.bridge > 0.01)) {
-			const g = Math.max(app.world.height(pos.x, pos.z), surfaceAt(app.roads, pos.x, pos.z) ?? -1e9);
+			const g = Math.max(app.world.height(pos.x, pos.z), surfaceAt(app.roads, pos.x, pos.z) ?? -1e9, app.roads.deckAt(pos.x, pos.z));
 			const dy = pos.y - g;
 			if (dy > 0.12) issue("floating", { dy: +dy.toFixed(3), ep: st.ep, step: st.step });
 			else if (dy < -0.1) issue("sunk", { dy: +dy.toFixed(3), ep: st.ep, step: st.step });

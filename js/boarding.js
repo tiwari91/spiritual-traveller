@@ -450,9 +450,20 @@ export class Journey {
 	// half the road's width, eased over a few metres where a road begins or ends (at a bus stand, onto a path),
 	// so someone walking along its verge drifts across rather than jumping sideways
 	half(s) {
-		let h = 0;
-		for (let k = -4; k <= 4; k++) h += this.halfAt(s + k * 0.3);
-		return h / 9;
+		// a running mean over nine samples 0.3 apart, taken on a fixed grid and blended between its points, so it
+		// slides across a change of road without a sideways step each time a sample crosses it
+		const g = 0.3, i = Math.floor(s / g), f = s / g - i;
+		const at = (j) => {
+			if (!this.halfGrid || this.halfGrid.size > 400) this.halfGrid = new Map();
+			let h = this.halfGrid.get(j);
+			if (h === undefined) {
+				h = 0;
+				for (let k = -4; k <= 4; k++) h += this.halfAt((j + k) * g);
+				this.halfGrid.set(j, (h /= 9));
+			}
+			return h;
+		};
+		return lerp(at(i), at(i + 1), f);
 	}
 	walkLane(s) {
 		return -(this.half(s) + 0.6);
