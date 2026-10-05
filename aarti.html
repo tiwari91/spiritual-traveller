@@ -26,7 +26,7 @@
 </style>
 </head>
 <body>
-<!-- Standalone page for the outdoor aarti: aarti.html?shrine=1..4. ?cam=close frames the door, ?h=19 fixes the hour,
+<!-- Standalone page for the outdoor aarti: aarti.html?shrine=1..N (one per shrine in geo.js). ?cam=close frames the door, ?h=19 fixes the hour,
      ?q=low uses the low preset, ?ui=0 hides the panel, ?manual=1 stops the clock for scripted tests (window.bench). -->
 <canvas id="scene" aria-label="Aarti at the shrine"></canvas>
 <div class="bench" id="bench">
@@ -58,10 +58,7 @@ const params = new URLSearchParams(location.search);
 const LOW = params.get("q") === "low";
 const manual = params.get("manual") === "1";
 if (params.get("ui") === "0") $("bench").classList.add("hide");
-let at = Math.min(3, Math.max(0, (parseInt(params.get("shrine"), 10) || 3) - 1));
-// the traveller's darshan spot and floor, as in main.js
-const REST = { bhimashankar: [0.5, 3.45], tirupati: [0.15, 4.1], kedarnath: [0.55, 3.75], badrinath: [0.25, 2.85] };
-const FLOOR = { bhimashankar: 0.03, tirupati: 0.15, kedarnath: 0.05, badrinath: 0 };
+let at = Math.min(SHRINES.length - 1, Math.max(0, (parseInt(params.get("shrine"), 10) || 3) - 1));
 
 const canvas = $("scene");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !LOW });
@@ -98,10 +95,10 @@ aarti = new Aarti({ scene, landmarks, music, traveller, low: LOW });
 window.aarti = aarti;
 
 function place() {
-	const l = landmarks[at], s = l.shrine, [rx, rz] = REST[s.key];
+	const l = landmarks[at], s = l.shrine, [rx, rz] = s.rest;
 	const f = s.facing, c = Math.cos(f), sn = Math.sin(f);
 	const x = l.pos.x + rx * c + rz * sn, z = l.pos.z - rx * sn + rz * c;
-	traveller.group.position.set(x, world.height(x, z) + FLOOR[s.key], z);
+	traveller.group.position.set(x, world.height(x, z) + s.floor, z);
 	traveller.group.scale.setScalar(1.15);
 	const door = { x: l.pos.x + 1.9 * sn, z: l.pos.z + 1.9 * c };
 	traveller.face = Math.atan2(door.x - x, door.z - z);

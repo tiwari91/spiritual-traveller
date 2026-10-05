@@ -48,6 +48,12 @@ const PLACES = {
 		devotees: [[0.1, 3.9], [1.35, 2.8], [-0.45, 2.55]], lamp: "pancha",
 		priests: [{ skin: SKIN[1], bare: true, shawl: 0x8a1c1c, mark: "tripundra" }],
 	},
+	// the Samadhi Mandir: the pujari comes out of the hall's middle arch onto the landing for the Madhyan aarti
+	shirdi: {
+		door: [0, 1.6], spot: [0, 1.9], stand: [-0.32, 1.84], incense: [0.32, 1.82], via: [[0.38, 2.3], [0.5, 2.8]],
+		devotees: [[-0.55, 2.75], [1.3, 2.9], [0.1, 4.15]], lamp: "pancha",
+		priests: [{ skin: SKIN[1], top: 0xf6f2e8, dhoti: 0xf8f4ea, shawl: 0xe8741a, mark: "tilak" }],
+	},
 	tirupati: {
 		door: [-0.15, 3.53], spot: [-0.15, 3.76], stand: [-0.5, 3.64], incense: [0.58, 3.6], via: [],
 		devotees: [[-0.55, 4.3], [0.85, 4.45], [0.0, 4.75]], lamp: "camphor",

@@ -1,8 +1,9 @@
-// The four shrines. Each is built facing local +z, then turned to face its real direction.
+// The shrines. Each is built facing local +z, then turned to face its real direction.
 // One world unit is about 2.6 km, so the temples are drawn far larger than life to read on the map.
 // Surfaces are textured in the page: dressed stone courses, lime plaster, painted facades and gilding,
 // projected in world space so every block on a temple is the same size.
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { SHRINES, toWorld } from "./geo.js";
 import { fbm, rand } from "./util.js";
 import { TREE_STRIDE, Trees } from "./trees.js";
@@ -1004,7 +1005,494 @@ function bhimashankar() {
 	return { g, forest: true, peaks: [], crowd };
 }
 
-const BUILDERS = { kedarnath, badrinath, tirupati: tirumala, bhimashankar };
+// ---------- Shirdi ----------
+// Bakes a group's static meshes into one mesh per material, so a shrine of many small parts costs few draw calls.
+// Materials that look alike are shared; GOLD and LAMP keep their identity, since main.js drives their glow.
+function mergeStatic(g) {
+	g.updateMatrixWorld(true);
+	const inv = new THREE.Matrix4().copy(g.matrixWorld).invert(), mtx = new THREE.Matrix4();
+	const sig = (m) => [m.type, m.color?.getHex(), m.emissive?.getHex(), m.emissiveIntensity, m.roughness, m.metalness, m.side, m.map?.uuid, m.bumpMap?.uuid, m.vertexColors, m.flatShading, m.userData.tri].join("|");
+	const buckets = new Map(), done = [];
+	g.traverse((o) => {
+		if (!o.isMesh || o.isInstancedMesh || o.userData.keep || Array.isArray(o.material) || o.material.transparent) return;
+		const m = o.material, key = m === GOLD || m === LAMP || m === MARIGOLD ? m.uuid : sig(m);
+		if (!buckets.has(key)) buckets.set(key, { mat: m, geos: [], cast: false });
+		const b = buckets.get(key);
+		const geo = o.geometry.clone().applyMatrix4(mtx.multiplyMatrices(inv, o.matrixWorld));
+		for (const a of Object.keys(geo.attributes)) if (a !== "position" && a !== "normal" && !(a === "color" && b.mat.vertexColors) && !(a === "uv" && b.mat.map && !b.mat.userData.tri)) geo.deleteAttribute(a);
+		b.geos.push(geo);
+		b.cast ||= o.castShadow;
+		done.push(o);
+	});
+	for (const o of done) {
+		o.parent.remove(o);
+		o.geometry.dispose();
+	}
+	for (const b of buckets.values()) {
+		// keep the indices when every part has them; otherwise unroll them all
+		if (b.geos.some((x) => !x.index)) b.geos = b.geos.map((x) => (x.index ? x.toNonIndexed() : x));
+		const m = new THREE.Mesh(mergeGeometries(b.geos), b.mat);
+		m.castShadow = b.cast;
+		m.receiveShadow = true;
+		g.add(m);
+		for (const x of b.geos) x.dispose();
+	}
+}
+// A wall with round-arched openings, extruded through its thickness. openings: [x, width, height] from the base.
+function arcade(w, h, d, openings) {
+	const s = new THREE.Shape([new THREE.Vector2(-w / 2, 0), new THREE.Vector2(w / 2, 0), new THREE.Vector2(w / 2, h), new THREE.Vector2(-w / 2, h)]);
+	for (const [x, ow, oh] of openings) {
+		const r = ow / 2, p = new THREE.Path();
+		p.moveTo(x - r, 0.03);
+		p.lineTo(x + r, 0.03);
+		p.lineTo(x + r, oh - r);
+		p.absarc(x, oh - r, r, 0, Math.PI, false);
+		p.lineTo(x - r, 0.03);
+		s.holes.push(p);
+	}
+	const geo = new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false, curveSegments: 12 });
+	geo.translate(0, 0, -d / 2);
+	return geo;
+}
+// Every vertex one colour, for the shared painted material (shutters, awnings, signboards, stall goods).
+function tinted(geo, hex) {
+	const c = new THREE.Color(hex), n = geo.attributes.position.count, a = new Float32Array(n * 3);
+	for (let i = 0; i < n; i++) a.set([c.r, c.g, c.b], i * 3);
+	geo.setAttribute("color", new THREE.BufferAttribute(a, 3));
+	return geo;
+}
+const UP = new THREE.Vector3(0, 1, 0);
+// A rounded limb from a to b.
+function limb(parent, a, b, r, mat) {
+	const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A);
+	const m = mesh(new THREE.CapsuleGeometry(r, d.length(), 4, 12), mat, (A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2, parent);
+	m.quaternion.setFromUnitVectors(UP, d.normalize());
+	return m;
+}
+// Sai Baba's white marble murti on his silver throne, in metres: seated with the right leg over the left knee,
+// the left hand on the right foot, in a white kafni with a saffron cloth tied on the head, a gold crown and shawl.
+function saiMurti(marble, cloth, shawl, silver, dark) {
+	const m = new THREE.Group();
+	// the silver throne with its rounded back
+	mesh(box(0.92, 0.42, 0.6), silver, 0, 0.21, -0.04, m);
+	mesh(box(0.98, 0.05, 0.64), silver, 0, 0.445, -0.04, m);
+	mesh(box(0.86, 0.85, 0.07), silver, 0, 0.88, -0.34, m);
+	const back = mesh(new THREE.CylinderGeometry(0.43, 0.43, 0.07, 24, 1, false, Math.PI / 2, Math.PI), silver, 0, 1.3, -0.34, m);
+	back.rotation.x = Math.PI / 2;
+	for (const x of [-0.46, 0.46]) mesh(new THREE.SphereGeometry(0.05, 12, 8), silver, x, 0.5, 0.25, m);
+	// body in the long white robe
+	mesh(new THREE.SphereGeometry(0.22, 18, 12), marble, 0, 0.56, 0.02, m).scale.set(1.05, 0.55, 1.0);
+	mesh(new THREE.CylinderGeometry(0.155, 0.2, 0.46, 18), marble, 0, 0.78, -0.02, m);
+	mesh(new THREE.SphereGeometry(0.2, 18, 12), marble, 0, 0.98, -0.02, m).scale.set(1.12, 0.5, 0.72);
+	mesh(new THREE.CylinderGeometry(0.048, 0.055, 0.1, 12), marble, 0, 1.06, 0, m);
+	// the head and short beard, the eyes looking out
+	mesh(new THREE.SphereGeometry(0.1, 20, 14), marble, 0, 1.16, 0.01, m).scale.set(0.95, 1.08, 1);
+	mesh(new THREE.SphereGeometry(0.075, 14, 10), marble, 0, 1.1, 0.04, m).scale.set(1, 1.1, 0.85);
+	for (const x of [-0.033, 0.033]) mesh(new THREE.SphereGeometry(0.011, 8, 6), dark, x, 1.165, 0.092, m);
+	// the saffron cloth tied over the head, knotted at the side and hanging behind
+	mesh(new THREE.SphereGeometry(0.113, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.43), cloth, 0, 1.165, 0.0, m).scale.set(1, 1.05, 1.02);
+	mesh(box(0.17, 0.26, 0.035), cloth, 0, 1.05, -0.1, m).rotation.x = -0.15;
+	mesh(new THREE.SphereGeometry(0.032, 10, 8), cloth, 0.1, 1.17, -0.01, m);
+	limb(m, [0.11, 1.15, -0.02], [0.15, 0.98, 0.0], 0.026, cloth);
+	// the gold crown
+	mesh(new THREE.CylinderGeometry(0.072, 0.092, 0.09, 16), GOLD, 0, 1.3, 0, m);
+	mesh(new THREE.ConeGeometry(0.05, 0.1, 12), GOLD, 0, 1.39, 0, m);
+	mesh(new THREE.SphereGeometry(0.018, 8, 6), GOLD, 0, 1.45, 0, m);
+	// the orange and gold shawl over the shoulders, and a marigold garland
+	mesh(new THREE.CylinderGeometry(0.205, 0.255, 0.3, 22, 1, true), shawl, 0, 0.86, -0.02, m).scale.z = 0.85;
+	mesh(new THREE.SphereGeometry(0.21, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), shawl, 0, 0.99, -0.02, m).scale.set(1.18, 0.55, 0.85);
+	mesh(box(0.09, 0.26, 0.03), marble, 0, 0.86, 0.2, m).rotation.x = -0.12;
+	const rim = mesh(new THREE.TorusGeometry(0.248, 0.012, 6, 28), GOLD, 0, 0.705, -0.02, m);
+	rim.rotation.x = Math.PI / 2;
+	rim.scale.y = 0.85;
+	const gar = mesh(new THREE.TorusGeometry(0.13, 0.026, 8, 22), MARIGOLD, 0, 0.94, 0.05, m);
+	gar.rotation.x = 1.15;
+	// legs: the left foot down, the right leg crossed over the left knee
+	limb(m, [0.1, 0.52, -0.02], [0.12, 0.54, 0.34], 0.085, marble);
+	mesh(new THREE.CylinderGeometry(0.1, 0.15, 0.44, 16), marble, 0.12, 0.3, 0.38, m);
+	limb(m, [0.12, 0.05, 0.42], [0.12, 0.04, 0.55], 0.04, marble);
+	limb(m, [-0.1, 0.52, -0.02], [-0.21, 0.62, 0.28], 0.085, marble);
+	limb(m, [-0.21, 0.62, 0.3], [0.15, 0.665, 0.4], 0.068, marble);
+	limb(m, [0.15, 0.665, 0.4], [0.28, 0.625, 0.45], 0.04, marble);
+	// the right hand on the right knee, the left hand resting on the right foot
+	limb(m, [-0.2, 0.96, 0], [-0.27, 0.73, 0.08], 0.058, marble);
+	limb(m, [-0.27, 0.73, 0.08], [-0.2, 0.7, 0.3], 0.05, marble);
+	mesh(new THREE.SphereGeometry(0.045, 10, 8), marble, -0.19, 0.7, 0.33, m);
+	limb(m, [0.2, 0.96, 0], [0.26, 0.74, 0.12], 0.058, marble);
+	limb(m, [0.26, 0.74, 0.12], [0.22, 0.71, 0.38], 0.05, marble);
+	mesh(new THREE.SphereGeometry(0.045, 10, 8), marble, 0.22, 0.71, 0.41, m);
+	return m;
+}
+// A neem: a short crooked trunk and a dense, rounded crown of small leaves.
+function neem(parent, x, z, s, seed, crownM, barkM) {
+	const R = rand(seed), t = new THREE.Group();
+	limb(t, [0, 0, 0], [0.05, 0.75, 0.02], 0.085, barkM);
+	for (let i = 0; i < 4; i++) {
+		const a = (i / 4) * Math.PI * 2 + R();
+		limb(t, [0.04, 0.6, 0.01], [Math.cos(a) * 0.5, 1.05 + R() * 0.2, Math.sin(a) * 0.5], 0.04, barkM);
+	}
+	const c = new THREE.Color();
+	for (let i = 0; i < 13; i++) {
+		const a = R() * Math.PI * 2, d = i ? 0.35 + R() * 0.45 : 0;
+		const geo = new THREE.IcosahedronGeometry(0.32 + R() * 0.2, 1);
+		const p = geo.attributes.position;
+		for (let k = 0; k < p.count; k++) {
+			const n = 1 + (R() - 0.5) * 0.22;
+			p.setXYZ(k, p.getX(k) * n, p.getY(k) * n * 0.8, p.getZ(k) * n);
+		}
+		c.setHSL(0.25 + R() * 0.05, 0.42 + R() * 0.15, 0.17 + R() * 0.08);
+		tinted(geo, c);
+		mesh(geo, crownM, Math.cos(a) * d, 1.2 + R() * 0.45 - d * 0.25, Math.sin(a) * d, t);
+	}
+	t.position.set(x, 0.1, z);
+	t.scale.setScalar(s);
+	t.rotation.y = R() * 6;
+	parent.add(t);
+	return t;
+}
+// The Samadhi Mandir, the old Buti Wada: a stone wada with a gilded shikhar over the samadhi and an arcaded hall
+// before it. Dwarkamai with its dhuni across the lane, the Chavadi, Gurusthan under its neem, the queue shed
+// and a little of Shirdi town. Pilgrims walk in from the bazaar along local -x. The Deccan here is not quite
+// level, so the courtyard follows the ground and each building stands on its own plinth.
+function shirdi(site) {
+	const g = new THREE.Group();
+	// ground height in the shrine's frame (the root sits 0.05 below the ground at the centre)
+	const ground = (x, z) => {
+		if (!site) return 0.05;
+		const c = Math.cos(site.facing), sn = Math.sin(site.facing);
+		return site.world.height(site.x + x * c + z * sn, site.z - x * sn + z * c) - site.y + 0.05;
+	};
+	const PAVE = 0.04; // the paving's depth above the ground
+	// a part of the complex, lifted so its paving level (0.1 in its own frame) clears the ground under its footprint
+	let cur = g;
+	const part = (x0, x1, z0, z1) => {
+		let h = -1e9;
+		for (const x of [x0, (x0 + x1) / 2, x1]) for (const z of [z0, (z0 + z1) / 2, z1]) h = Math.max(h, ground(x, z));
+		const p = new THREE.Group();
+		p.position.y = h + PAVE - 0.1;
+		g.add(p);
+		return (cur = p);
+	};
+	const marble = stone(0xf4f0e8, { rows: 5, cols: 2, seed: 81, jitter: 0.03, mortar: 0.94, bumpScale: 0.5, roughness: 0.55 }, 0.8);
+	const cream = stone(0xf0eadf, { rows: 6, cols: 2, seed: 82, jitter: 0.035, mortar: 0.95, streaks: 0.05, bumpScale: 0.35, roughness: 0.7 }, 0.9);
+	const paving = stone(0xcfc7b8, { rows: 4, cols: 4, seed: 83, jitter: 0.05, mortar: 0.84, bumpScale: 1.2 }, 0.9);
+	const plinth = stone(0xb9ae9a, { rows: 5, cols: 3, seed: 84, jitter: 0.08 }, 0.8);
+	const tiles = stone(0x9a4c2e, { rows: 12, cols: 7, seed: 85, jitter: 0.14, mortar: 0.55 }, 0.6);
+	const lime = plaster(0xf2ebdb, 86);
+	const ochre = plaster(0xe9d6a6, 87);
+	const dark = std(0x231a12);
+	const wood = std(0x6a4426, { roughness: 0.8 });
+	const silver = std(0xc4cad0, { metalness: 0.9, roughness: 0.3 });
+	const murtiM = std(0xfbf9f4, { roughness: 0.35, emissive: 0x6a665e, emissiveIntensity: 0.6 });
+	const cloth = std(0xf07a14, { roughness: 0.7, emissive: 0x6a2200, emissiveIntensity: 0.45 });
+	const shawl = std(0xf2a228, { roughness: 0.5, metalness: 0.2, emissive: 0x6a3a00, emissiveIntensity: 0.4, side: THREE.DoubleSide });
+	const velvet = std(0x6e1420, { roughness: 0.8, emissive: 0x2a0408, emissiveIntensity: 0.6 });
+	const iron = std(0x26262a, { metalness: 0.6, roughness: 0.5 });
+	const steel = std(0xc9ced3, { metalness: 0.75, roughness: 0.3 });
+	const shade = std(0x2f7a5a, { roughness: 0.8, side: THREE.DoubleSide });
+	const tin = std(0x8197a6, { metalness: 0.35, roughness: 0.5 });
+	const paint = std(0xffffff, { vertexColors: true, roughness: 0.75 });
+	const crownM = std(0xffffff, { vertexColors: true, flatShading: true, roughness: 0.9 });
+	const bark = std(0x4f3e30, { roughness: 0.95 });
+	const fire = new THREE.MeshBasicMaterial({ color: 0xff7418 }), fireCore = new THREE.MeshBasicMaterial({ color: 0xffd36a });
+	const SAFFRON = 0xff7a12;
+	const pm = (geo, hex, x, y, z, parent = cur) => mesh(tinted(geo, hex), paint, x, y, z, parent);
+	// by extents: a box from x0..x1, y0..y1, z0..z1
+	const blk = (mat, x0, x1, y0, y1, z0, z1, parent = cur) => mesh(box(x1 - x0, y1 - y0, z1 - z0), mat, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, parent);
+
+	// the paved courtyard, laid on the ground out to where the bazaar path ends
+	const X0 = -3.4, X1 = 4.1, Z0 = -3.0, Z1 = 4.8;
+	const court = new THREE.PlaneGeometry(X1 - X0, Z1 - Z0, 30, 31).rotateX(-Math.PI / 2).translate((X0 + X1) / 2, 0, (Z0 + Z1) / 2);
+	const cp = court.attributes.position;
+	for (let i = 0; i < cp.count; i++) cp.setY(i, ground(cp.getX(i), cp.getZ(i)) + PAVE);
+	court.computeVertexNormals();
+	mesh(court, paving, 0, 0, 0, g).castShadow = false;
+
+	// ----- the Samadhi Mandir -----
+	part(-1.5, 1.5, -2.45, 2.45);
+	const FL = 0.26; // the hall floor
+	blk(plinth, -1.5, 1.5, -0.4, FL - 0.02, -2.45, 2.0);
+	blk(marble, -1.48, 1.48, FL - 0.02, FL, -2.43, 2.0);
+	steps(cur, 0, 0.1, 2.3, 1.7, 0.053, 0.15, 2, plinth);
+	blk(plinth, -0.95, 0.95, -0.4, 0.1, 2.0, 2.42);
+	// the old wada behind: two storeys of dressed stone, a band between them and a cornice
+	blk(cream, -1.3, 1.3, FL, 2.05, -2.3, 0.3);
+	blk(marble, -1.34, 1.34, 1.12, 1.17, -2.34, 0.3);
+	blk(marble, -1.38, 1.38, 2.05, 2.12, -2.38, 0.34);
+	for (const [x0, x1, z0, z1] of [[-1.36, 1.36, -2.36, -2.26], [-1.36, 1.36, 0.22, 0.32], [-1.36, -1.26, -2.3, 0.3], [1.26, 1.36, -2.3, 0.3]]) blk(marble, x0, x1, 2.12, 2.24, z0, z1);
+	// shuttered windows on both storeys, and on the front above the hall roof
+	for (const sx of [-1, 1]) for (const z of [-1.85, -1.15, -0.45]) for (const y of [0.62, 1.5]) {
+		blk(dark, sx * 1.29, sx * 1.315, y - 0.17, y + 0.17, z - 0.1, z + 0.1);
+		const arc = mesh(new THREE.TorusGeometry(0.115, 0.018, 6, 14, Math.PI), marble, sx * 1.315, y + 0.07, z, cur);
+		arc.rotation.y = Math.PI / 2;
+	}
+	for (const x of [-0.75, 0, 0.75]) {
+		blk(dark, x - 0.1, x + 0.1, 1.72, 1.98, 0.29, 0.315);
+		mesh(new THREE.TorusGeometry(0.115, 0.018, 6, 14, Math.PI), marble, x, 1.88, 0.315, cur);
+	}
+	// small domed chhatris at the corners of the roof
+	for (const [x, z] of [[-1.18, -2.18], [1.18, -2.18], [-1.18, 0.18], [1.18, 0.18]]) {
+		for (const dx of [-0.08, 0.08]) for (const dz of [-0.08, 0.08]) mesh(box(0.03, 0.2, 0.03), marble, x + dx, 2.22, z + dz, cur);
+		mesh(box(0.22, 0.03, 0.22), marble, x, 2.335, z, cur);
+		mesh(new THREE.SphereGeometry(0.11, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), marble, x, 2.35, z, cur);
+		mesh(new THREE.ConeGeometry(0.018, 0.1, 8), GOLD, x, 2.5, z, cur);
+	}
+	// over the samadhi: a drum, a ribbed white dome and the gilded shikhar with its kalash and flag
+	const SZ = -0.95;
+	mesh(new THREE.CylinderGeometry(0.56, 0.6, 0.3, 8), marble, 0, 2.27, SZ, cur);
+	mesh(new THREE.CylinderGeometry(0.63, 0.63, 0.05, 8), marble, 0, 2.43, SZ, cur);
+	mesh(tower(0.5, (t) => 0.55 * Math.sqrt(Math.max(0, 1 - t * t)) + 0.02, (th) => 1 + 0.035 * Math.abs(Math.cos(th * 8)), 64, 16), marble, 0, 2.45, SZ, cur);
+	mesh(spire(0.95, 0.25, 0.7, 7, ratha, 64), GOLD, 0, 2.86, SZ, cur);
+	amalaka(cur, 3.79, 0.11, GOLD).position.z = SZ;
+	kalash(cur, 3.84, 0.55).position.z = SZ;
+	flag(cur, 0.05, 3.9, SZ, SAFFRON, 1.1);
+
+	// the hall before the samadhi, arcaded on three sides
+	const ARCH = [[-1.1, 0.3, 0.78], [-0.63, 0.36, 0.9], [0, 0.62, 1.05], [0.63, 0.36, 0.9], [1.1, 0.3, 0.78]];
+	mesh(arcade(2.92, 1.33, 0.12, ARCH), cream, 0, FL - 0.03, 1.62, cur);
+	for (const [x, w, h] of ARCH) {
+		mesh(new THREE.TorusGeometry(w / 2 + 0.02, 0.02, 6, 16, Math.PI), marble, x, FL + h - w / 2, 1.69, cur);
+		for (const sx of [-1, 1]) blk(marble, x + sx * (w / 2 + 0.005) - 0.02, x + sx * (w / 2 + 0.005) + 0.02, FL, FL + h - w / 2, 1.67, 1.7);
+	}
+	for (const sx of [-1, 1]) {
+		const side = mesh(arcade(1.4, 1.33, 0.12, [[-0.4, 0.28, 0.8], [0, 0.28, 0.8], [0.4, 0.28, 0.8]]), cream, sx * 1.4, FL - 0.03, 0.98, cur);
+		side.rotation.y = Math.PI / 2;
+	}
+	// the roof: cornice, a sloping chhajja and a balustrade with corner domes
+	blk(marble, -1.48, 1.48, 1.56, 1.64, 0.26, 1.74);
+	blk(marble, -1.52, 1.52, 1.47, 1.5, 1.66, 1.86).rotation.x = 0.22;
+	blk(marble, -1.44, 1.44, 1.82, 1.85, 1.66, 1.71);
+	for (const sx of [-1, 1]) blk(marble, sx * 1.44 - 0.025, sx * 1.44 + 0.025, 1.82, 1.85, 0.3, 1.71);
+	for (let x = -1.38; x <= 1.39; x += 0.115) mesh(new THREE.CylinderGeometry(0.014, 0.02, 0.18, 6), marble, x, 1.73, 1.685, cur);
+	for (const sx of [-1, 1]) for (let z = 0.38; z < 1.66; z += 0.115) mesh(new THREE.CylinderGeometry(0.014, 0.02, 0.18, 6), marble, sx * 1.44, 1.73, z, cur);
+	for (const sx of [-1, 1]) {
+		mesh(box(0.16, 0.16, 0.16), marble, sx * 1.42, 1.72, 1.68, cur);
+		mesh(new THREE.SphereGeometry(0.1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), marble, sx * 1.42, 1.8, 1.68, cur);
+		mesh(new THREE.ConeGeometry(0.016, 0.09, 8), GOLD, sx * 1.42, 1.94, 1.68, cur);
+		flag(cur, sx * 1.42, 1.98, 1.68, SAFFRON, 0.9);
+	}
+	// a marigold toran across the door
+	garland(cur, new THREE.Vector3(-0.42, FL + 1.12, 1.71), new THREE.Vector3(0.42, FL + 1.12, 1.71), 0.05, 0.022);
+	// inside: lamps hung from the ceiling, a velvet backdrop behind the throne, the silver canopy over the murti
+	for (const x of [-0.75, 0.75]) lamp(cur, x, 1.38, 0.95, 0.045);
+	blk(velvet, -0.6, 0.6, FL, FL + 1.2, 0.3, 0.33);
+	mesh(new THREE.TorusGeometry(0.4, 0.03, 8, 28, Math.PI), silver, 0, FL + 0.8, 0.34, cur);
+	for (const sx of [-1, 1]) blk(silver, sx * 0.4 - 0.03, sx * 0.4 + 0.03, FL + 0.1, FL + 0.8, 0.32, 0.36);
+	blk(marble, -0.44, 0.44, FL, FL + 0.1, 0.36, 1.08);
+	blk(GOLD, -0.45, 0.45, FL + 0.09, FL + 0.12, 1.05, 1.09);
+	const MZ = 0.78;
+	const murti = saiMurti(murtiM, cloth, shawl, silver, dark);
+	murti.position.set(0, FL + 0.11, MZ - 0.02);
+	murti.scale.setScalar(0.48);
+	cur.add(murti);
+	for (const x of [-0.42, 0.42]) for (const z of [0.5, 1.04]) mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.86, 10), silver, x, FL + 0.6, z, cur);
+	blk(silver, -0.47, 0.47, FL + 1.03, FL + 1.08, 0.46, 1.08);
+	mesh(new THREE.SphereGeometry(0.22, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), silver, 0, FL + 1.08, 0.77, cur).scale.y = 0.75;
+	kalash(cur, FL + 1.24, 0.3).position.z = 0.77;
+	// the samadhi itself, before the throne, draped and garlanded
+	blk(marble, -0.3, 0.3, FL, FL + 0.15, 1.15, 1.42);
+	blk(cloth, -0.32, 0.32, FL + 0.15, FL + 0.17, 1.13, 1.44);
+	garland(cur, new THREE.Vector3(-0.3, FL + 0.16, 1.45), new THREE.Vector3(0.3, FL + 0.16, 1.45), 0.05, 0.02);
+	for (const x of [-0.75, 0.75]) lamp(cur, x, 1.2, 1.72, 0.04);
+
+	// ----- Dwarkamai, the old mosque across the lane, facing the courtyard -----
+	const DX = 2.75;
+	// raised on its old platform, so the dhuni shows over the queue shed
+	const dw = part(1.85, 3.65, -2.1, 0.5);
+	dw.position.y += 0.2;
+	blk(plinth, 1.85, 3.65, -0.6, 0.3, -2.1, -0.05);
+	steps(cur, DX, -0.1, 0.4, 0.7, 0.08, 0.09, 4, plinth);
+	blk(plinth, DX - 0.4, DX + 0.4, -0.6, -0.1, -0.05, 0.42);
+	blk(lime, 1.95, 3.55, 0.3, 0.95, -2.0, -0.66);
+	blk(dark, 2.55, 2.95, 0.3, 0.8, -0.67, -0.64);
+	// a low tiled roof on wooden posts over the verandah where the dhuni burns
+	for (const sz of [-1, 1]) {
+		const r = blk(tiles, -0.95, 0.95, 0, 0.04, -0.53, 0.53);
+		r.position.set(DX, 1.1, -1.08 + sz * 0.5);
+		r.rotation.x = sz * 0.3;
+	}
+	const gab = new THREE.ExtrudeGeometry(new THREE.Shape([new THREE.Vector2(-0.97, 0), new THREE.Vector2(0.97, 0), new THREE.Vector2(0, 0.3)]), { depth: 1.6, bevelEnabled: false });
+	gab.translate(0, 0, -0.8);
+	mesh(gab, lime, DX, 0.95, -1.08, cur).rotation.y = Math.PI / 2;
+	for (const x of [1.98, 2.36, 3.14, 3.52]) mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.66, 8), wood, x, 0.63, -0.14, cur);
+	blk(wood, 1.9, 3.6, 0.93, 0.98, -0.18, -0.1);
+	// the small arched front, raised above the eaves, with Baba's saffron flags
+	mesh(arcade(0.78, 1.0, 0.1, [[0, 0.36, 0.6]]), lime, DX, 0.27, -0.1, cur);
+	blk(lime, DX - 0.3, DX + 0.3, 1.27, 1.37, -0.15, -0.05);
+	for (const sx of [-1, 1]) {
+		mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.3, 8), lime, DX + sx * 0.37, 1.35, -0.1, cur);
+		mesh(new THREE.SphereGeometry(0.045, 10, 8), lime, DX + sx * 0.37, 1.52, -0.1, cur);
+		mesh(new THREE.ConeGeometry(0.012, 0.07, 6), GOLD, DX + sx * 0.37, 1.59, -0.1, cur);
+	}
+	blk(cloth, DX - 0.39, DX + 0.39, 1.02, 1.05, -0.06, -0.04);
+	mesh(new THREE.TorusGeometry(0.2, 0.02, 6, 16, Math.PI), cloth, DX, 0.69, -0.04, cur);
+	mesh(new THREE.SphereGeometry(0.1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), lime, DX, 1.37, -0.1, cur);
+	flag(cur, DX, 1.45, -0.1, SAFFRON, 1.1);
+	flag(cur, 1.95, 1.05, -1.9, SAFFRON, 0.9);
+	flag(cur, 3.55, 1.05, -1.9, SAFFRON, 0.9);
+	// the dhuni Baba kept burning, behind its grill
+	const DH = [3.33, -0.4];
+	blk(dark, DH[0] - 0.13, DH[0] + 0.13, 0.3, 0.36, DH[1] - 0.13, DH[1] + 0.13);
+	blk(std(0x8a1c06, { emissive: 0xff3a00, emissiveIntensity: 0.8 }), DH[0] - 0.1, DH[0] + 0.1, 0.36, 0.375, DH[1] - 0.1, DH[1] + 0.1);
+	for (const a of [0.3, 1.9, 3.5]) mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.22, 6), std(0x3a2416), DH[0], 0.39, DH[1], cur).rotation.set(Math.PI / 2 - 0.25, a, 0, "YXZ");
+	for (const [dx, dz, h] of [[0, 0, 0.17], [0.05, 0.03, 0.11], [-0.05, -0.02, 0.12], [0.02, -0.05, 0.09]]) {
+		mesh(new THREE.ConeGeometry(0.36 * h, h, 8), fire, DH[0] + dx, 0.38 + h / 2, DH[1] + dz, cur);
+		mesh(new THREE.ConeGeometry(0.16 * h, h * 0.6, 8), fireCore, DH[0] + dx, 0.38 + h * 0.3, DH[1] + dz + 0.01, cur);
+	}
+	const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xff8a3a, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+	glow.position.set(DH[0], 0.48, DH[1]);
+	glow.scale.setScalar(0.7);
+	cur.add(glow);
+	for (let i = 0; i <= 8; i++) {
+		const u = -0.17 + (i / 8) * 0.34;
+		for (const [x, z] of [[DH[0] + u, DH[1] - 0.17], [DH[0] + u, DH[1] + 0.17], [DH[0] - 0.17, DH[1] + u], [DH[0] + 0.17, DH[1] + u]]) mesh(box(0.012, 0.36, 0.012), iron, x, 0.48, z, cur);
+	}
+	for (const y of [0.31, 0.66]) for (const [w, d, dz, dx] of [[0.36, 0.02, -0.17, 0], [0.36, 0.02, 0.17, 0], [0.02, 0.36, 0, -0.17], [0.02, 0.36, 0, 0.17]]) mesh(box(w, 0.02, d), iron, DH[0] + dx, y, DH[1] + dz, cur);
+	// the stone Baba sat on, on its little plinth
+	blk(marble, 2.08, 2.3, 0.3, 0.36, -0.5, -0.28);
+	mesh(new THREE.IcosahedronGeometry(0.075, 1), stone(0x7a6c5c, { rows: 3, cols: 2, mortar: 0.95, seed: 88 }, 0.5), 2.19, 0.4, -0.39, cur).scale.set(1.3, 0.6, 1.0);
+
+	// ----- the Chavadi, where Baba slept on alternate nights; it faces the courtyard across the lane -----
+	part(3.8, 4.75, 0.1, 1.4);
+	const ch = new THREE.Group();
+	blk(plinth, -0.6, 0.6, -0.4, 0.22, -0.45, 0.55, ch);
+	blk(ochre, -0.55, 0.55, 0.22, 0.8, -0.42, 0.3, ch);
+	blk(lime, -0.6, 0.6, 0.8, 0.85, -0.47, 0.35, ch);
+	for (const [x0, x1, z0, z1] of [[-0.6, 0.6, 0.3, 0.35], [-0.6, -0.55, -0.47, 0.35], [0.55, 0.6, -0.47, 0.35], [-0.6, 0.6, -0.47, -0.42]]) blk(lime, x0, x1, 0.85, 0.95, z0, z1, ch);
+	blk(dark, -0.13, 0.13, 0.22, 0.62, 0.3, 0.315, ch);
+	blk(wood, -0.16, 0.16, 0.62, 0.66, 0.3, 0.32, ch);
+	for (const x of [-0.36, 0.36]) {
+		blk(dark, x - 0.08, x + 0.08, 0.4, 0.6, 0.3, 0.315, ch);
+		blk(wood, x - 0.1, x + 0.1, 0.38, 0.4, 0.3, 0.33, ch);
+	}
+	blk(tin, -0.6, 0.6, 0.66, 0.68, 0.3, 0.6, ch).rotation.x = 0.25;
+	for (const x of [-0.5, 0.5]) mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.5, 8), wood, x, 0.4, 0.55, ch);
+	flag(ch, 0.45, 0.95, -0.3, SAFFRON, 0.8);
+	ch.position.set(4.3, 0, 0.75);
+	ch.rotation.y = -Math.PI / 2;
+	cur.add(ch);
+
+	// ----- Gurusthan: the padukas on a platform under the neem where Baba was first seen as a youth -----
+	const GU = [-1.98, -1.42];
+	part(GU[0] - 0.45, GU[0] + 0.45, GU[1] - 0.45, GU[1] + 0.45);
+	mesh(new THREE.CylinderGeometry(0.4, 0.42, 0.1, 8), marble, GU[0], 0.15, GU[1], cur);
+	mesh(new THREE.CylinderGeometry(0.44, 0.44, 0.5, 8), plinth, GU[0], -0.13, GU[1], cur);
+	for (const [dx, dz] of [[-0.16, -0.16], [0.16, -0.16], [-0.16, 0.16], [0.16, 0.16]]) mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.38, 8), marble, GU[0] + dx, 0.39, GU[1] + dz, cur);
+	mesh(box(0.42, 0.04, 0.42), marble, GU[0], 0.6, GU[1], cur);
+	mesh(new THREE.SphereGeometry(0.17, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), marble, GU[0], 0.62, GU[1], cur);
+	mesh(new THREE.ConeGeometry(0.016, 0.08, 8), GOLD, GU[0], 0.83, GU[1], cur);
+	blk(marble, GU[0] - 0.09, GU[0] + 0.09, 0.2, 0.26, GU[1] - 0.09, GU[1] + 0.09);
+	for (const dx of [-0.035, 0.035]) mesh(new THREE.CapsuleGeometry(0.018, 0.04, 4, 8), silver, GU[0] + dx, 0.27, GU[1], cur).rotation.x = Math.PI / 2;
+	garland(cur, new THREE.Vector3(GU[0] - 0.16, 0.56, GU[1] + 0.17), new THREE.Vector3(GU[0] + 0.16, 0.56, GU[1] + 0.17), 0.08, 0.018);
+	for (const [x, z, s, seed] of [[-2.3, -2.05, 1.25, 89], [4.55, -2.0, 0.85, 90], [-3.9, 3.7, 0.8, 91], [-0.9, -4.6, 0.9, 97]]) {
+		part(x - 0.2, x + 0.2, z - 0.2, z + 0.2);
+		neem(cur, x, z, s, seed, crownM, bark);
+	}
+
+	// ----- the queue shed: steel railings in zig-zag lanes under a shade, leading in at the hall's side arch -----
+	cur = g;
+	const gy = (x, z) => ground(x, z) + PAVE;
+	const rod = (a, b, r) => {
+		const A = new THREE.Vector3(...a), B = new THREE.Vector3(...b), d = B.clone().sub(A);
+		mesh(new THREE.CylinderGeometry(r, r, d.length(), 6), steel, (A.x + B.x) / 2, (A.y + B.y) / 2, (A.z + B.z) / 2, g).quaternion.setFromUnitVectors(UP, d.normalize());
+	};
+	// each post stands on the paving where it is; the rails run from post to post
+	const rail = (x0, z0, x1, z1) => {
+		const n = Math.max(1, Math.round(Math.hypot(x1 - x0, z1 - z0) / 0.3));
+		let prev = null;
+		for (let i = 0; i <= n; i++) {
+			const x = x0 + ((x1 - x0) * i) / n, z = z0 + ((z1 - z0) * i) / n, y = gy(x, z);
+			rod([x, y, z], [x, y + 0.31, z], 0.011);
+			if (prev) for (const h of [0.3, 0.16]) rod([prev[0], prev[1] + h, prev[2]], [x, y + h, z], 0.009);
+			prev = [x, y, z];
+		}
+	};
+	const Q0 = 2.0, Q1 = 3.75;
+	rail(1.48, 0.77, Q1, 0.77);
+	rail(1.48, 1.19, Q1 - 0.3, 1.19);
+	rail(Q0 + 0.3, 1.61, Q1, 1.61);
+	rail(Q0, 2.03, Q1 - 0.3, 2.03);
+	rail(Q0, 2.45, Q1, 2.45);
+	rail(Q1, 0.77, Q1, 2.45);
+	rail(Q0, 1.19, Q0, 2.03);
+	// a green shade cloth on a light steel frame, sloping back so the view of Dwarkamai stays open
+	const QF = 2.5, QB = 0.72;
+	let yf = -1e9, yb = -1e9;
+	for (let x = Q0; x <= Q1 + 0.01; x += 0.35) {
+		yf = Math.max(yf, gy(x, QF) + 0.88);
+		yb = Math.max(yb, gy(x, QB) + 0.66);
+	}
+	for (const x of [Q0 - 0.05, (Q0 + Q1) / 2, Q1 + 0.05]) {
+		rod([x, gy(x, QF), QF], [x, yf, QF], 0.014);
+		rod([x, gy(x, QB), QB], [x, yb, QB], 0.014);
+	}
+	for (const [z, y] of [[QF, yf], [QB, yb]]) rod([Q0 - 0.1, y, z], [Q1 + 0.1, y, z], 0.016);
+	const sh = blk(shade, Q0 - 0.12, Q1 + 0.12, -0.008, 0.008, -0.5, 0.5);
+	sh.position.set((Q0 + Q1) / 2, (yf + yb) / 2 + 0.02, (QF + QB) / 2);
+	sh.scale.z = Math.hypot(QF - QB + 0.2, yf - yb);
+	sh.rotation.x = -Math.atan2(yf - yb, QF - QB);
+
+	// ----- a little of Shirdi town: flat roofs, water tanks, shop shutters, flower and prasad stalls -----
+	const walls = [windowsTex(0xebe2cf, 0x3a6aa0, 92), windowsTex(0xf0d8a6, 0x7a3a24, 93), windowsTex(0xd6e2e6, 0x2f6a4a, 94), windowsTex(0xf1cdb6, 0x6a3a7a, 95)];
+	const shutters = [0x5d7480, 0x8a3a2a, 0x3f6a5a, 0x6c6f72, 0x2c5a8a];
+	const signs = [0xd8261c, 0xf2c14e, 0x1f5fb0, 0x2f8a4a, 0xff7a12];
+	const RT = rand(96);
+	const building = (x, z, w, d, h, ry, i) => {
+		const r = Math.max(w, d) / 2;
+		part(x - r, x + r, z - r, z + r);
+		const b = new THREE.Group();
+		mesh(box(w, h + 0.5, d), walls[i % walls.length], 0, 0.1 + (h - 0.5) / 2, 0, b);
+		mesh(box(w + 0.05, 0.05, d + 0.05), lime, 0, 0.1 + h + 0.025, 0, b);
+		for (const [x0, x1, z0, z1] of [[-w / 2, w / 2, d / 2 - 0.03, d / 2], [-w / 2, w / 2, -d / 2, -d / 2 + 0.03], [-w / 2, -w / 2 + 0.03, -d / 2, d / 2], [w / 2 - 0.03, w / 2, -d / 2, d / 2]]) blk(lime, x0, x1, 0.15 + h, 0.24 + h, z0, z1, b);
+		// the shop at the front: a rolling shutter half up, a signboard above
+		pm(box(w * 0.7, 0.26, 0.02), shutters[i % shutters.length], 0, 0.36, d / 2 + 0.01, b);
+		pm(box(w * 0.7, 0.1, 0.03), 0x1a1612, 0, 0.18, d / 2 + 0.01, b);
+		pm(box(w * 0.85, 0.09, 0.03), signs[i % signs.length], 0, 0.56, d / 2 + 0.02, b);
+		if (RT() < 0.75) pm(new THREE.CylinderGeometry(0.09, 0.09, 0.16, 12), 0x1c1c1e, (RT() - 0.5) * w * 0.5, 0.25 + h, (RT() - 0.5) * d * 0.4, b);
+		b.position.set(x, 0, z);
+		b.rotation.y = ry;
+		cur.add(b);
+	};
+	[
+		[-3.45, -2.4, 1.0, 0.9, 0.95, 0], [-2.2, -3.65, 0.9, 0.8, 0.7, 0], [-4.45, -1.9, 0.8, 1.0, 0.8, Math.PI / 2], [0.35, -3.95, 1.0, 0.7, 1.05, 0],
+		[1.6, -3.55, 1.0, 0.8, 0.8, 0], [2.85, -3.15, 0.9, 0.8, 1.1, 0], [3.95, -2.9, 0.8, 0.9, 0.75, -0.3], [4.8, -0.85, 0.7, 0.9, 0.7, -Math.PI / 2],
+		[-3.05, 4.65, 1.0, 0.7, 0.85, Math.PI], [-1.85, 5.2, 0.9, 0.6, 0.7, Math.PI], [-4.35, 2.4, 0.8, 0.8, 0.8, Math.PI / 2],
+	].forEach(([x, z, w, d, h, ry], i) => building(x, z, w, d, h, ry, i));
+	const stall = (x, z, ry, i) => {
+		part(x - 0.3, x + 0.3, z - 0.3, z + 0.3);
+		const s = new THREE.Group();
+		mesh(box(0.52, 0.5, 0.26), wood, 0, 0.05, 0, s);
+		for (const x of [-0.24, 0.24]) mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.46, 6), wood, x, 0.33, -0.12, s);
+		pm(box(0.6, 0.015, 0.4), [0xe2761b, 0x1f5fb0, 0x2f8a4a, 0xd8261c][i % 4], 0, 0.53, 0.02, s).rotation.x = 0.28;
+		// heaps of marigolds, coconuts, and boxes of prasad
+		for (const dx of [-0.16, 0, 0.16]) mesh(new THREE.SphereGeometry(0.05, 10, 6), MARIGOLD, dx, 0.31, 0.04, s).scale.y = 0.6;
+		for (const dx of [-0.18, -0.06]) pm(new THREE.SphereGeometry(0.035, 8, 6), 0x6a4a2a, dx, 0.33, -0.07, s);
+		for (const dx of [0.08, 0.18]) pm(box(0.07, 0.035, 0.05), i % 2 ? 0xf2c14e : 0xe0457b, dx, 0.32, -0.07, s);
+		garland(s, new THREE.Vector3(-0.26, 0.48, 0.2), new THREE.Vector3(0.26, 0.48, 0.2), 0.05, 0.016);
+		s.position.set(x, 0.1, z);
+		s.rotation.y = ry;
+		cur.add(s);
+	};
+	[[-2.55, -0.78, 0], [-2.6, 3.6, Math.PI], [1.0, -2.75, 0], [-0.3, -2.95, 0]].forEach(([x, z, ry], i) => stall(x, z, ry, i));
+	// tall flagpoles with saffron flags about the courtyard
+	for (const [x, z] of [[-1.75, 1.95], [1.75, 0.45], [-3.1, -1.6], [3.75, -0.25]]) {
+		part(x, x, z, z);
+		mesh(new THREE.CylinderGeometry(0.014, 0.02, 1.8, 6), steel, x, 0.9, z, cur);
+		flag(cur, x, 1.5, z, SAFFRON, 1.2);
+	}
+
+	mergeStatic(g);
+	// pilgrims about the courtyard, in the queue, at Dwarkamai and Gurusthan: [x, z, y]
+	const crowd = [
+		[-1.0, 2.25], [-1.45, 3.75], [1.05, 3.65], [-0.7, 4.65], [0.95, 4.95], [-1.9, 4.35],
+		[2.3, 0.98], [3.05, 1.4], [2.55, 1.82], [3.3, 2.24], [2.7, 2.24], [1.75, 0.98],
+		[1.85, 0.5], [-1.55, -0.85], [-2.0, -0.72], [2.6, 2.95],
+	].map(([x, z]) => [x, z, ground(x, z) + PAVE]);
+	crowd.push([2.95, -0.35, dw.position.y + 0.3]);
+	return { g, peaks: [], crowd };
+}
+
+const BUILDERS = { kedarnath, badrinath, tirupati: tirumala, bhimashankar, shirdi };
 
 // A sky-and-earth environment so gilding and bronze catch light.
 function environment(renderer) {
@@ -1032,7 +1520,7 @@ export function buildLandmarks(world, scene, renderer, crowdFigure) {
 	for (const s of SHRINES) {
 		const w = toWorld(s.lon, s.lat);
 		const y = world.height(w.x, w.z);
-		const spec = BUILDERS[s.key]();
+		const spec = BUILDERS[s.key]({ world, x: w.x, y, z: w.z, facing: s.facing });
 		if (crowdFigure && spec.crowd) {
 			spec.crowd.forEach(([x, z, fy], i) => {
 				const f = crowdFigure(s.key.length * 100 + i * 7 + 3, s.key);
