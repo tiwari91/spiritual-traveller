@@ -443,6 +443,18 @@ function kSummit(name) {
 	});
 	return rig.summits[name];
 }
+// the big peaks of the stops' decor, as bounding spheres in the world (found once)
+function kBig() {
+	if (rig.kBig) return rig.kBig;
+	rig.kBig = [];
+	for (const l of landmarks) l.decor.traverse((o) => {
+		if (!o.isMesh || !o.geometry) return;
+		o.geometry.computeBoundingSphere();
+		const s = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld);
+		if (s.radius > 2.5) rig.kBig.push(s);
+	});
+	return rig.kBig;
+}
 function kView(l, v, target) {
 	const key = app.at + "|" + (innerWidth < innerHeight);
 	if (rig.kView && rig.kView.key === key) return rig.kView;
@@ -464,6 +476,18 @@ function kView(l, v, target) {
 		let blocked = occlusion(head, c) != null || occlusion(target, c) != null;
 		for (let q = 0.06; q < 0.97 && !blocked; q += 0.04) if (world.height(lerp(c.x, head.x, q), lerp(c.z, head.z, q)) > lerp(c.y, head.y, q) - 0.05) blocked = true;
 		let score = (blocked ? -10 : 0) + Math.min(clear, 1) * 2 - up * 2 - dk * 0.5 - Math.abs(yo) * 0.5 - lift * 0.1;
+		// and no great mountain of the decor (Gurla's snows, a gompa's rock) standing close in the side of the frame
+		{
+			const f = target.clone().sub(c);
+			const fa = Math.atan2(f.x, f.z);
+			for (const s of kBig()) {
+				if (top && s.center.distanceTo(top) < s.radius + 1) continue;
+				const dx = s.center.x - c.x, dz = s.center.z - c.z, dd = Math.hypot(dx, dz) - s.radius;
+				if (dd > 14) continue;
+				const turn = Math.abs(Math.atan2(Math.sin(Math.atan2(dx, dz) - fa), Math.cos(Math.atan2(dx, dz) - fa)));
+				if (turn < halfW + Math.atan2(s.radius, Math.max(1, dd + s.radius))) score -= 3 * (1 - Math.max(0, dd) / 14);
+			}
+		}
 		if (top) {
 			// the summit's direction from the camera, against where the camera looks
 			const f = target.clone().sub(c).normalize(), s = top.clone().sub(c);

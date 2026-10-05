@@ -85,8 +85,19 @@ function frame(ctx) {
 	};
 	const take = (lx, lz, r) => taken.push([lx, lz, r]);
 	// the first of the candidate spots that is free (radius r), taken
-	const spot = (cands, r) => {
-		for (const [lx, lz] of cands) if (free(lx, lz, r) && Math.hypot(lx, lz) < 4.6) {
+	// how far the ground falls across a spot of radius r
+	const tilt = (lx, lz, r) => {
+		let lo = Infinity, hi = -Infinity;
+		for (const [u, v] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) {
+			const y = ground(lx + u, lz + v);
+			lo = Math.min(lo, y);
+			hi = Math.max(hi, y);
+		}
+		return hi - lo;
+	};
+	// (a building's spot also wants the ground near enough level: `most`, the fall across it it can be set into)
+	const spot = (cands, r, most = Infinity) => {
+		for (const [lx, lz] of cands) if (free(lx, lz, r) && Math.hypot(lx, lz) < 4.6 && tilt(lx, lz, r) <= most) {
 			take(lx, lz, r);
 			return [lx, lz];
 		}
@@ -101,7 +112,9 @@ function frame(ctx) {
 		}
 		return out;
 	};
-	return { toW, ground, free, take, spot, ring, rest };
+	// the lowest ground under a spot of radius r, to set a building into the slope
+	const floor = (lx, lz, r) => Math.min(...[[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].map(([u, v]) => ground(lx + u, lz + v)));
+	return { toW, ground, free, take, spot, ring, rest, tilt, floor };
 }
 
 // ---------- pieces ----------
@@ -280,6 +293,9 @@ function kailashMesh(H = 12, R0 = 6.2) {
 		while (cuts[i + 1] < t) i++;
 		return [i, (t - cuts[i]) / (cuts[i + 1] - cuts[i])];
 	};
+	// each stratum its own: how much snow its ledge holds (some none), how broken that line is, its rock's tone
+	const bandP = cuts.map(() => ({ w: R() < 0.22 ? 0 : 0.05 + R() * R() * 0.34, gap: 0.42 + R() * 0.22, fq: 2 + R() * 5, o: R() * 40, tone: R() }));
+	const bidx = new Uint16Array(N);
 	for (let j = 0; j <= NH; j++) {
 		// the first ring is a skirt, straight down into the ground under the foot of the faces
 		const t = Math.max(0, (j - 1) / (NH - 1));
@@ -296,10 +312,10 @@ function kailashMesh(H = 12, R0 = 6.2) {
 			const u = Math.max(0, (t - 0.08) / 0.92);
 			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.72 * Math.pow(u, 0.9)) * (u > 0.82 ? Math.sqrt(Math.max(0, 1 - ((u - 0.82) / 0.18) ** 2)) : 1));
 			// the strata dip gently to the west and wander a little
-			const [bi, f] = bandAt(clamp(t + 0.035 * Math.sin(th) + 0.012 * Math.sin(th * 3 + 1) + 0.01 * (fbm(th * 2, t * 3, 2) - 0.5), 0, 0.999));
+			const [bi, f] = bandAt(clamp(t + 0.035 * Math.sin(th) + 0.012 * Math.sin(th * 3 + 1) + 0.03 * (fbm(th * 1.6 + 5, t * 2.5, 3) - 0.5), 0, 0.999));
 			const jag = fbm(th * 5 + bi, bi * 0.7, 2);
-			// each ledge steps back by a little; some bands are cliffs, some shelves
-			r *= 1 - (0.004 + 0.008 * jag) * smoothstep(0.1, 0.9, f) * (t < 0.93 ? 1 : 0);
+			// each ledge steps back by a little; some bands are cliffs, some shelves (the snowy ones the broader shelves)
+			r *= 1 - (0.004 + 0.008 * jag) * (0.6 + bandP[bi].w * 3) * smoothstep(0.1, 0.9, f) * (t < 0.93 ? 1 : 0);
 			// the gully down the middle of the south face (the 'stairway'), and a lesser one on the north
 			const ds = Math.atan2(Math.sin(th), Math.cos(th)), dn = Math.atan2(Math.sin(th - Math.PI), Math.cos(th - Math.PI));
 			const gS = Math.exp(-((ds / (0.07 + 0.04 * fbm(t * 9, 3, 2))) ** 2)) * smoothstep(0.1, 0.22, t) * (1 - smoothstep(0.8, 0.92, t));
@@ -314,6 +330,7 @@ function kailashMesh(H = 12, R0 = 6.2) {
 			band[k] = f;
 			gul[k] = gS + gN;
 			face[k] = jag;
+			bidx[k] = bi;
 		}
 	}
 	const idx = [];
@@ -334,13 +351,18 @@ function kailashMesh(H = 12, R0 = 6.2) {
 		const i = k % (NA + 1), th = (i / NA) * Math.PI * 2 + Math.PI / 4;
 		const north = smoothstep(0.2, -0.8, nz);
 		const broken = fbm(th * 22, t * 40, 2);
-		const ledge = smoothstep(0.84, 0.97, f) * smoothstep(0.5, 0.72, fbm(th * 9 + face[k] * 4, t * 26, 3) + 0.15 * face[k]) * (0.4 + 0.6 * t);
+		// snow lies along the top of each stratum's ledge: thicker on some, none on others, in drifts broken by bare rock,
+		// and more where the shelf is flatter
+		const P = bandP[bidx[k]];
+		const along = fbm(th * P.fq + P.o, t * 7 + P.o, 3) + 0.25 * (fbm(th * 17 + P.o, t * 30, 2) - 0.5);
+		const lip = P.w ? smoothstep(1 - P.w * (0.6 + 0.8 * along) - 0.03, 1 - P.w * 0.25, f) : 0;
+		const ledge = lip * smoothstep(P.gap, P.gap + 0.12, along + 0.12 * face[k]) * (0.55 + 0.45 * smoothstep(0.15, 0.55, ny)) * (0.45 + 0.55 * t);
 		const flat = smoothstep(0.82, 0.95, ny) * smoothstep(0.45, 0.65, fbm(th * 13, t * 31, 2));
 		let s = Math.max(ledge, flat * 0.8) * smoothstep(0.03, 0.2, t) * (1 - north * 0.4);
 		void broken;
 		s = Math.max(s, smoothstep(0.76, 0.88, t + (fbm(th * 4, t * 6, 3) - 0.5) * 0.16)); // the snow on the dome
 		s = Math.max(s, smoothstep(0.25, 0.6, gul[k]) * smoothstep(0.35, 0.6, broken + 0.2) * 0.95); // down the gully
-		tmp.copy(rock).lerp(rock2, fbm(th * 3, t * 9, 2)).lerp(rock3, smoothstep(0.55, 0.8, face[k]) * 0.6);
+		tmp.copy(rock).lerp(rock2, fbm(th * 3, t * 9, 2) * (0.5 + P.tone)).lerp(rock3, smoothstep(0.55, 0.8, face[k]) * 0.6 * P.tone);
 		tmp.multiplyScalar(0.9 + 0.14 * (1 - f));
 		if (t < 0.08) tmp.lerp(new THREE.Color(0x6a5e52), 0.6);
 		tmp.lerp(snow, clamp(s, 0, 1)).lerp(blue, clamp(s, 0, 1) * north * 0.4);
@@ -351,6 +373,29 @@ function kailashMesh(H = 12, R0 = 6.2) {
 	m.castShadow = true;
 	m.receiveShadow = true;
 	m.name = "kailash";
+	return m;
+}
+// A snow massif: peak()'s ridged cone drawn out into a broad dome, its shoulders rounded and only a small summit.
+function massif(r, h, seed, snowLine, rock) {
+	const m = peak(r, h, seed, snowLine, rock), p = m.geometry.attributes.position;
+	for (let i = 0; i < p.count; i++) {
+		const t = clamp(p.getY(i) / h, 0, 1);
+		if (t >= 0.999) continue;
+		const k = lerp(1, Math.sqrt(1 - t * t) / (1 - t), 0.65);
+		p.setX(i, p.getX(i) * k);
+		p.setZ(i, p.getZ(i) * k);
+	}
+	m.geometry.computeVertexNormals();
+	// dark rock ribs and icefalls where the slopes are too steep to hold snow, between the white of the glaciers
+	const n = m.geometry.attributes.normal, c = m.geometry.attributes.color, rk = new THREE.Color(0x4a423c), tmp = new THREE.Color();
+	for (let i = 0; i < p.count; i++) {
+		const x = p.getX(i), y = p.getY(i), z = p.getZ(i), a = Math.atan2(z, x);
+		const rib = smoothstep(0.55, 0.75, fbm(Math.cos(a) * 3 + seed, Math.sin(a) * 3 + (y / h) * 4, 3));
+		const steep = smoothstep(0.8, 0.5, n.getY(i));
+		const k = clamp(steep * (0.4 + 0.6 * rib) + rib * 0.25 * (1 - y / h), 0, 0.85);
+		tmp.setRGB(c.getX(i), c.getY(i), c.getZ(i)).lerp(rk, k);
+		c.setXYZ(i, tmp.r, tmp.g, tmp.b);
+	}
 	return m;
 }
 // A collar of cloud round the mountain's flanks, drifting slowly.
@@ -506,13 +551,13 @@ function omparvat(ctx) {
 	}
 	// the camp: prefab huts with green and red tin roofs, an olive ITBP tent, a water tank
 	for (const [roof, w, d] of [[0x2f6a3a, 0.9, 0.55], [0xa8322a, 0.8, 0.5], [0x2f6a3a, 1.0, 0.55], [0x3a5a8a, 0.7, 0.5]]) {
-		const s = F.spot(F.ring(2.0, 4.2, 30, R() * 1000 | 0), Math.max(w, d) * 0.65);
+		const s = F.spot(F.ring(2.0, 4.2, 40, R() * 1000 | 0), Math.max(w, d) * 0.65, 0.2);
 		if (!s) continue;
-		hut(b, s[0], F.ground(s[0], s[1]), s[1], w, d, Math.atan2(-s[0], -s[1]) + Math.PI, roof);
+		hut(b, s[0], F.floor(s[0], s[1], Math.max(w, d) * 0.5), s[1], w, d, Math.atan2(-s[0], -s[1]) + Math.PI, roof);
 	}
-	const t = F.spot(F.ring(2.2, 4.2, 30, 7), 0.45);
+	const t = F.spot(F.ring(2.2, 4.2, 40, 7), 0.45, 0.15);
 	if (t) {
-		const y = F.ground(t[0], t[1]);
+		const y = F.floor(t[0], t[1], 0.35);
 		b.add(T.gable, place(t[0], y - 0.03, t[1], R() * 3, 0.6, 0.38, 0.7), 0x5a6238);
 		b.add(T.box, place(t[0], y - 0.03, t[1], 0, 0.62, 0.05, 0.72), 0x4a5030);
 	}
@@ -604,13 +649,15 @@ function mansarovar(ctx) {
 		// Chiu Gompa on its rock above the lake's north-western shore, away from the water and off the road
 		const chiu = clearSpot(P.chiu[0] - 0.035, P.chiu[1] + 0.022, 3.4, -Math.PI / 4);
 		decor.add(gompa(h.world, chiu.x, chiu.z, Math.PI * 0.8, 1.1, 31));
-		// the snow summit of Gurla Mandhata, south of the lakes, on the massif the ground already has
+		// the snows of Gurla Mandhata, south of the lakes, on the massif the ground already has: a broad glaciated
+		// mass of rounded summits (seen from Nabhidhang and from the lakes, slender cones here read as needles), set
+		// a little south of its place so the camera behind the traveller at Qugu does not stand at its foot
 		const gw = toWorld(P.gurla[0], P.gurla[1]);
 		const gy = h.world.height(gw.x, gw.z);
-		for (const [ox, oz, r, hh, seed] of [[0, 0, 3.0, 14, 41], [1.6, 0.9, 2.2, 10, 42], [-1.5, 0.7, 2.0, 9, 43], [0.4, -1.4, 1.9, 8.5, 44]]) {
+		for (const [ox, oz, r, hh, seed] of [[0, 1.2, 4.0, 8.5, 41], [2.6, 2.4, 3.2, 6, 42], [-2.4, 2.0, 3.0, 5.5, 43], [-3.4, -0.8, 2.8, 5, 44]]) {
 			const px = gw.x + ox, pz = gw.z + oz;
-			if (wayDist(px, pz) < r * 1.35 + 1.0) continue;
-			const pk = peak(r, hh, seed, 0.3, 0x5a5048);
+			if (wayDist(px, pz) < r * 1.1 + 0.8) continue;
+			const pk = massif(r, hh, seed, 0.42, 0x5a5048);
 			pk.position.set(px, Math.min(gy, h.world.height(px, pz)) - 2.2, pz);
 			pk.rotation.y = seed;
 			decor.add(pk);

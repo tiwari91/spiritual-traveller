@@ -211,11 +211,12 @@ export function kHeight(lon, lat, h, base) {
 	{
 		const ax = P.nabhidhang[0] * U, ay = P.nabhidhang[1] * U, dx = OM_DIR[0], dy = OM_DIR[1];
 		const tr = (x - ax) * dx + (y - ay) * dy, t = clamp(tr, 0, 8.5), d = Math.hypot(x - ax - dx * t, y - ay - dy * t);
-		if (d < 6 && tr > 0.6) h = smin(h, 49.9 + t * 0.12 + 1.4 * Math.pow(Math.max(0, d - 1.1), 1.15) + Math.max(0, 1.6 - tr) * 2, 0.8);
-	}
+		if (d < 6 && tr > 0.6) h = smin(h, 49.9 + t * 0.12 + 1.4 * Math.pow(Math.max(0, d - 1.1), 1.15) + Math.max(0, 1.6 - tr) * 2, 0.8);	}
 	// Om Parvat above Nabhidhang
-	const dom = Math.hypot(x - P.omParvat[0] * U, y - P.omParvat[1] * U);
-	if (dom < 4.5) h += 11 * Math.pow(1 - dom / 4.5, 1.5);
+	// (only its shoulders here, under the peak itself, kailash-landmarks.js, at the head of the side valley: a second
+	// summit of the ground's own beside it read as a needle next to the mountain)
+	const dom = Math.hypot(x - (P.nabhidhang[0] * U + OM_DIR[0] * 8), y - (P.nabhidhang[1] * U + OM_DIR[1] * 8));
+	if (dom < 6.5) h += 5 * Math.pow(1 - dom / 6.5, 1.6);
 	// the ways and rivers, cut into whatever is there
 	for (const list of [SEGS, RIVER_SEGS]) {
 		const n = nearestWay(x, y, list);

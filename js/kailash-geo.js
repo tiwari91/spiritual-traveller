@@ -117,7 +117,7 @@ export const SHRINES = [
 		access: "From Delhi by road through Tanakpur (the 2025 and 2026 batches spent the first night there), Dharchula and Gunji, now on the Border Roads road up the Kali gorge (the old 27 km of trekking is almost all gone). Two nights at Gunji and two at Nabhidhang to acclimatise. An Inner Line Permit is needed above Dharchula.",
 		note: "Om Parvat stands above the camp at Nabhidhang, the last halt before Tibet. Snow lying in the gullies of its face draws ॐ, the sacred syllable. Below it the Kali rises at Kalapani, where there is a Kali temple and the cave of Ved Vyas. Adi Kailash (Jolingkong, 5,945 m), up the Kuti valley from Gunji, is not on the MEA route.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Har Har Mahadev",
-		hour: 6.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [3.6, 4.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 },
+		hour: 6.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [4.4, 6.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 },
 	},
 	{
 		key: "mansarovar", name: "Mansarovar", deva: "मानसरोवर", lon: P.qugu[0], lat: P.qugu[1], look: [81.36, 31.0],

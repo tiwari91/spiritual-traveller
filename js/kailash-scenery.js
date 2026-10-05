@@ -110,6 +110,18 @@ function stoneHouse(b, x, y, z, yaw, w, d, R) {
 	b.add(T.box, place(x + fx * (d / 2) * M, y, z + fz * (d / 2) * M, yaw, 0.9 * M, 1.8 * M, 0.06), 0x5a3a22);
 }
 
+// Where a building of radius r (world units) can stand: the ground under it near enough level, and the height of its
+// lowest corner so it is set into the slope rather than hanging over it; null on a slope too steep to build on.
+function seat(world, x, z, r, most = 0.22) {
+	let lo = Infinity, hi = -Infinity;
+	for (const [u, v] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r], [r * 0.7, r * 0.7], [-r * 0.7, r * 0.7], [r * 0.7, -r * 0.7], [-r * 0.7, -r * 0.7]]) {
+		const y = world.height(x + u, z + v);
+		lo = Math.min(lo, y);
+		hi = Math.max(hi, y);
+	}
+	return hi - lo <= most ? lo : null;
+}
+
 // The plateau's chunk. ctx is scenery.js's chunk context; sc the Scenery.
 export function* kailashCountry(sc, ctx, reg) {
 	const { R, s0, s1, world, b } = ctx;
@@ -151,8 +163,10 @@ export function* kailashCountry(sc, ctx, reg) {
 			for (let k = 0; k < 4 + Math.floor(R() * 4); k++) {
 				const c = ctx.frame(sc0 + (R() - 0.5) * 4, side * (3.0 + R() * 3), {});
 				if (!tallOk(c.x, c.z, 0.9)) continue;
-				const yaw = Math.atan2(c.dx, c.dz) + (side > 0 ? -Math.PI / 2 : Math.PI / 2);
-				stoneHouse(b, c.x, world.height(c.x, c.z), c.z, yaw, 5 + R() * 3, 4 + R() * 2, R);
+				const yaw = Math.atan2(c.dx, c.dz) + (side > 0 ? -Math.PI / 2 : Math.PI / 2), hw = 5 + R() * 3, hd = 4 + R() * 2;
+				const y = seat(world, c.x, c.z, (Math.max(hw, hd) * M) / 2);
+				if (y === null) continue;
+				stoneHouse(b, c.x, y, c.z, yaw, hw, hd, R);
 				ctx.claimCircle(c.x, c.z, 0.9);
 			}
 		}
@@ -215,8 +229,9 @@ export function* kailashCountry(sc, ctx, reg) {
 		if (okAt(hx, hz, 0.1)) addPerson(b, R, hx, world.height(hx, hz), hz, R() * 6.3, "tibetan");
 		if (R() < 0.6) {
 			const tx = c.x - 2.2, tz = c.z + 1.4;
-			if (tallOk(tx, tz, 0.8)) {
-				tent(b, tx, world.height(tx, tz), tz, R() * 6.3);
+			const ty = tallOk(tx, tz, 0.8) ? seat(world, tx, tz, 0.5) : null;
+			if (ty !== null) {
+				tent(b, tx, ty, tz, R() * 6.3);
 				addAnimal(b, "dog", R, tx + 0.6, world.height(tx + 0.6, tz), tz + 0.3, R() * 6.3);
 				ctx.claimCircle(tx, tz, 0.8);
 			}
@@ -266,8 +281,10 @@ export function* kailashCountry(sc, ctx, reg) {
 			const a = R() * Math.PI * 2, d = 2.2 + R() * 4;
 			const x = w.x + Math.cos(a) * d, z = w.z + Math.sin(a) * d;
 			if (!tallOk(x, z, 1.0)) continue;
-			const yaw = Math.round((a + Math.PI) / (Math.PI / 2)) * (Math.PI / 2) + (R() - 0.5) * 0.2;
-			house(b, x, world.height(x, z), z, yaw, 6 + R() * 6, 5 + R() * 4, R, R() < 0.25 ? 2 : 1);
+			const yaw = Math.round((a + Math.PI) / (Math.PI / 2)) * (Math.PI / 2) + (R() - 0.5) * 0.2, hw = 6 + R() * 6, hd = 5 + R() * 4, fl = R() < 0.25 ? 2 : 1;
+			const y = seat(world, x, z, (Math.max(hw, hd) * M) / 2);
+			if (y === null) continue;
+			house(b, x, y, z, yaw, hw, hd, R, fl);
 			ctx.claimCircle(x, z, 1.2);
 		}
 	}
