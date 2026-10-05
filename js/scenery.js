@@ -531,7 +531,7 @@ export class Scenery {
 				// the lower Kali valley's pines stand a few units from the camps above, so the tree line is a height too
 				if (KAILASH) {
 					const yy = world.height(x, z);
-					if (yy > (kind === "bush" ? 53 : 45.5)) return 0;
+					if (yy > (kind === "bush" ? 53 : 40)) return 0;
 					if (kind !== "bush") {
 						const g = toGeo(x, z), rg = region(g.lon, g.lat);
 						if (rg === "byans" || rg === "tibet") return 0;

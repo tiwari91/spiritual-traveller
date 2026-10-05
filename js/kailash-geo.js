@@ -117,7 +117,7 @@ export const SHRINES = [
 		access: "From Dharchula up the Kali to Tawaghat, then the side road up to Sosa (an Inner Line Permit is needed beyond Dharchula). A KMVN rest house stands just below the ashram.",
 		note: "Founded in 1936 by Narayan Swami (Sri Raghavendra) and built over some thirteen years: a temple, a library, a meditation room (the Shoonyata Kuteer), a school for the valley's children, herb gardens and the swami's samadhi. Before the road and the war of 1962 the Kailash pilgrims walking up from Almora are said to have rested here, between Pangu and Sirkha; the yatra's buses now pass below it.",
 		mantra: "ॐ नमो नारायणाय", mantraLatin: "Om Namo Narayanaya", greeting: "Narayan Narayan",
-		hour: 15.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [3.4, 5.6], uphill: true, view: { lift: 1.5, pitch: 0.08, dist: 6.4 },
+		hour: 15.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [5.2, 8.0], uphill: true, view: { lift: 1.5, pitch: 0.08, dist: 6.4 },
 	},
 	{
 		key: "kalapani", name: "Kalapani", deva: "कालापानी", lon: P.kalapani[0], lat: P.kalapani[1], look: [80.92, 30.222],
@@ -128,7 +128,7 @@ export const SHRINES = [
 		access: "By the Border Roads road up the Kali from Dharchula, about 85 km and five to seven hours by jeep. The ITBP checks documents here, and an Inner Line Permit is needed. The batches halt at Kalapani before Nabhidhang.",
 		note: "A small temple of Kali, tended by the ITBP, where the yatris pray before going on up to the pass; the Kali, which gives the valley and the border river their name, rises here. Tradition says Sage Vyasa did penance for years in a cave on the cliff above, its mouth marked with a flag (the MEA's own booklet points it out on the way in). Not the Vyas Gufa at Mana near Badrinath.",
 		mantra: "ॐ क्रीं कालिकायै नमः", mantraLatin: "Om Krim Kalikayai Namah", greeting: "Jai Maa Kali",
-		hour: 10.4, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [3.4, 5.6], uphill: true, view: { lift: 1.5, pitch: 0.08, dist: 6.4 },
+		hour: 10.4, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [5.2, 8.0], uphill: true, view: { lift: 1.5, pitch: 0.08, dist: 6.4 },
 	},
 	{
 		key: "omparvat", name: "Om Parvat", deva: "ॐ पर्वत", lon: P.nabhidhang[0], lat: P.nabhidhang[1], look: P.omParvat,
