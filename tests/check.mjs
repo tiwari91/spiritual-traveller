@@ -135,12 +135,13 @@ async function basic() {
 
 	// keyboard: jump and pause
 	await page.keyboard.press("Escape");
-	await page.keyboard.press("2");
-	await wait(page, 600);
-	ok("Key 2 jumps to Shirdi", await page.evaluate(() => app.state === "darshan" && app.at === 1));
 	await page.keyboard.press("5");
 	await wait(page, 600);
 	ok("Key 5 jumps to Badrinath", await page.evaluate(() => app.state === "darshan" && app.at === 4));
+	// the last shrine has nowhere to continue to, so Space is tried from Shirdi
+	await page.keyboard.press("2");
+	await wait(page, 600);
+	ok("Key 2 jumps to Shirdi", await page.evaluate(() => app.state === "darshan" && app.at === 1));
 	await page.keyboard.press("Space");
 	await wait(page, 400);
 	await page.keyboard.press("Space");

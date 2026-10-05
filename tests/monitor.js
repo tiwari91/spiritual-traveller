@@ -123,29 +123,42 @@ function frame(ts) {
 	const gy = app.world.height(cam.position.x, cam.position.z);
 	if (cam.position.y < gy + 0.03) issue("camera-underground", { dy: +(cam.position.y - gy).toFixed(3) });
 	if (tr.visible && mon.frames % 4 === 0) {
-		const to = head.copy(pos);
-		to.y += 0.3 * sc;
-		const d = cam.position.distanceTo(to);
-		dir.subVectors(to, cam.position).normalize();
-		ray.set(cam.position, dir);
-		ray.camera = cam;
-		ray.near = 0.05;
-		ray.far = d - 0.15;
+		// Three sight lines (feet, chest, head). It counts as blocked only when most of the traveller is hidden,
+		// and only when that lasts about half a second: a leaf or a coach edge crossing a corner of the shot is not.
 		const solid = [app.roads.group, app.scenery.group, app.scenery.trees.group, ...app.landmarks.map((l) => l.root), ...app.landmarks.map((l) => l.decor)];
 		if (J.rake) for (const k of J.rake.cars) solid.push(k.group);
-		for (const h of ray.intersectObjects(solid, true)) {
-			const o = h.object, m = o.material;
-			if (!o.visible || o.isSprite || o.isPoints || o.isLine) continue;
-			if (m && m.transparent && m.opacity < 0.6) continue;
-			let p = o, mine = false;
-			while (p) {
-				if (p === tr) mine = true;
-				p = p.parent;
+		let hidden = 0, by = "", at = 0, of = 0;
+		for (const f of [0.08, 0.3, 0.55]) {
+			const to = head.copy(pos);
+			to.y += f * sc;
+			const d = cam.position.distanceTo(to);
+			dir.subVectors(to, cam.position).normalize();
+			ray.set(cam.position, dir);
+			ray.camera = cam;
+			ray.near = 0.05;
+			ray.far = d - 0.15;
+			for (const h of ray.intersectObjects(solid, true)) {
+				const o = h.object, m = o.material;
+				if (!o.visible || o.isSprite || o.isPoints || o.isLine) continue;
+				if (m && m.transparent && m.opacity < 0.6) continue;
+				let q = o, mine = false;
+				while (q) {
+					if (q === tr) mine = true;
+					q = q.parent;
+				}
+				if (mine) continue;
+				// riding in the open doorway: its own frame, just in front of them, is not something in the way
+				if ((st.onTrain || (st.ep && /train/.test(st.ep))) && d - h.distance < 0.45) continue;
+				hidden++;
+				by = (o.name || o.parent?.name || o.type) + "";
+				at = +h.distance.toFixed(2);
+				of = +d.toFixed(2);
+				break;
 			}
-			if (mine) continue;
-			issue("camera-blocked", { by: (o.name || o.parent?.name || o.type) + "", at: +h.distance.toFixed(2), of: +d.toFixed(2), ep: st.ep, step: st.step });
-			break;
 		}
+		mon.blockRun = hidden >= 2 ? (mon.blockRun || 0) + 1 : 0;
+		// 8 samples, every 4th frame: about half a second at 60 fps
+		if (mon.blockRun === 8) issue("camera-blocked", { by, at, of, ep: st.ep, step: st.step });
 	}
 }
 requestAnimationFrame(frame);
