@@ -19,11 +19,11 @@ const WAYS = [
 	{ ...PASS, pts: [[P.nabhidhang[0], P.nabhidhang[1], 49.9], [80.995, 30.231, 50.5], [81.008, 30.226, 51.2], [P.roadHead[0], P.roadHead[1], 51.9], [81.022, 30.231, 52.6], [P.lipulekh[0], P.lipulekh[1], 53.2], [81.038, 30.239, 52.7], [P.busStand[0], P.busStand[1], 52.1], [81.06, 30.252, 51.4], [P.pala[0], P.pala[1], 50.4], [81.13, 30.27, 47.8], [P.taklakot[0], P.taklakot[1], 46.4], [81.18, 30.33, 47.1], [81.17, 30.39, 48.7], [P.gurlaLa[0], P.gurlaLa[1], 50.4], [81.2, 30.5, 48.2], [81.31, 30.548, 47.2], [81.335, 30.6, 47.0]] },
 	// round Mansarovar and across the Barkha plain to Darchen
 	{ ...PLAIN, pts: [[81.335, 30.6, 47.0], [P.isthmus[0], P.isthmus[1], 46.95], [81.35, 30.72, 47.0], [P.chiu[0], P.chiu[1], 47.25], [81.43, 30.79, 47.0], [81.51, 30.792, 46.9], [81.57, 30.775, 46.9], [P.hor[0], P.hor[1], 46.9], [81.608, 30.68, 46.9], [81.59, 30.6, 46.9], [81.54, 30.55, 46.85], [81.47, 30.535, 46.85], [P.qugu[0], P.qugu[1], 46.85], [81.39, 30.556, 46.9], [81.36, 30.584, 46.95], [81.335, 30.6, 47.0]] },
-	{ ...PLAIN, pts: [[P.chiu[0], P.chiu[1], 47.25], [81.35, 30.8, 47.3], [81.33, 30.87, 47.4], [81.3, 30.94, 47.7], [P.darchen[0], P.darchen[1], 48.0], [81.27, 30.99, 48.3], [P.tarboche[0], P.tarboche[1], 48.6]] },
+	{ ...PLAIN, pts: [[P.chiu[0], P.chiu[1], 47.25], [81.35, 30.8, 47.3], [81.33, 30.87, 47.4], [81.3, 30.935, 47.7], [P.pastDarchen[0], P.pastDarchen[1], 48.0], [81.25, 30.985, 48.3], [P.tarboche[0], P.tarboche[1], 48.6]] },
 	// the parikrama: up the Lha Chu, over the Dolma La, down the Lham Chu Khir
 	{ ...KORA_V, pts: withFloors(KORA.west, [48.6, 48.9, 49.2, 49.5, 49.8, 50.1, 50.4]) },
 	{ ...KORA_V, pts: withFloors(KORA.north, [50.4, 51.2, 52.3, 53.3, 54.0]) },
-	{ ...KORA_V, pts: withFloors(KORA.east, [54.0, 53.0, 52.0, 51.0, 50.2, 49.6, 49.2, 48.9, 48.5, 48.2, 48.0]) },
+	{ ...KORA_V, pts: withFloors(KORA.east, [54.0, 53.0, 52.0, 51.0, 50.2, 49.6, 49.2, 48.9, 48.5, 48.3, 48.2]) },
 ];
 function withFloors(pts, f) {
 	return pts.map((p, i) => [p[0], p[1], f[i]]);
@@ -129,9 +129,10 @@ export function kHeight(lon, lat, h) {
 		if (dg < 9) pl += 21 * Math.pow(1 - dg / 9, 1.7) * (0.75 + 0.35 * ridged(lon * 11, lat * 11, 3));
 		// the Kailash range: ridges rising north of Darchen, and the massif under the mountain itself
 		const band = smoothstep(30.995, 31.12, lat) * smoothstep(80.85, 81.0, lon) * smoothstep(81.85, 81.7, lon) * smoothstep(31.85, 31.65, lat);
-		pl += band * (4.5 + 8 * ridged(lon * 8 + 9, lat * 8 + 2, 4));
 		const dk = Math.hypot(x - KX, y - KY);
-		pl += 10.5 * Math.pow(Math.max(0, 1 - dk / 8.6), 1.25);
+		// (the ridges fall away round the mountain itself, which stands on a low massif of its own)
+		pl += band * (4.5 + 8 * ridged(lon * 8 + 9, lat * 8 + 2, 4)) * smoothstep(5.5, 9.5, dk);
+		pl += 4.2 * Math.pow(Math.max(0, 1 - dk / 8.6), 1.25);
 		// lesser ranges across the plateau
 		pl += smoothstep(0.55, 0.85, fbm(lon * 3.2 + 11, lat * 3.2 + 3, 3)) * 7 * ridged(lon * 9, lat * 9, 3);
 		const north = tibet(lon, lat);

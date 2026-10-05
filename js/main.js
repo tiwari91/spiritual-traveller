@@ -42,6 +42,8 @@ const MODES = { walk: "On foot", bike: "By motorbike", train: "By train", jeep: 
 const START = KAILASH ? "Delhi" : "Pune";
 // the transport chip is remembered for each journey on its own
 const TRANSPORT_KEY = KAILASH ? "transportKailash" : "transport";
+// the darshan card's button back into the rituals (at Kailash they are out of doors, at the lake, the pass, the camp)
+const AGAIN = KAILASH ? "See the rituals again <span>they play by themselves (E)</span>" : "Go inside again <span>the rituals play by themselves (E)</span>";
 
 const app = { transport: 0, inside: SHRINES.map(() => false), ready: false, frames: 0, t: 0, state: "loading", s: 0, leg: 0, at: -1, playing: true, speed: 0, time: 0, weather: 0, visited: SHRINES.map(() => false), params };
 window.app = app;
@@ -125,7 +127,7 @@ async function init() {
 		kd.stop(1.5);
 		music.ambient(key);
 		renderer.setSize(innerWidth, innerHeight, false);
-		$("enter").innerHTML = "Go inside again <span>the rituals play by themselves (E)</span>";
+		$("enter").innerHTML = AGAIN;
 		$("continue").focus();
 	} });
 	Object.assign(app, { sanctum, music, aarti, kd });
@@ -244,7 +246,9 @@ function arrive(i) {
 	$("d-note").textContent = s.note;
 	$("d-greet").textContent = s.greeting;
 	$("continue").textContent = i === N - 1 ? "Complete the yatra" : `Continue to ${SHRINES[i + 1].name}`;
-	$("enter").innerHTML = app.inside[i] ? "Go inside again <span>the rituals play by themselves (E)</span>" : "Going inside… <span>the rituals play by themselves</span>";
+	$("enter").innerHTML = app.inside[i] ? AGAIN : KAILASH ? "To the rituals… <span>they play by themselves</span>" : "Going inside… <span>the rituals play by themselves</span>";
+	// a Kailash stop with no rituals of its own has nothing to go in for
+	$("enter").hidden = !!(KAILASH && sanctum.has && !sanctum.has(s.key));
 	$("darshan").querySelector(".d-scroll").scrollTop = 0;
 	$("darshan").classList.add("show");
 	document.body.classList.add("darshan-open");

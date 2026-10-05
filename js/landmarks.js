@@ -1691,3 +1691,6 @@ export function ribbonMesh(pts, width, mat) {
 	m.receiveShadow = true;
 	return m;
 }
+
+// for the Kailash journey's mountains (kailash-landmarks.js)
+export { terrainDetail, peak };

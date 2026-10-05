@@ -64,7 +64,13 @@
 //   the 2D minimap keeps working untouched.
 // ---------------------------------------------------------------------------------------------------------------
 
-import { ROUTE, SHRINES, CITIES, toGeo } from "./geo.js";
+import { KAILASH, ROUTE, SHRINES as DRAWN, CITIES, toGeo } from "./geo.js";
+import { trueGeo } from "./kailash-geo.js";
+
+// The satellite map shows the real ground: on the Kailash journey the parikrama, drawn larger than life and north
+// of its place on the stylised map, is put back round the real mountain.
+const real = (p) => (KAILASH ? trueGeo(p) : p);
+const SHRINES = DRAWN.map((s) => (KAILASH ? Object.assign({}, s, { lon: real([s.lon, s.lat])[0], lat: real([s.lon, s.lat])[1] }) : s));
 
 const ML_VERSION = "5.24.0";
 const ML_SOURCES = [
@@ -130,7 +136,7 @@ const ICONS = {
 
 export function worldToLonLat(x, z) {
 	const g = toGeo(x, z);
-	return [g.lon, g.lat];
+	return real([g.lon, g.lat]);
 }
 // World direction (x east, z south) to compass degrees (0 north, 90 east).
 export function headingFromWorld(dx, dz) {
@@ -225,7 +231,7 @@ export class MapView {
 		this.onOpen = opts.onOpen || null;
 		this.onClose = opts.onClose || null;
 		this.exaggeration = opts.exaggeration || 1.4;
-		this.legs = (opts.routeLegs || ROUTE.map((r) => r.pts)).map((pts) => pts.map((p) => [p[0], p[1]]));
+		this.legs = (opts.routeLegs || ROUTE.map((r) => r.pts)).map((pts) => pts.map((p) => real([p[0], p[1]])));
 		this.stations = opts.stations || STATIONS;
 		this.pixelRatioCap = opts.pixelRatioCap || 2;
 		this.isOpen = false;

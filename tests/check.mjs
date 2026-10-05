@@ -1,7 +1,8 @@
 // Headless browser check for Spiritual Traveller.
 // Usage: node tests/check.mjs            (writes screenshots to tests/shots/)
 // Env:   CHROME_BIN=/path/to/chrome-headless-shell   PW_REQUIRE=/path/to/a/package.json that has playwright
-//        ONLY=basic|scenarios|phone      run one part (default: all)
+//        ONLY=basic|scenarios|phone|kbasic|kscenarios|kphone   run some parts (default: all; the k parts are the
+//                                       Kailash Mansarovar journey, kailash.html)
 //        MODES=mixed,train,bike,car     LEGS=0,1,2,3,4   which journeys the scenarios ride (default: all)
 // The scenarios ride every leg in every way of travelling, end to end, with tests/monitor.js watching each frame,
 // and photograph each getting on and off, each leaving of a temple and the train; contact sheets of the photographs
@@ -43,6 +44,7 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const BASE = process.env.BASE || `http://127.0.0.1:${server.address().port}/`;
 
 const ONLY = process.env.ONLY || "";
+const KPAGE = "kailash.html";
 const part = (p) => !ONLY || ONLY.split(",").includes(p);
 const results = [];
 const ok = (name, pass, info = "") => {
@@ -51,7 +53,7 @@ const ok = (name, pass, info = "") => {
 };
 const browser = await chromium.launch({ executablePath: CHROME, args: ["--use-gl=angle", "--use-angle=metal", "--ignore-gpu-blocklist"] });
 
-async function open(opts = {}, query = "") {
+async function open(opts = {}, query = "", pageName = "") {
 	const ctx = await browser.newContext(Object.assign({ viewport: { width: 1280, height: 760 }, deviceScaleFactor: 1 }, opts));
 	const page = await ctx.newPage();
 	const errors = [];
@@ -60,7 +62,7 @@ async function open(opts = {}, query = "") {
 	});
 	page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 	page.on("requestfailed", (r) => errors.push("requestfailed: " + r.url()));
-	await page.goto(BASE + query);
+	await page.goto(BASE + pageName + query);
 	await page.waitForFunction(() => window.app && window.app.ready, null, { timeout: 120000 });
 	return { ctx, page, errors };
 }
@@ -76,6 +78,15 @@ try {
 	if (part("phone")) {
 		await scenarios({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, "phone");
 		await sheets("phone");
+	}
+	if (part("kbasic")) await kailashBasic();
+	if (part("kscenarios")) {
+		await scenarios({ width: 1280, height: 760 }, "kailash-desk", KPAGE);
+		await sheets("kailash-desk");
+	}
+	if (part("kphone")) {
+		await scenarios({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, "kailash-phone", KPAGE);
+		await sheets("kailash-phone");
 	}
 } catch (e) {
 	ok("Run completed", false, e.message);
@@ -248,7 +259,7 @@ async function uiIssues(page) {
 		return out;
 	});
 }
-async function scenarios(viewport, tag) {
+async function scenarios(viewport, tag, page = "") {
 	const dir = path.join(OUT, "scenarios-" + tag);
 	fs.rmSync(dir, { recursive: true, force: true });
 	fs.mkdirSync(dir, { recursive: true });
@@ -256,7 +267,7 @@ async function scenarios(viewport, tag) {
 	const legs = process.env.LEGS ? process.env.LEGS.split(",").map(Number) : null;
 	const ui = new Map();
 	for (const mode of modes) {
-		const o = await open(Object.assign({}, viewport), `?noenter=1&go=${mode}&h=11`);
+		const o = await open(Object.assign({}, viewport), `?noenter=1&go=${mode}&h=11`, page);
 		const p = o.page;
 		await p.addScriptTag({ type: "module", url: BASE + "tests/monitor.js" });
 		await p.waitForFunction(() => window.__mon, null, { timeout: 20000 });
@@ -326,7 +337,7 @@ async function sheets(tag) {
 	fs.mkdirSync(to, { recursive: true });
 	for (const f of fs.readdirSync(to)) if (f.startsWith(tag + "-")) fs.rmSync(path.join(to, f));
 	const files = fs.readdirSync(dir).filter((f) => f.endsWith(".png")).sort();
-	const per = tag === "phone" ? 8 : 12, cols = tag === "phone" ? 4 : 3;
+	const per = /phone/.test(tag) ? 8 : 12, cols = /phone/.test(tag) ? 4 : 3;
 	const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 } });
 	const page = await ctx.newPage();
 	for (let i = 0; i < files.length; i += per) {
@@ -336,4 +347,119 @@ async function sheets(tag) {
 		await page.screenshot({ path: path.join(to, `${tag}-${String(i / per + 1).padStart(2, "0")}.png`), fullPage: true });
 	}
 	await ctx.close();
+}
+
+// ---------- the Kailash Mansarovar journey (kailash.html) ----------
+async function kailashBasic() {
+	const { ctx, page, errors } = await open({}, "?noenter=1", KPAGE);
+	await wait(page, 1500);
+	await shot(page, "k01-intro");
+	ok("Kailash: the page is the Kailash journey", await page.evaluate(() => document.documentElement.dataset.journey === "kailash" && document.getElementById("intro-title").textContent === "Kailash Mansarovar"));
+	await page.click("#start");
+	await wait(page, 2500);
+	const gl = await page.evaluate(() => ({ tris: app.renderer.info.render.triangles, frames: app.frames }));
+	ok("Kailash: WebGL renders", gl.tris > 50000 && gl.frames > 20, `${gl.tris} triangles`);
+	await shot(page, "k02-leaving-delhi");
+	const s0 = await page.evaluate(() => app.s);
+	await wait(page, 2000);
+	ok("Kailash: travel advances from Delhi", (await page.evaluate(() => app.s)) > s0);
+	ok("Kailash: chapter card on start", (await page.evaluate(() => app.lastCard)) === "Delhi to the Kumaon Himalaya");
+	ok("Kailash: starts from Delhi", await page.evaluate(() => document.querySelector(".node.start span").textContent === "Delhi"));
+	const names = ["Om Parvat", "Mansarovar", "Yam Dwar", "Dirapuk", "Dolma La", "Darchen"];
+	ok("Kailash: six stops on the route", (await page.evaluate(() => app.route.chapters.length)) === names.length);
+	// the lakes are drawn, and the Tibet side keeps to the right
+	ok("Kailash: Mansarovar and Rakshas Tal are drawn", await page.evaluate(() => app.world.rivers.children.filter((m) => m.name === "lake").length === 2));
+	ok("Kailash: the Tibet side keeps to the right", await page.evaluate(() => app.journey.keep(app.route.chapters[1].s1 - 10) === -1 && app.journey.keep(app.route.chapters[0].s0 + 10) === 1));
+	await page.evaluate(() => app.setSpeed(3));
+	for (let i = 0; i < names.length; i++) {
+		await page.waitForFunction((i) => app.state === "darshan" && app.at === i, i, { timeout: 240000 });
+		await wait(page, 3500);
+		const d = await page.evaluate(() => ({ name: document.getElementById("d-name").textContent, m: document.getElementById("d-mantra-latin").textContent, show: document.getElementById("darshan").classList.contains("show") }));
+		ok(`Kailash: darshan at ${names[i]}`, d.show && d.name === names[i] && d.m === "Om Namah Shivaya", `${d.name}: ${d.m}`);
+		await shot(page, `k1${i}-darshan-${names[i].toLowerCase().replace(/ /g, "-")}`);
+		await page.click("#continue");
+		if (i < names.length - 1) {
+			await wait(page, 1200);
+			const st = await page.evaluate(() => ({ state: app.state, leg: app.leg }));
+			ok(`Kailash: continue sets out on leg ${i + 2}`, st.state === "travel" && st.leg === i + 1);
+		}
+	}
+	await wait(page, 1500);
+	ok("Kailash: finale after Darchen", await page.evaluate(() => app.state === "finale" && !document.getElementById("finale").hidden));
+	await shot(page, "k30-finale");
+	await page.keyboard.press("Escape");
+	await page.keyboard.press("6");
+	await wait(page, 600);
+	ok("Kailash: key 6 jumps to Darchen", await page.evaluate(() => app.state === "darshan" && app.at === 5));
+	ok("Kailash: desktop console clean", errors.length === 0, errors.slice(0, 5).join(" | "));
+	await ctx.close();
+	// each stop close up, at its own hour and in its own weather
+	for (let i = 1; i <= names.length; i++) {
+		const o = await open({}, `?shrine=${i}&noenter=1`, KPAGE);
+		await wait(o.page, 5000);
+		await shot(o.page, `k4${i}-${names[i - 1].toLowerCase().replace(/ /g, "-")}`);
+		ok(`Kailash: ${names[i - 1]} close up, console clean`, o.errors.length === 0, o.errors.slice(0, 3).join(" | "));
+		await o.ctx.close();
+	}
+	// the rituals at the stops that have them go on by themselves
+	for (let i = 1; i <= names.length; i++) {
+		const o = await open({}, `?shrine=${i}`, KPAGE);
+		const has = await o.page.evaluate(() => app.sanctum.has(app.route.chapters[app.at].shrine.key));
+		if (!has) {
+			ok(`Kailash: ${names[i - 1]} has no rituals to go in for, and no button`, await o.page.evaluate(() => document.getElementById("enter").hidden));
+			await o.ctx.close();
+			continue;
+		}
+		await o.page.waitForFunction(() => app.sanctum && app.sanctum.active, null, { timeout: 15000 }).catch(() => {});
+		ok(`Kailash: the rituals at ${names[i - 1]} begin by themselves`, await o.page.evaluate(() => app.sanctum.active));
+		await wait(o.page, 6000);
+		const step = await o.page.evaluate(() => app.sanctum.idx);
+		await wait(o.page, 20000);
+		ok(`Kailash: the rituals at ${names[i - 1]} move on`, (await o.page.evaluate(() => app.sanctum.idx)) > step);
+		await shot(o.page, `k5${i}-rituals-${names[i - 1].toLowerCase().replace(/ /g, "-")}`);
+		ok(`Kailash: rituals at ${names[i - 1]}, console clean`, o.errors.length === 0, o.errors.slice(0, 3).join(" | "));
+		await o.ctx.close();
+	}
+	// getting on and off: the yatra's bus out of Delhi, jeeps at Dharchula, the Chinese bus beyond the Lipulekh
+	{
+		const o = await open({}, "?noenter=1&s=0.6&go=mixed", KPAGE);
+		const until = (fn, ms) => o.page.waitForFunction(fn, null, { timeout: ms }).then(() => true, () => false);
+		ok("Kailash: the yatra's bus pulls up in Delhi and the traveller gets on", await until(() => app.journey.status().ep === "walk>bus", 20000));
+		ok("Kailash: rides the bus", await until(() => app.mode === "bus" && !app.journey.status().ep, 40000));
+		await o.page.evaluate(() => {
+			app.leg = 0;
+			app.s = app.roads.ways[0][1].s - 3;
+			app.setSpeed(3);
+		});
+		ok("Kailash: changes from the bus to a jeep at Dharchula", await until(() => app.journey.status().ep === "bus>jeep", 40000));
+		await o.page.evaluate(() => {
+			app.leg = 1;
+			app.s = app.roads.ways[1][1].s - 2;
+			app.setSpeed(2);
+		});
+		ok("Kailash: over the Lipulekh on foot, onto the Chinese bus, door on the right", await until(() => app.journey.status().ep === "walk>coach" && app.journey.keep(app.s) === -1, 60000));
+		ok("Kailash: boarding console clean", o.errors.length === 0, o.errors.slice(0, 3).join(" | "));
+		await o.ctx.close();
+	}
+	// phone: the intro, the stop menu, a darshan
+	const phone = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, "?noenter=1", KPAGE);
+	await wait(phone.page, 1200);
+	await shot(phone.page, "k60-phone-intro");
+	ok("Kailash phone: begin button on screen", await phone.page.evaluate(() => {
+		const r = document.getElementById("start").getBoundingClientRect();
+		return r.bottom <= innerHeight && r.top >= 0;
+	}));
+	await phone.page.tap("#start");
+	await wait(phone.page, 2500);
+	ok("Kailash phone: no horizontal overflow", !(await phone.page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)));
+	await phone.page.tap(".node.shrine >> nth=3");
+	await wait(phone.page, 4000);
+	ok("Kailash phone: tap node opens Dirapuk", await phone.page.evaluate(() => app.state === "darshan" && app.at === 3));
+	await shot(phone.page, "k61-phone-darshan");
+	ok("Kailash phone: continue button visible", await phone.page.evaluate(() => {
+		const r = document.getElementById("continue").getBoundingClientRect();
+		return r.bottom <= innerHeight && r.top >= 0 && r.right <= innerWidth;
+	}));
+	ok("Kailash phone console clean", phone.errors.length === 0, phone.errors.slice(0, 5).join(" | "));
+	await phone.ctx.close();
 }
