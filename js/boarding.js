@@ -764,7 +764,8 @@ Object.assign(Journey.prototype, {
 		const lane = st ? st.laneRoad : this.kerbLane(kind, T.s), yW = st ? 1 : 0, yF = st ? st.forecourt : 0;
 		const door = v.door ? v.doors[side > 0 ? v.door : v.doorR] : null;
 		const dz = door ? (door.z0 + door.z1) / 2 : v.seat.z, hw = v.hull.x;
-		const sv = T.s - dz * M;
+		// (a coach stops where it is, its door well forward of its middle; a car is drawn up with its door at the kerb spot)
+		const sv = v.tall ? T.s : T.s - dz * M;
 		const put = () => this.putRoad(v, sv, lane, M, yW, yF);
 		const L = (x, z) => this.local(v, x, 0, z);
 		const sx = Math.abs(v.seat.x), seat = [v.seat.x, v.seat.z], slide = [side * sx, v.seat.z], inn = [side * (hw - 0.28), dz], out = [side * (hw + 0.42), dz];
@@ -1216,11 +1217,14 @@ Object.assign(Journey.prototype, {
 				const shot = Math.floor(app.t / 12) % 2;
 				const me = this.local(v, v.seat.x, v.seat.y + 0.55, v.seat.z);
 				const h = v.group.rotation.y;
-				const make = (sd) => (shot ? { target: me, yaw: h + sd * (Math.PI / 2 - 0.75), pitch: 0.16, dist: 4.4 } : { target: me, yaw: h + sd * (Math.PI / 2 - 0.3), pitch: 0.06, dist: 2.1 });
+				const make = (sd) => (shot ? { target: me, yaw: h + sd * (Math.PI / 2 - 0.75), pitch: 0.3, dist: 4.4 } : { target: me, yaw: h + sd * (Math.PI / 2 - 0.3), pitch: 0.18, dist: 2.2 });
 				// the window seat is on the door's side; the shot is from that side, or (where the hillside rises there,
 				// in the gorge) from the open side, looking in across the aisle; judged once for each shot
 				const key = "coach" + shot + "|" + Math.floor(app.t / 12);
-				if (this.coachKey !== key) {
+				// judged afresh for each shot, and again whenever the chosen side loses its view (the road turns under a
+				// bank, a house or a station comes by)
+				const recheck = this.coachKey === key && this.coachSide && ((this.coachN = (this.coachN || 0) + 1) % 15 === 0);
+				if (this.coachKey !== key || recheck) {
 					this.coachKey = key;
 					const room = (sd) => {
 						const c = make(sd), cp = Math.cos(c.pitch), q = new THREE.Vector3(me.x + Math.sin(c.yaw) * cp * c.dist, me.y + Math.sin(c.pitch) * c.dist, me.z + Math.cos(c.yaw) * cp * c.dist);
@@ -1230,9 +1234,13 @@ Object.assign(Journey.prototype, {
 						if (this.app.viewFrom && this.app.viewFrom(me, q) != null) lo = Math.min(lo, 0);
 						return lo;
 					};
-					const own = this.keep(app.s), ro = room(own), rx = room(-own);
-					// hemmed in on both sides (a gorge road cut into the cliff): from behind and above instead
-					this.coachSide = ro > 0.3 ? own : rx > 0.3 ? -own : 0;
+					const own = this.keep(app.s), was = recheck ? this.coachSide : 0;
+					// keep a side that still has its view; else the door's side, the other, or (hemmed in on both sides, a gorge
+					// road cut into the cliff) from behind and above
+					if (!(was && room(was) > 0.3)) {
+						const ro = room(own), rx = room(-own);
+						this.coachSide = ro > 0.3 ? own : rx > 0.3 ? -own : 0;
+					}
 				}
 				this.cam = this.coachSide ? Object.assign(make(this.coachSide), { key: "coach" + shot + (this.coachSide > 0 ? "L" : "R") }) : { target: me, yaw: h + Math.PI, pitch: 0.62, dist: 6.5, key: "coachUp" };
 			}
