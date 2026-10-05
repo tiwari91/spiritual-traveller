@@ -1,10 +1,10 @@
-// Temple music for the four shrines, synthesised in the page with the Web Audio API. No recordings or samples:
+// Temple music for the shrines, synthesised in the page with the Web Audio API. No recordings or samples:
 // bells, drums and cymbals are built sample by sample from decaying partials and filtered noise, and the
 // harmonium, nadaswaram, voices, conch and horn are live oscillators through filters. The tunes are traditional
 // forms written out afresh, in the style of the aartis sung at each shrine.
 //
 //   const music = new Music(audio);    // audio: the Audio from audio.js; music follows its on/off toggle
-//   music.ambient(key);                // a quiet bed for darshan; key: "bhimashankar" | "tirupati" | "kedarnath" | "badrinath"
+//   music.ambient(key);                // a quiet bed for darshan; key: "bhimashankar" | "shirdi" | "tirupati" | "kedarnath" | "badrinath"
 //   const a = music.aarti(key);        // the full aarti (about 95 s), then back to the ambient bed by itself
 //     a.id, a.duration, a.cues        // cues in seconds: enter, conch [a, b], pick, aarti [a, b], song [a, b],
 //                                     //   peal [a, b], offer [a, b], petals, end
@@ -167,6 +167,13 @@ const BUFS = {
 	thavilDhi: drum({ f: 230, bend: 0.15, decay: 0.26, parts: [[1, 1], [1.98, 0.45], [2.94, 0.25], [3.9, 0.1]], noise: 0.25, nDecay: 0.008, nLp: 6000 }),
 	thavilTa: drum({ f: 310, decay: 0.06, parts: [[1, 0.6], [2.1, 0.3]], noise: 0.55, nDecay: 0.012, nLp: 7000, nHp: 1000 }),
 	thavilStick: drum({ f: 720, decay: 0.035, parts: [[1, 0.5], [1.6, 0.3]], noise: 1, nDecay: 0.018, nLp: 9000, nHp: 2200 }),
+	// the Marathi dholki: a bass that swoops down (the ghumak) and a hard, bright "chat" on the treble face
+	dholkiGe: drum({ f: 118, bend: 0.6, bendT: 0.07, decay: 0.3, parts: [[1, 1], [2.02, 0.18]], noise: 0.12, nLp: 2200 }),
+	dholkiNa: drum({ f: 660, decay: 0.11, parts: [[1, 0.8], [2, 0.45], [3, 0.2]], noise: 0.45, nDecay: 0.006, nLp: 10000, nHp: 2500 }),
+	// one pair of hands clapping (a crowd is several, a little apart)
+	clap: [0.25, (d, r) => {
+		[[0, 0.6, 0.003], [0.007, 0.75, 0.003], [0.015, 1, 0.022]].forEach(([at, a, dec], k) => noiseInto(d.subarray(Math.floor(at * r)), r, a, dec, 3200, 850, 31 + k));
+	}],
 	damaru: drum({ f: 610, bend: 0.2, decay: 0.055, parts: [[1, 0.8], [1.58, 0.35]], noise: 0.35, nDecay: 0.008, nLp: 7000, nHp: 1000 }),
 	tamPa: [3.6, (d, r) => tamburaInto(d, r, 196), 22050],
 	tamSa: [3.6, (d, r) => tamburaInto(d, r, 261.63), 22050],
@@ -177,8 +184,9 @@ const BUFS = {
 	}],
 };
 
-// Reverb per shrine: [seconds, brightness, wet]. Kedarnath and Bhimashankar ring like stone halls.
-const ROOM = { kedarnath: [3.4, 0.5, 0.42], bhimashankar: [2.8, 0.55, 0.36], tirupati: [1.8, 0.7, 0.24], badrinath: [2.2, 0.6, 0.27] };
+// Reverb per shrine: [seconds, brightness, wet]. Kedarnath and Bhimashankar ring like stone halls; Shirdi's
+// Samadhi Mandir is a marble hall, full of people, a little softer.
+const ROOM = { kedarnath: [3.4, 0.5, 0.42], bhimashankar: [2.8, 0.55, 0.36], tirupati: [1.8, 0.7, 0.24], badrinath: [2.2, 0.6, 0.27], shirdi: [2.4, 0.6, 0.3] };
 
 class Engine {
 	constructor(ctx) {
@@ -258,7 +266,7 @@ function env(p, T, dur, vel, a = 0.015, r = 0.03) {
 const MUTE = new Set();
 // The mix: drums sit under the singing, the thavil a little forward as it is at Tirumala.
 const MIX = { ghanta: 0.7, doorBell: 0.7, ghanti: 0.6, thavilDhi: 0.72, thavilTa: 0.72, thavilStick: 0.72 };
-for (const n of ["dholBass", "dholStick", "damau", "nagara", "dholakGe", "dholakNa", "dholakTi", "pakhGa", "pakhTa", "pakhKa", "damaru"]) MIX[n] = 0.55;
+for (const n of ["dholkiGe", "dholkiNa", "dholBass", "dholStick", "damau", "nagara", "dholakGe", "dholakNa", "dholakTi", "pakhGa", "pakhTa", "pakhKa", "damaru"]) MIX[n] = 0.55;
 function hit(P, T, name, vel = 1, rate = 1, pan = 0) {
 	if (MUTE.has(name)) return;
 	const c = P.ctx, s = c.createBufferSource();
@@ -696,6 +704,73 @@ const PIECES = {
 		S.om(g.end + 6.2, 7, 0.4);
 		return { g, cues: { ...OPEN, aarti: [9, g.end], song: [g.t0, g.end], ...c } };
 	},
+	// Shirdi: the Madhyan (noon) aarti at the Samadhi Mandir. Sai Baba's aarti is sung four times a day (Kakad at
+	// dawn, Madhyan at noon, Dhoop at sunset, Shej at night); this is the noon one, in the style of "Aarti Saibaba,
+	// saukhya datara jiva": a bright, simple tune in Bilawal (the major scale, with the shuddha Ni climbing to the
+	// upper Sa), the priests calling and the hall answering, to harmonium, dholki, jhanj, manjira and clapping
+	// hands, the pakhawaj joining as it quickens and the nagara under "Sainath Maharaj ki jai" at the close.
+	shirdi(S) {
+		// Om Sai Ram, softly, while the doors are opened
+		let t = 0.6;
+		for (const [s, d, v] of [[0, 1.0, "o"], [4, 0.5, "a"], [4, 0.5, "i"], [2, 0.6, "a"], [0, 1.4, "m"]]) {
+			const f = hz(s - 12), at = t;
+			S.at(at, (T, P) => P.v.chorus && !MUTE.has("chorus") && P.v.chorus.note(T, f, d, 0.45, { v }));
+			t += d;
+		}
+		S.hit(1.0, "doorBell", 0.2, 1, -0.3);
+		S.conch(3.2, 4.8, 220, 1);
+		for (const [t, v] of [[8.4, 0.8], [10.2, 0.7], [12.0, 0.6]]) S.hit(t, "ghanta", v);
+		S.ring(9, 15, 0.15);
+		// a harmonium alap before the song: up through the bright Ni to the upper Sa and home
+		t = 9.1;
+		for (const [s, d] of [[0, 0.8], [4, 0.6], [7, 1.0], [9, 0.35], [11, 0.35], [12, 1.1], [11, 0.3], [9, 0.3], [7, 0.6], [5, 0.3], [4, 0.6], [2, 0.3], [0, 0.95]]) {
+			const f = hz(s), at = t;
+			S.at(at, (T, P) => P.v.lead.note(T, f, d, 0.6));
+			t += d;
+		}
+		// the manjira and a dholki roll lead the singers in
+		for (let x = 13.4, k = 0; x < 15; x += 0.1, k++) S.hit(x, k % 2 ? "manjiraC" : "manjira", 0.06 + (x - 13.4) * 0.07);
+		for (let x = 14.2, k = 0; x < 14.95; x += 0.09, k++) S.hit(x, k % 2 ? "dholkiNa" : "dholkiGe", 0.25 + (x - 14.2) * 0.4);
+		const g = new Grid(15, 8).add(16, 0.27).add(8, 0.25, 0.2).add(6, 0.19);
+		const A1 = "S - G G G - G M P - M G R - - -", A2 = "G - M P P - D P M G R G S - - -";
+		const B1 = "P - P D N - S' - D P M P D P - -", B2 = "M - G R G M G R S - .N - S - - -";
+		// Aa-ra-ti Sai-ba-ba, sau-khya da-ta-ra ji-va
+		const vw = "aaiaiaaoaaaaia";
+		let u = 0;
+		for (const [str, who] of [[A1 + " " + A2, "call"], [A1 + " " + A2, "resp"], [B1 + " " + B2, "call"], [B1 + " " + B2, "resp"], [[A1, A2, B1, B2].join(" "), "all"]]) u = S.sing(g, u, str, who, vw);
+		// Sai-nath Ma-ha-raj ki jai
+		S.chant(g, 24, 30, [["a", 7, 0, 1], ["i", 9, 1, 1], ["a", 7, 2, 1], ["a", 5, 3, 0.5], ["a", 5, 3.5, 0.5], ["a", 4, 4, 1], ["i", 4, 5, 1], ["e", 7, 6, 2]]);
+		// keherwa on the dholki: dha ge na ti, na ka dhi na
+		const dk = { D: [["dholkiGe", 0.56], ["dholkiNa", 0.34]], g: [["dholkiGe", 0.34]], n: [["dholkiNa", 0.32]], t: [["dholakTi", 0.32]], k: [["dholakTi", 0.24]] };
+		const jh = { O: [["tal", 0.26]], c: [["talC", 0.2]] }, mj = { o: [["manjira", 0.14]], c: [["manjiraC", 0.12]] };
+		const cl = { x: [["clap", 0.3, 1, -0.45], ["clap", 0.26, 1.07, 0.4], ["clap", 0.22, 0.94, 0.05]], y: [["clap", 0.18, 1.03, -0.2], ["clap", 0.16, 0.97, 0.3]] };
+		S.rhythm(g, 0, 16, "DgntnkDn", dk);
+		S.rhythm(g, 0, 16, "O.c.O.c.", jh);
+		S.rhythm(g, 0, 16, ".c.c.c.c", mj);
+		S.rhythm(g, 8, 16, "x...x...", cl);
+		S.rhythm(g, 16, 24, "D.gnt.n.D.gnD.n.", dk);
+		S.rhythm(g, 16, 24, "OcOcOcOc", jh);
+		S.rhythm(g, 16, 24, "o.c.o.c.", mj);
+		S.rhythm(g, 16, 24, "x.y.x.y.", cl);
+		S.rhythm(g, 16, 24, "G...t.k.G.t.t.k.", { G: [["pakhGa", 0.6]], t: [["pakhTa", 0.35]], k: [["pakhKa", 0.3]] });
+		S.rhythm(g, 24, 30, "DnDnDgDnDnDnDgDn", dk);
+		S.rhythm(g, 24, 30, "OcOcOcOcOcOcOcOc", jh);
+		S.rhythm(g, 24, 30, "oooooooo", mj);
+		S.rhythm(g, 24, 30, "xyxyxyxy", cl);
+		S.rhythm(g, 24, 30, "GkGtGkGt", { G: [["pakhGa", 0.7]], t: [["pakhTa", 0.4]], k: [["pakhKa", 0.35]] });
+		S.rhythm(g, 24, 30, "N...N.N.", { N: [["nagara", 0.6]] });
+		S.ringGrid(g, 0, 30, 2);
+		for (let b = 0; b < 24; b += 4) S.hit(g.time(b * 8), "ghanta", 0.36);
+		const c = finale(S, g.end, 220);
+		// and Om Sai Ram again as the hall settles
+		t = g.end + 6.4;
+		for (let r = 0; r < 2; r++) for (const [s, d, v] of [[0, 1.1, "o"], [4, 0.55, "a"], [4, 0.55, "i"], [2, 0.7, "a"], [0, 1.8, "m"]]) {
+			const f = hz(s - 12), at = t;
+			S.at(at, (T, P) => P.v.chorus && !MUTE.has("chorus") && P.v.chorus.note(T, f, d, 0.4, { v }));
+			t += d;
+		}
+		return { g, cues: { ...OPEN, aarti: [9, g.end], song: [g.t0, g.end], ...c } };
+	},
 	// Badrinath: harmonium, dholak and manjira in a lilting six, in the style of the Badrinath aarti
 	// "Pavan Mand Sugandh Sheetal", the dhol and damau joining for the procession at the end.
 	badrinath(S) {
@@ -784,7 +859,7 @@ const SCHEDULES = {};
 export function aartiSchedule(key) {
 	if (SCHEDULES[key]) return SCHEDULES[key];
 	const S = new Score(key.length * 13 + 1);
-	const { g, cues, circleUnits } = PIECES[key](S);
+	const { g, cues, circleUnits } = (PIECES[key] || PIECES.bhimashankar)(S);
 	const per = circleUnits || g.upb, free = 3.2;
 	const a0 = cues.aarti[0] + 0.6, c0 = (g.t0 - a0) / free, bars = g.bars.length * g.upb / per;
 	const last = g.bars[g.bars.length - 1].u * per;
@@ -829,6 +904,22 @@ const AMBIENT = {
 			}
 		}
 	},
+	// the darshan queue past the samadhi: door bells now and then, the hall murmuring "Om Sai Ram", and a
+	// harmonium somewhere practising a phrase of the aarti
+	shirdi(S, t0, R) {
+		if (R() < 0.3) for (let k = 0, n = 1 + Math.floor(R() * 3); k < n; k++) S.hit(t0 + R() * 0.5 + k * 1.2, "doorBell", 0.17, 1, R() - 0.5);
+		if (R() < 0.05) S.hit(t0 + R() * 3, "ghanta", 0.32);
+		if (R() < 0.14) hum(S, t0, "S - G G R - S -", "oaiam", 0.32); // Om Sai Ram
+		else if (R() < 0.08) {
+			const ph = [[[0, 0.4], [4, 0.4], [4, 0.4], [4, 0.7], [5, 0.3], [7, 1.2]], [[7, 0.4], [9, 0.4], [11, 0.4], [12, 1.2], [9, 0.4], [7, 0.9]], [[5, 0.4], [4, 0.4], [2, 0.4], [4, 0.4], [2, 0.4], [0, 1.4]]][Math.floor(R() * 3)];
+			let t = t0 + 0.3;
+			for (const [s, d] of ph) {
+				const f = hz(s), at = t;
+				S.at(at, (T, P) => P.v.lead && P.v.lead.note(T, f, d, 0.32));
+				t += d;
+			}
+		}
+	},
 	badrinath(S, t0, R) {
 		if (R() < 0.3) for (let k = 0, n = 1 + Math.floor(R() * 3); k < n; k++) S.hit(t0 + R() * 0.5 + k * 1.3, "doorBell", 0.17, 1, R() - 0.5);
 		if (R() < 0.05) S.hit(t0 + R() * 3, "ghanta", 0.32);
@@ -850,7 +941,7 @@ function makeProgram(e, dest, key, kind, piece) {
 	const P = { e, ctx: c, key, kind, stop: [], v: {}, i: 0, block: 0, base: t, t, seed: 1 + key.length * 31 };
 	P.bus = G(c, 0);
 	P.bus.connect(dest);
-	const level = kind === "ambient" ? { badrinath: 0.75, tirupati: 0.42 }[key] || 0.55 : 0.5;
+	const level = kind === "ambient" ? { badrinath: 0.75, tirupati: 0.42, shirdi: 0.6 }[key] || 0.55 : 0.5;
 	if (offline || kind === "fx") P.bus.gain.value = level;
 	else P.bus.gain.setTargetAtTime(level, t, 0.5);
 	P.out = G(c, 1);
@@ -868,9 +959,10 @@ function makeProgram(e, dest, key, kind, piece) {
 	if (south) P.v.nada = new Nadaswaram(P, kind === "ambient" ? 0.5 : 0.32);
 	else if (kind === "aarti") {
 		P.v.lead = new Reed(P, 0.38);
-		P.v.solo = new Singer(P, 1, 0.95);
-	}
-	if (kind === "aarti" || key === "bhimashankar" || key === "badrinath") P.v.chorus = new Singer(P, 3, 0.85);
+		// at Shirdi the call is a pair of priests singing together
+		P.v.solo = key === "shirdi" ? new Singer(P, 2, 0.95) : new Singer(P, 1, 0.95);
+	} else if (key === "shirdi") P.v.lead = new Reed(P, 0.22, 1700); // a distant harmonium
+	if (kind === "aarti" || key === "bhimashankar" || key === "badrinath" || key === "shirdi") P.v.chorus = new Singer(P, 3, 0.85);
 	if (kind === "aarti") {
 		P.events = piece.events;
 		P.duration = piece.duration;
