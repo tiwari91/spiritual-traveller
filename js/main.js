@@ -374,7 +374,8 @@ function cameraGoal() {
 	const me = mover();
 	const closeDist = { walk: 2.6, bike: 3.6, car: 5.2, jeep: 5.2, auto: 4.4, train: 9 }[app.travelMode] || 3.2;
 	g.target.set(me.x, me.y + (app.travelMode === "walk" ? 0.3 : 0.35), me.z);
-	g.yaw = Math.atan2(-p.dx, -p.dz) + 0.6;
+	// a little to one side: the right, unless a wall or a building stands that side (see updateCamera)
+	g.yaw = Math.atan2(-p.dx, -p.dz) + 0.6 * (rig.side || 1);
 	g.pitch = app.travelMode === "walk" ? 0.24 : 0.3;
 	g.dist = closeDist * (innerWidth < innerHeight ? 1.45 : 1);
 	void close;
@@ -438,8 +439,38 @@ function occlusion(to, from = rig.target) {
 	}
 	return null;
 }
+// How open the view is towards the two sides of the frame, from a camera at `from` looking at `to`: the nearer of
+// the distances to whatever solid stands along the sight lines near the left and right edges (twice the distance
+// to `to` when both are open).
+const flankL = new THREE.Vector3(), flankUp = new THREE.Vector3(0, 1, 0);
+function flank(from, to = rig.target) {
+	const d = from.distanceTo(to);
+	const half = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect) * 0.75;
+	let near = Infinity;
+	for (const s of [-1, 1]) {
+		flankL.subVectors(to, from).applyAxisAngle(flankUp, s * half).add(from);
+		const c = occlusion(flankL, from);
+		if (c != null) near = Math.min(near, c + 0.3);
+	}
+	return Math.min(near, d * 2);
+}
 function updateCamera(dt) {
-	const g = cameraGoal();
+	let g = cameraGoal();
+	// following on foot or on the road: look over whichever shoulder has the open view. Leaving Tirumala the
+	// prakara wall runs beside the path, and from its side the wall filled half the frame. Judged afresh at each
+	// cut, and now and then on the way, swapping sides only for a clearly better view.
+	if (app.state === "travel" && !app.debugCam && !journey.camera() && (rig.snap || rig.camKey !== null || app.frames % 20 === 0)) {
+		const side = rig.side || 1, at = (sg) => {
+			const yw = g.yaw + 1.2 * (sg === side ? 0 : sg), cp = Math.cos(g.pitch);
+			return flank(new THREE.Vector3(g.target.x + Math.sin(yw) * cp * g.dist, g.target.y + Math.sin(g.pitch) * g.dist, g.target.z + Math.cos(yw) * cp * g.dist), g.target);
+		};
+		const mine = at(side), other = at(-side);
+		const fresh = rig.snap || rig.camKey !== null;
+		if ((fresh && other > mine) || (mine < g.dist * 0.7 && other > mine + Math.max(0.6, g.dist * 0.3))) {
+			rig.side = -side;
+			g = cameraGoal();
+		}
+	}
 	// a new shot (getting on or off, a new angle on the train, back to following): cut to it when it is far from
 	// where the camera is, rather than swing through the coach, the bus or the bank in between
 	const key = app.state === "travel" ? (journey.camera() || {}).key || null : undefined;
