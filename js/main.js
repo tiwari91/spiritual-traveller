@@ -419,25 +419,45 @@ function occlusion(to, from = rig.target) {
 	occRay.camera = camera; // sprites need it to be tested at all
 	occRay.near = 0.25;
 	occRay.far = d;
-	// the roads and stations, the roadside, its trees and the temples with their forests (the taxi, jeep or auto the
-	// traveller is getting into is looked through, as through its windows, rather than come up against)
+	for (const h of occRay.intersectObjects(solids(), true)) if (solidHit(h)) return h.distance - 0.3;
+	return null;
+}
+// The roads and stations, the roadside, its trees and the temples with their forests, and the train (the taxi, jeep
+// or auto the traveller is getting into is looked through, as through its windows, rather than come up against).
+function solids() {
 	const solid = [roads.group, scenery.group, scenery.trees.group, ...landmarks.map((l) => l.root), ...landmarks.map((l) => l.decor)];
 	if (journey && journey.rake) for (const c of journey.rake.cars || []) solid.push(c.group);
-	const hits = occRay.intersectObjects(solid, true);
-	for (const h of hits) {
-		const o = h.object, m = o.material;
-		if (!o.visible || o.isSprite || o.isPoints || o.isLine) continue;
-		if (m && (m.transparent && m.opacity < 0.6)) continue;
-		// skip anything the traveller is standing in or on (the coach they ride, the vehicle)
-		let p = o, mine = false;
-		while (p) {
-			if (p === traveller.group) mine = true;
-			p = p.parent;
-		}
-		if (mine) continue;
-		return h.distance - 0.3;
+	return solid;
+}
+function solidHit(h) {
+	const o = h.object, m = o.material;
+	if (!o.visible || o.isSprite || o.isPoints || o.isLine) return false;
+	if (m && m.transparent && m.opacity < 0.6) return false;
+	// not anything the traveller is standing in or on (the coach they ride, the vehicle)
+	for (let p = o; p; p = p.parent) if (p === traveller.group) return false;
+	return true;
+}
+// How much of the traveller a camera at `from` would see: of the sight lines to their feet, chest and head, how
+// many something solid cuts. The chest line alone (occlusion) misses a stall counter or a parapet that hides the legs
+// and a low awning that hides the head, and anything within a stride of them.
+const bodyAt = new THREE.Vector3();
+function bodyHidden(from) {
+	const tr = traveller.group;
+	if (!tr.visible) return 0;
+	const solid = solids();
+	let n = 0;
+	for (const f of [0.08, 0.3, 0.55]) {
+		bodyAt.copy(tr.position);
+		bodyAt.y += f * tr.scale.x;
+		const d = from.distanceTo(bodyAt);
+		occDir.subVectors(bodyAt, from).normalize();
+		occRay.set(from, occDir);
+		occRay.camera = camera;
+		occRay.near = 0.05;
+		occRay.far = Math.max(0.06, d - 0.15);
+		if (occRay.intersectObjects(solid, true).some(solidHit)) n++;
 	}
-	return null;
+	return n;
 }
 // How open the view is towards the two sides of the frame, from a camera at `from` looking at `to`: the nearer of
 // the distances to whatever solid stands along the sight lines near the left and right edges (twice the distance
@@ -459,7 +479,9 @@ function updateCamera(dt) {
 	// following on foot or on the road: look over whichever shoulder has the open view. Leaving Tirumala the
 	// prakara wall runs beside the path, and from its side the wall filled half the frame. Judged afresh at each
 	// cut, and now and then on the way, swapping sides only for a clearly better view.
-	if (app.state === "travel" && !app.debugCam && !journey.camera() && (rig.snap || rig.camKey !== null || app.frames % 20 === 0)) {
+	// (Not while the camera has gone round or up to see past something: that is judged below, from the same side.)
+	const avoiding = Math.abs(rig.swing || 0) > 0.1 || (rig.rise || 0) > 0.05;
+	if (app.state === "travel" && !app.debugCam && !journey.camera() && (rig.snap || rig.camKey !== null || (app.frames % 20 === 0 && !avoiding))) {
 		const side = rig.side || 1, at = (sg) => {
 			const yw = g.yaw + 1.2 * (sg === side ? 0 : sg), cp = Math.cos(g.pitch);
 			return flank(new THREE.Vector3(g.target.x + Math.sin(yw) * cp * g.dist, g.target.y + Math.sin(g.pitch) * g.dist, g.target.z + Math.cos(yw) * cp * g.dist), g.target);
@@ -486,7 +508,13 @@ function updateCamera(dt) {
 		rig.camKey = key;
 	}
 	const yaw = g.yaw + rig.userYaw + (rig.swing || 0), pitch = clamp(g.pitch + rig.userPitch + (rig.rise || 0), -0.05, 1.45), dist = g.dist * rig.zoom;
-	const k = rig.snap ? 1 : 1 - Math.exp(-dt * 1.8), ky = rig.snap ? 1 : 1 - Math.exp(-dt * 1.1);
+	// a cut (a new shot, or round to a clear view when something has come between) lands at once; a small move
+	// round something comes quickly, so the traveller is not lost behind it for long
+	const cut = rig.snap || rig.cut;
+	rig.cut = false;
+	if (cut) rig.clear = undefined;
+	rig.quick = Math.max(0, (rig.quick || 0) - dt);
+	const k = cut ? 1 : 1 - Math.exp(-dt * (rig.quick ? 6 : 1.8)), ky = cut ? 1 : 1 - Math.exp(-dt * (rig.quick ? 6 : 1.1));
 	// while travelling the camera stays locked on the moving traveller (a slow ease would fall behind a
 	// train or a car and leave them at the edge of the frame); elsewhere it eases
 	// while travelling the target rides with the traveller exactly (at 8x a train covers a body length a frame, and
@@ -531,29 +559,49 @@ function updateCamera(dt) {
 	// the way, the camera comes in to just in front of it (and eases back out once the view is clear)
 	if (app.state === "travel" && rig.dist < 40) {
 		const d = camera.position.distanceTo(rig.target);
-		if (app.frames % 3 === 0) rig.block = occlusion(camera.position);
-		// hard against a wall, coming in close does not help: swing round to whichever side is open. A framed shot
-		// (getting on or off) is chosen clear when it starts, but the roadside trees stream in after that, so it may
-		// swing too, though only round to the side, never up; on a platform it holds (round there is the far side of the train)
-		if (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5 && !(journey.camera() || {}).fixed) {
-			// round to either side, or up and over (a stall's awning, a temple wall, a tree beside the path)
-			let best = rig.swing || 0, bestR = rig.rise || 0, bestD = rig.block;
-			for (const [a, up] of [[0.9, 0], [-0.9, 0], [0, 0.55], [1.8, 0], [-1.8, 0], [0.6, 0.5], [-0.6, 0.5], [Math.PI, 0], [0, 0.95]]) {
-				const yw = rig.yaw + a, pt = Math.min(1.4, rig.pitch + up), cp = Math.cos(pt);
+		const jc = journey.camera();
+		if (app.frames % 3 === 0 || cut) rig.block = occlusion(camera.position);
+		// Hard against a wall, or with something within a body length of the traveller (a stall's awning or counter,
+		// a parapet, a temple wall at a corner), coming in does not help: the camera would only stop just behind it.
+		// Then it goes round or up to a view that sees them, chosen as an offset from the shot's own angle and kept
+		// until that too is blocked. Following, when they are hidden it cuts there (or swings quickly, if it is near);
+		// a framed shot (getting on or off) may swing round to the side, never up, and on a platform it holds.
+		const hidden = !jc && rig.hid >= 2;
+		if ((hidden && app.frames % 3 === 0) || (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5 && !(jc || {}).fixed)) {
+			const gy = g.yaw + rig.userYaw, gp = g.pitch + rig.userPitch, back = -(rig.side || 1) * 0.6;
+			// following, straight behind (down a lane between stalls) comes first, then higher, then round
+			const tries = jc
+				? [[0, 0], [0.9, 0], [-0.9, 0], [1.8, 0], [-1.8, 0], [Math.PI, 0]]
+				: [[0, 0], [back, 0], [back / 2, 0.35], [0, 0.35], [back, 0.6], [0, 0.7], [-back, 0], [-back, 0.5], [back * 2, 0], [back * 2, 0.5], [back, 1.0], [0, 1.0], [-back * 2, 0.4], [Math.PI, 0.3]];
+			let pick = null, pickR = hidden ? -1 : rig.block + 0.5;
+			for (const [a, up] of tries) {
+				const yw = gy + a, pt = clamp(gp + up, -0.05, 1.4), cp = Math.cos(pt);
 				const q = new THREE.Vector3(rig.target.x + Math.sin(yw) * cp * d, rig.target.y + Math.sin(pt) * d, rig.target.z + Math.cos(yw) * cp * d);
-				const c = occlusion(q) ?? Infinity;
-				// rising only to a view that is wholly clear, and never over a framed shot (a platform has its canopy)
-				if (up && (c !== Infinity || journey.camera())) continue;
-				if (c > bestD + 0.5) {
-					best = (rig.swing || 0) + a;
-					bestR = Math.min(0.7, (rig.rise || 0) + up);
-					bestD = c;
+				q.y = Math.max(q.y, world.height(q.x, q.z) + (low ? 0.22 : 1.2));
+				// where the camera would stand: brought in to just in front of whatever is on the line, but no nearer
+				// than a body length; if that is still behind it, this way is no good
+				const c = occlusion(q), r = c == null ? d : Math.max(Math.min(d, 1.1), c);
+				if (c != null && c < Math.min(d, 1.1)) continue;
+				const at = q.clone().sub(rig.target).multiplyScalar(r / q.distanceTo(rig.target)).add(rig.target);
+				if (bodyHidden(at) > 0) continue;
+				// following and hidden: the first clear view in order; otherwise the most open one, if clearly better
+				if (r > pickR) {
+					pick = [a, up];
+					pickR = r;
+					if (hidden) break;
 				}
 			}
-			// never more than half a turn either way
-			rig.swing = Math.atan2(Math.sin(best), Math.cos(best));
-			rig.rise = bestR;
-		} else if (app.frames % 12 === 0 && rig.block == null) {
+			if (pick) {
+				const turn = Math.abs(Math.atan2(Math.sin(gy + pick[0] - rig.yaw), Math.cos(gy + pick[0] - rig.yaw))) + Math.abs(clamp(gp + pick[1], -0.05, 1.45) - rig.pitch);
+				rig.swing = pick[0];
+				rig.rise = pick[1];
+				if (hidden) {
+					if (turn > 0.35) rig.cut = true;
+					else rig.quick = 0.6;
+				}
+			}
+			rig.hid = 0;
+		} else if (app.frames % 12 === 0 && rig.block == null && !rig.hid) {
 			rig.swing = (rig.swing || 0) * 0.98;
 			rig.rise = (rig.rise || 0) * 0.94;
 		}
@@ -563,10 +611,13 @@ function updateCamera(dt) {
 		// never closer than a little over a body length (the traveller is about 0.5 units tall): any nearer and
 		// the lens is inside their clothes; when the wall is closer than that, the swing above finds another side
 		if (rig.clear < d) camera.position.lerp(rig.target, 1 - Math.max(Math.min(d, 1.1), rig.clear) / d);
+		// and from where the camera now is, can the traveller be seen? (twice running sends it round, above)
+		if (!jc && app.frames % 3 === 0) rig.hid = bodyHidden(camera.position) >= 2 ? (rig.hid || 0) + 1 : 0;
 	} else {
 		rig.clear = undefined;
 		rig.swing = 0;
 		rig.rise = 0;
+		rig.hid = 0;
 	}
 	camera.lookAt(rig.target);
 	// keep the shrine clear of the darshan panel
