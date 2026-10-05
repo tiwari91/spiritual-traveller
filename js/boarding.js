@@ -6,6 +6,7 @@
 // while any of this is happening.
 import * as THREE from "three";
 import { M, RAIL, aToS, railAt, railHead, sToA, wireAt } from "./roads.js";
+import { surfaceAt } from "./traffic.js";
 import { STOCK, SEATED, autorickshaw, jeep, motorbike, taxi, train } from "./vehicles.js";
 import * as P from "./pilgrim.js";
 import { clamp, lerp, rand, smoothstep } from "./util.js";
@@ -633,6 +634,14 @@ const sit = (v) => Object.assign({}, SEATED, { bob: v.seat.y - 0.95 });
 const V3 = (p, y) => new THREE.Vector3(p.x, y ?? p.y, p.z);
 Object.assign(Journey.prototype, {
 	// the traveller, for the frame: where, facing which way (in the frame of quat), doing what
+	// a few steps from a to b on foot, keeping to the lie of the ground between them (as the road or the ground
+	// under each point has it), and to each end's own height at the ends
+	overGround(a, b, k) {
+		const g = (q) => surfaceAt(this.roads, q.x, q.z);
+		const p = a.clone().lerp(b, k);
+		p.y = g(p) + (a.y - g(a)) * (1 - smoothstep(0, 0.35, k)) + (b.y - g(b)) * smoothstep(0.65, 1, k);
+		return p;
+	},
 	tvSet(pos, yaw, mode = "idle", over = null, w = 0, o = {}) {
 		this.tv = Object.assign({ pos: pos.clone(), quat: null, yaw, mode, over, w, staff: true, diya: true, vis: true }, o);
 	},
@@ -691,8 +700,10 @@ Object.assign(Journey.prototype, {
 		const u = (p.x - st.x) * dz - (p.z - st.z) * dx, v = (p.x - st.x) * dx + (p.z - st.z) * dz;
 		// only on the flight itself: it is 1.4 wide, and an auto can set down beside it, level with its treads
 		if (u < S.u0 - 0.02 || u > S.u1 + 0.02 || Math.abs(v) > 0.72) return p.y;
-		const k = Math.min(S.n - 1, Math.max(0, Math.floor(((u - S.u0) / (S.u1 - S.u0)) * S.n)));
-		return S.top - (S.rise * (k + 1)) / S.n;
+		const f = ((u - S.u0) / (S.u1 - S.u0)) * S.n, k = Math.min(S.n - 1, Math.max(0, Math.floor(f)));
+		// the foot comes down onto the next tread over the last part of this one, rather than all in one frame
+		const down = k < S.n - 1 ? smoothstep(0.6, 1, f - k) : 0;
+		return S.top - (S.rise * (k + 1 + down)) / S.n;
 	},
 	walkTo(get, cam, st0 = null) {
 		let pts = null;
@@ -813,14 +824,21 @@ Object.assign(Journey.prototype, {
 				put();
 				door && door.open(1);
 				const o = L(out[0], out[1]);
-				const p = P0 ? P0.clone().lerp(o, k) : o;
+				// over the verge to the door, on the ground between (a ditch or a bank between path and kerb) and on the
+				// ground beside the door, which on a cambered or banked road is not level with the car; a station's
+				// forecourt is level
+				if (!st) o.y = surfaceAt(this.roads, o.x, o.z);
+				const p = P0 ? (st ? P0.clone().lerp(o, k) : this.overGround(P0, o, k)) : o;
 				this.tvSet(p, Math.atan2(o.x - (P0 || o).x, o.z - (P0 || o).z) || yawV(), "walk");
 				cam();
 			} },
 			{ d: 1.0, f: (k) => {
 				put();
 				door && door.open(1);
-				this.tvSet(L(lerp(out[0], inn[0], k), dz), (-side * Math.PI) / 2, "idle", mix(STAND, DUCK, smoothstep(0, 0.8, k)), 1, { quat: v.group.quaternion, staff: k < 0.6 });
+				// and up off the ground into the car
+				const q = L(lerp(out[0], inn[0], k), dz), lo = L(out[0], out[1]);
+				if (!st) q.y += (surfaceAt(this.roads, lo.x, lo.z) - lo.y) * (1 - smoothstep(0, 0.5, k));
+				this.tvSet(q, (-side * Math.PI) / 2, "idle", mix(STAND, DUCK, smoothstep(0, 0.8, k)), 1, { quat: v.group.quaternion, staff: k < 0.6 });
 				cam();
 			} },
 			{ d: side < 0 ? 1.4 : 1.0, f: (k) => {
@@ -855,7 +873,7 @@ Object.assign(Journey.prototype, {
 			{ d: 0.7, start: () => (P0 = this.traveller.group.position.clone()), f: (k) => {
 				put(0.16, 0);
 				b.staff.visible = false;
-				this.tvSet(P0.clone().lerp(L(0.55, -0.2), k), yawB(), "walk");
+				this.tvSet(this.overGround(P0, L(0.55, -0.2), k), yawB(), "walk");
 				cam();
 			} },
 			// the staff goes onto the carrier and is strapped there
@@ -922,7 +940,17 @@ function stationPath(st, vD) {
 		return new THREE.Vector3(q.x, y === undefined ? q.plat : y, q.z);
 	};
 	const sg = Math.sign(vD) || 1;
-	return [at(st.steps.u1 + 0.3, 0, st.forecourt), at(st.steps.u0 - 0.05, 0), at(E + W * 0.55, 0), at(E + W * 0.5, vD - sg * 0.9), at(E + 0.13, vD)];
+	// level across the forecourt to the foot of the steps, up them (treadY), and on
+	return [at(st.steps.u1 + 0.3, 0, st.forecourt), at(st.steps.u1 + 0.02, 0, st.forecourt), at(st.steps.u0 - 0.05, 0), at(E + W * 0.55, 0), at(E + W * 0.5, vD - sg * 0.9), at(E + 0.13, vD)];
+}
+// From a car or an auto set down beside the steps up to the station, out in front of the flight first, rather than
+// cutting across its corner: the point to go round by, or none.
+function roundSteps(st, p) {
+	const dx = Math.sin(st.yaw), dz = Math.cos(st.yaw);
+	const u = (p.x - st.x) * dz - (p.z - st.z) * dx, v = (p.x - st.x) * dx + (p.z - st.z) * dz;
+	if (!st.steps || u > st.steps.u1 + 0.25 || Math.abs(v) < 0.6) return [];
+	const q = st.at(st.steps.u1 + 0.3, v);
+	return [new THREE.Vector3(q.x, st.forecourt, q.z)];
 }
 Object.assign(Journey.prototype, {
 	// on a platform: from along the platform, a little above head height, the train on one side
@@ -954,7 +982,7 @@ Object.assign(Journey.prototype, {
 		const sg = Math.sign(d.z) || 1;
 		const atDoor = () => this.coachPt(r, S.W / 2 - 0.17, S.floor, d.z - sg * 0.05), grip = () => this.coachPt(r, S.W / 2 + 0.07, S.floor + 1.08, d.z + S.doorW / 2 + 0.06);
 		return [
-			this.walkTo(() => (this.passengers(r, st), [this.traveller.group.position.clone(), ...stationPath(st, vD())]), (p) => this.platformCam(st, p, 1), st),
+			this.walkTo(() => (this.passengers(r, st), [this.traveller.group.position.clone(), ...roundSteps(st, this.traveller.group.position), ...stationPath(st, vD())]), (p) => this.platformCam(st, p, 1), st),
 			{ d: 0.7, start: () => (P5 = this.traveller.group.position.clone()), f: (k) => (d.open(k), this.tvSet(P5, face(), "idle", STAND, 1), cam(P5)) },
 			{ d: 1.1, f: (k) => {
 				d.open(1);
@@ -1004,7 +1032,7 @@ Object.assign(Journey.prototype, {
 		const walk = this.walkTo(() => {
 			wait();
 			const out = this.local(v, -(v.hull.x + 0.42), 0, dz);
-			return [...stationPath(st, vD()).reverse(), out];
+			return [...stationPath(st, vD()).reverse(), ...roundSteps(st, out), out];
 		}, (p) => (wait(), this.platformCam(st, p, -1)), st);
 		const board = this.epBoard(T, kind, st);
 		return [
