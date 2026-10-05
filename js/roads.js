@@ -711,7 +711,7 @@ export class Roads {
 				}
 			}
 			// at Kedarnath the path from the bus stand joins the trek at Gaurikund
-			const end = i === kedar ? A.gauri : c.s1 - 3.0;
+			const end = i === kedar ? A.gauri : c.s1 - (COURT[c.shrine.key] ?? 3.0);
 			if (end - sA < 0.8) return;
 			const path = bridges(samplePath(route, world, sA - 0.3, end + 0.2, 0, { kind: "trek" }), this.rivers, world, 0.5);
 			if (path.length > 2) {
@@ -726,7 +726,7 @@ export class Roads {
 			if (Math.hypot(a.x - b.x, a.z - b.z) < 1.5) return;
 			const out = this.legWalk[i].out;
 			if (out - c.s0 < 4) return;
-			const path = bridges(samplePath(route, world, c.s0 + 2.8, out + 0.5, 0, { kind: "trek" }), this.rivers, world, 0.5);
+			const path = bridges(samplePath(route, world, c.s0 + (COURT[ch[i - 1].shrine.key] ?? 2.8), out + 0.5, 0, { kind: "trek" }), this.rivers, world, 0.5);
 			if (path.length > 2) {
 				this.walks.push(path);
 				this.stands.push({ s: out, shrine: i, out: true });
@@ -1543,6 +1543,8 @@ const LINES = [
 ];
 // How far around each shrine the roads stop, at a bus stand, and the last stretch is on foot (world units).
 const CLEAR = { tirupati: 10.5, shirdi: 6.5 };
+// Where the pilgrim path and its stalls stop short of the temple, leaving its courtyard open (world units).
+const COURT = { shirdi: 4.8 };
 // Platform paving: the white coping at the edge, the yellow line, then square pavers.
 let _plat;
 function platformTexture() {
