@@ -221,7 +221,7 @@ class Clutter {
 			const y = world.height(x, z);
 			if (y < 0.3 || sc.roads.clearance(x, z) < 0.12 || sc.foot.hits(x, z, 0.02) || sc.precinct(x, z)) continue;
 			const r = R();
-			const kind = reg === "garhwal" || reg === "sahyadri" ? (r < 0.62 ? 0 : r < 0.8 ? 2 : r < 0.9 ? 3 : 1) : reg === "deccan" || reg === "south" || reg === "central" ? (r < 0.35 ? 0 : r < 0.8 ? 1 : 2) : r < 0.6 ? 0 : r < 0.8 ? 1 : r < 0.95 ? 2 : 3;
+			const kind = reg === "garhwal" || reg === "sahyadri" ? (r < 0.62 ? 0 : r < 0.8 ? 2 : r < 0.9 ? 3 : 1) : reg === "deccan" || reg === "nagar" || reg === "south" || reg === "central" ? (r < 0.35 ? 0 : r < 0.8 ? 1 : 2) : r < 0.6 ? 0 : r < 0.8 ? 1 : r < 0.95 ? 2 : 3;
 			const w = (kind === 1 ? 0.7 : 0.5) + R() * 0.5, h = kind === 1 ? 0.6 + R() * 0.7 : kind === 3 ? 0.35 + R() * 0.2 : 0.3 + R() * 0.35;
 			const c = new THREE.Color().setRGB(lerp(0.24, 0.5, dry), lerp(0.36, 0.42, dry), lerp(0.12, 0.2, dry)).multiplyScalar(0.8 + R() * 0.3);
 			data.push(x, y - 0.01, z, R() * 6.3, w * M, h * M, kind, c.r, c.g, c.b);
@@ -310,10 +310,11 @@ const FLORA = {
 	south: [["coconut", 4], ["toddy", 3], ["neem", 2], ["tamarind", 1.5], ["acacia", 1.5], ["mango", 1], ["banyan", 0.5]],
 	deccan: [["neem", 3], ["acacia", 4], ["tamarind", 1.5], ["banyan", 1], ["peepal", 0.6], ["toddy", 0.8], ["eucalyptus", 1], ["bush", 2], ["thor", 1]],
 	telangana: [["toddy", 4], ["neem", 3], ["acacia", 3], ["tamarind", 1.5], ["banyan", 0.8], ["bush", 1.5], ["thor", 0.8]],
+	nagar: [["neem", 4], ["acacia", 3], ["tamarind", 1.5], ["banyan", 1], ["peepal", 0.8], ["mango", 0.8], ["eucalyptus", 1], ["bush", 2]],
 	central: [["neem", 3], ["mango", 2], ["acacia", 2], ["tamarind", 1], ["eucalyptus", 1], ["peepal", 0.6], ["banyan", 0.6], ["bush", 1.5]],
 	gangetic: [["mango", 3], ["eucalyptus", 3], ["neem", 2], ["peepal", 1], ["banyan", 0.7], ["sal", 0.6], ["bush", 1]],
 };
-const AVENUE = { deccan: ["neem", "tamarind", "banyan", "neem"], telangana: ["neem", "tamarind", "neem"], south: ["tamarind", "neem", "banyan"], central: ["neem", "mango", "tamarind"], gangetic: ["mango", "neem", "eucalyptus", "peepal"], doon: ["sal", "mango"] };
+const AVENUE = { deccan: ["neem", "tamarind", "banyan", "neem"], nagar: ["neem", "banyan", "tamarind", "neem"], telangana: ["neem", "tamarind", "neem"], south: ["tamarind", "neem", "banyan"], central: ["neem", "mango", "tamarind"], gangetic: ["mango", "neem", "eucalyptus", "peepal"], doon: ["sal", "mango"] };
 function flora(R, key) {
 	const L = FLORA[key] || FLORA.deccan;
 	let t = 0;
@@ -323,7 +324,7 @@ function flora(R, key) {
 	return L[0][0];
 }
 // Leaf colour by landscape: dusty olive in the dry Deccan, deep green in the monsoon ghats.
-const LEAF_TINT = { deccan: [1.0, 0.92, 0.78], telangana: [1.0, 0.94, 0.8], central: [1.0, 0.95, 0.82], south: [0.95, 1.0, 0.85], sahyadri: [0.85, 1.05, 0.85], gangetic: [0.95, 1.0, 0.88], doon: [0.9, 1.0, 0.9], garhwal: [0.95, 1.0, 0.95] };
+const LEAF_TINT = { deccan: [1.0, 0.92, 0.78], nagar: [1.0, 0.93, 0.8], telangana: [1.0, 0.94, 0.8], central: [1.0, 0.95, 0.82], south: [0.95, 1.0, 0.85], sahyadri: [0.85, 1.05, 0.85], gangetic: [0.95, 1.0, 0.88], doon: [0.9, 1.0, 0.9], garhwal: [0.95, 1.0, 0.95] };
 
 export class Scenery {
 	constructor(route, world, roads, scene, low = false) {
@@ -472,7 +473,7 @@ export class Scenery {
 		const land = landOf(reg, geo.lon);
 		const style = styleOf(reg, geo.lon);
 		const lang = langAt(geo.lon, geo.lat);
-		const plains = reg === "deccan" || reg === "central" || reg === "gangetic" || reg === "south";
+		const plains = reg === "deccan" || reg === "nagar" || reg === "central" || reg === "gangetic" || reg === "south";
 		const low = this.low;
 		const dens = low ? 0.55 : 1;
 		const tint = LEAF_TINT[style] || LEAF_TINT[reg] || [1, 1, 1];
@@ -617,7 +618,7 @@ export class Scenery {
 			}
 		}
 		// thor hedges along field edges on the Deccan
-		if (style === "deccan" || style === "telangana" || style === "central") {
+		if (style === "deccan" || style === "nagar" || style === "telangana" || style === "central") {
 			for (const P of plots) {
 				if (R() > 0.18 || !P.ring) continue;
 				const a = Math.floor(R() * P.ring.length);

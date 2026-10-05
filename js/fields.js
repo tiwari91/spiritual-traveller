@@ -49,6 +49,8 @@ export const CROPS = C;
 const LAND = {
 	sahyadri: { soil: "laterite", w: [2.2, 4.2], l: [4, 9], terrace: true, crops: [["paddy", 5], ["paddyRipe", 1], ["ragi", 2], ["fallow", 1.5], ["ploughed", 0.8]] },
 	deccan: { soil: "black", w: [5, 10], l: [5, 12], crops: [["jowar", 3], ["cane", 2], ["ploughed", 3], ["stubble", 1.5], ["onion", 1], ["sunflower", 1], ["cotton", 0.8], ["orchard:bush", 1], ["fallow", 1]] },
+	// round Shirdi: sugarcane for the co-operative sugar mills, onion, rabi jowar and wheat, pomegranate orchards
+	nagar: { soil: "black", w: [4, 9], l: [5, 12], crops: [["cane", 4], ["onion", 2.5], ["jowar", 2.5], ["wheat", 1], ["ploughed", 1.5], ["stubble", 1], ["orchard:bush", 1.2], ["fallow", 0.6]] },
 	telangana: { soil: "red", w: [4, 9], l: [5, 11], crops: [["cotton", 3], ["paddy", 2], ["chilli", 1.2], ["ploughed", 2], ["groundnut", 1.2], ["jowar", 1], ["fallow", 1.2], ["orchard:mango", 0.8]] },
 	south: { soil: "red", w: [3, 7], l: [4, 9], crops: [["paddy", 3], ["cane", 1], ["groundnut", 2], ["banana", 1], ["orchard:mango", 1], ["orchard:coconut", 1.2], ["ploughed", 1], ["fallow", 1]] },
 	central: { soil: "black", w: [4, 9], l: [5, 11], crops: [["cotton", 3], ["soybean", 3], ["wheat", 1], ["ploughed", 2], ["orchard:bush", 0.8], ["fallow", 1], ["jowar", 1]] },

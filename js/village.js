@@ -19,6 +19,7 @@ const PAINTS = {
 	deccan: [0xf0ece4, 0xb9d4e6, 0x9cc7d8, 0xe9c9cf, 0xc6dcb4, 0xf1d99a, 0xd6d0c4, 0xe8b88e, 0xa7c6a0],
 	telangana: [0xf2a7b8, 0x9fd3c0, 0xf3e3a0, 0xc8b6e2, 0xf0ece4, 0x8fc3e0, 0xf2c08a, 0xd6d0c4],
 	south: [0xf0ece4, 0xf2c08a, 0x9fd3c0, 0xf2a7b8, 0xf3e3a0, 0xe6e0d0, 0x8fc3e0],
+	nagar: [0xf0ece4, 0xe9d7b0, 0xd6d0c4, 0xb9d4e6, 0xe8c4a8, 0xc6dcb4, 0xf1d99a],
 	sahyadri: [0xf0ece4, 0xdfe8ee, 0xe9d7b0, 0xc8dcc0, 0xe6c8b0],
 	central: [0xf0ece4, 0xe9d7b0, 0xb9d4e6, 0xd6d0c4, 0xe8c4a8, 0xc6dcb4],
 	gangetic: [0xf0ece4, 0xe9d7b0, 0xd6d0c4, 0xf2d6b0, 0xc8d8e0],
@@ -28,6 +29,8 @@ const PAINTS = {
 const STYLE = {
 	sahyadri: { roofs: [["hip", 6], ["flat", 2], ["tin", 1]], brick: 0.05, floors: [0.85, 0.15], lane: 0x8a5a3a },
 	deccan: { roofs: [["flat", 6], ["tin", 2], ["hip", 1.2]], brick: 0.16, floors: [0.6, 0.35], lane: 0x8a7a62 },
+	// flat RCC or mud roofs, stone and brick walls, a water tank on top; tin sheds for the cane carts
+	nagar: { roofs: [["flat", 8], ["tin", 2], ["hip", 0.5]], brick: 0.22, floors: [0.65, 0.32], lane: 0x84745c },
 	telangana: { roofs: [["flat", 7], ["tin", 1.5], ["hip", 1]], brick: 0.14, floors: [0.55, 0.38], lane: 0x9a6a4a },
 	south: { roofs: [["flat", 5], ["hip", 3], ["tin", 1]], brick: 0.1, floors: [0.6, 0.35], lane: 0x9a6a4a },
 	central: { roofs: [["flat", 5], ["hip", 2], ["tin", 2]], brick: 0.15, floors: [0.65, 0.3], lane: 0x8a7860 },
