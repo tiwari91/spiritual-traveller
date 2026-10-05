@@ -45,7 +45,7 @@ export const P = {
 	// where the parikrama path comes back into Darchen from the east, on the edge of the town
 	darchenEnd: [81.335, 30.988], pastDarchen: [81.268, 30.962],
 	omParvat: [81.02, 30.172], gurla: [81.296, 30.436],
-	dirapuk: K(320, 9), dolmaLa: K(25, 9.8), gauriKund: K(45, 10.4), zuthulphuk: K(110, 11.5),
+	dirapuk: K(320, 10.4), dolmaLa: K(25, 9.8), gauriKund: K(45, 10.4), zuthulphuk: K(110, 11.5),
 };
 
 // The parikrama path round the drawn Kailash, clockwise (Kailash always on the right hand): from Tarboche up the
@@ -60,11 +60,11 @@ export const KORA = {
 // Lakes, traced round their shores (approximate).
 export const LAKES = [
 	{
-		name: "Mansarovar", deva: "मानसरोवर", level: 46.5, deep: [0.04, 0.27, 0.42], shallow: [0.18, 0.62, 0.66],
+		name: "Mansarovar", deva: "मानसरोवर", level: 46.5, deep: [0.05, 0.22, 0.38], shallow: [0.2, 0.5, 0.54],
 		pts: [[81.372, 30.7], [81.385, 30.742], [81.42, 30.764], [81.48, 30.772], [81.54, 30.757], [81.574, 30.722], [81.586, 30.668], [81.572, 30.612], [81.532, 30.567], [81.472, 30.551], [81.418, 30.556], [81.385, 30.588], [81.37, 30.642]],
 	},
 	{
-		name: "Rakshas Tal", deva: "राक्षस ताल", level: 46.35, deep: [0.03, 0.17, 0.33], shallow: [0.1, 0.42, 0.55],
+		name: "Rakshas Tal", deva: "राक्षस ताल", level: 46.35, deep: [0.03, 0.14, 0.28], shallow: [0.12, 0.34, 0.44],
 		pts: [[81.296, 30.8], [81.318, 30.772], [81.322, 30.724], [81.31, 30.672], [81.302, 30.622], [81.284, 30.574], [81.25, 30.548], [81.214, 30.56], [81.2, 30.598], [81.162, 30.628], [81.152, 30.668], [81.188, 30.702], [81.226, 30.722], [81.246, 30.768], [81.27, 30.8]],
 	},
 ];
@@ -116,7 +116,7 @@ export const SHRINES = [
 		access: "From Delhi by road through Tanakpur (the 2025 and 2026 batches spent the first night there), Dharchula and Gunji, now on the Border Roads road up the Kali gorge (the old 27 km of trekking is almost all gone). Two nights at Gunji and two at Nabhidhang to acclimatise. An Inner Line Permit is needed above Dharchula.",
 		note: "Om Parvat stands above the camp at Nabhidhang, the last halt before Tibet. Snow lying in the gullies of its face draws ॐ, the sacred syllable. Below it the Kali rises at Kalapani, where there is a Kali temple and the cave of Ved Vyas. Adi Kailash (Jolingkong, 5,945 m), up the Kuti valley from Gunji, is not on the MEA route.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Har Har Mahadev",
-		hour: 6.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [0.9, 1.8], view: { lift: 1.9, pitch: 0.06, dist: 6.6 },
+		hour: 6.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [4.0, 5.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 },
 	},
 	{
 		key: "mansarovar", name: "Mansarovar", deva: "मानसरोवर", lon: P.qugu[0], lat: P.qugu[1], look: [81.36, 31.0],
@@ -127,7 +127,7 @@ export const SHRINES = [
 		access: "Over the Lipulekh Pass from India, two nights at Taklakot, then by the yatra's Chinese bus. The bus goes round the lake (about 88 km of shore): Rakshas Tal and the first sight of Kailash, the camp at Chiu, then by Hor to Qugu on the south-western shore.",
 		note: "Pilgrims take a snan in the lake (no soap), offer puja and a havan on the shore, and fill cans with its water to take home. Before dawn people watch the water for lights said to be the gods coming down to bathe. Kailash stands across the lake to the north and the snows of Gurla Mandhata (7,694 m) behind.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Jai Mansarovar",
-		hour: 6.2, weather: "clear", rest: [0.3, 3.4], floor: 0.03, lake: true, view: { lift: 1.4, pitch: 0.12, dist: 6.2 },
+		hour: 7.1, weather: "clear", rest: [0.3, 3.4], floor: 0.03, lake: true, shelf: [2.6, 4.4], view: { lift: 1.4, pitch: 0.12, dist: 6.2 },
 	},
 	{
 		key: "yamdwar", name: "Yam Dwar", deva: "यम द्वार", lon: P.tarboche[0], lat: P.tarboche[1], look: KAILASH,
@@ -138,7 +138,7 @@ export const SHRINES = [
 		access: "From Darchen by the yatra's bus to Yam Dwar, where the walk begins. Yaks, ponies and porters are hired for the three days.",
 		note: "Pilgrims pass through Yam Dwar, a small chorten gateway, leaving the world behind; beside it the Tarboche flagpole stands hung with thousands of prayer flags. From here the path turns north up the Lha Chu valley, with Kailash on the right hand all the way round.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Bam Bam Bhole",
-		hour: 9.6, weather: "clear", rest: [0.35, 3.3], floor: 0.03, view: { lift: 3.2, pitch: 0.0, dist: 8.6 }, petals: false,
+		hour: 9.6, weather: "clear", rest: [0.35, 3.3], floor: 0.03, shelf: [3.0, 5.2], view: { lift: 3.2, pitch: 0.0, dist: 8.6 }, petals: false,
 	},
 	{
 		key: "dirapuk", name: "Dirapuk", deva: "डेरापुक", lon: P.dirapuk[0], lat: P.dirapuk[1], look: KAILASH,
@@ -149,7 +149,7 @@ export const SHRINES = [
 		access: "About 20 km on foot from Darchen (the first day of the parikrama), the first 10 km to Yam Dwar by bus. A basic camp; the Dirapuk gompa stands on the slope opposite.",
 		note: "Here the north face of Kailash rises straight from the glaciers above the camp, the closest view of the whole circuit: dark rock banded with snow, the great gully down its middle. The gompa is built round a cave, the 'cave of the female yak's horns'. Pilgrims can walk up towards the face for charan sparsh, to touch its foot.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Jai Kailashpati",
-		hour: 18.0, weather: "clear", rest: [0.35, 3.4], floor: 0.03, view: { lift: 3.2, pitch: -0.02, dist: 8.4 }, petals: false,
+		hour: 16.8, weather: "clear", rest: [0.35, 3.4], floor: 0.03, shelf: [5.0, 8.0], view: { lift: 3.2, pitch: -0.02, dist: 8.4 }, petals: false,
 	},
 	{
 		key: "dolmala", name: "Dolma La", deva: "डोल्मा ला", lon: P.dolmaLa[0], lat: P.dolmaLa[1], look: KAILASH,
@@ -160,7 +160,7 @@ export const SHRINES = [
 		access: "A steep climb of about 6 km from Dirapuk, starting before dawn. Ponies and yaks go over; many walk. Below it on the far side lies Gauri Kund.",
 		note: "The pass is a sea of prayer flags round the great Dolma stone. Pilgrims leave something of themselves (a lock of hair, a piece of clothing) at Shiva Sthal below, and offer at the stone. Down the far side, Gauri Kund (Thukje Chenpo Tso), the emerald lake where Parvati bathed, is often still frozen.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Jai Maa Gauri",
-		hour: 9.4, weather: "snow", rest: [0.35, 3.3], floor: 0.03, view: { lift: 2.4, pitch: 0.02, dist: 7.0 }, petals: false,
+		hour: 9.4, weather: "snow", rest: [0.35, 3.3], floor: 0.03, shelf: [3.0, 5.2], view: { lift: 2.4, pitch: 0.02, dist: 7.0 }, petals: false,
 	},
 	{
 		key: "darchen", name: "Darchen", deva: "दारचेन", lon: P.darchenEnd[0], lat: P.darchenEnd[1], look: KAILASH,
@@ -171,7 +171,7 @@ export const SHRINES = [
 		access: "From Dolma La down past Gauri Kund into the Lham Chu Khir valley, a night at Zuthulphuk (Milarepa's cave), then about 12 km back to Darchen. Then by bus to Taklakot and back over the Lipulekh to India; about 22 days from Delhi to Delhi.",
 		note: "The parikrama of about 52 km (the MEA's own booklet says 48) is done in three days. Zuthulphuk, the last halt, is the gompa round the cave where Milarepa stayed. From Darchen the south face shows its stair of snow bands and the vertical gully: the 'stairway to heaven'.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Om Namah Shivaya",
-		hour: 11.4, weather: "clear", rest: [0.35, 3.3], floor: 0.03, view: { lift: 3.0, pitch: 0.02, dist: 8.4 }, petals: false,
+		hour: 11.4, weather: "clear", rest: [0.35, 3.3], floor: 0.03, shelf: [3.0, 5.2], view: { lift: 3.0, pitch: 0.02, dist: 8.4 }, petals: false,
 	},
 ];
 

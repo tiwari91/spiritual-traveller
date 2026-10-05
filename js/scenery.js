@@ -9,6 +9,8 @@ import { Batch, DITHER, HAZE_FOG, NO_FLIP, SHARED, T, VCOL, patch, place } from 
 import { FieldGeo, StripGeo, cropMaterial, fieldMaterial, landOf, layFields } from "./fields.js";
 import { CITIES, KAILASH, SHRINES, toGeo, toWorld } from "./geo.js";
 import { kailashCountry } from "./kailash-scenery.js";
+import { KAILASH as K_CENTRE, P as KP } from "./kailash-geo.js";
+import { OM_DIR } from "./kailash-world.js";
 import { addAnimal, addPerson, haystack } from "./life.js";
 import { M, region } from "./roads.js";
 import { LEAF, blobTexture, leafAtlas, leafCell, signCell } from "./textures.js";
@@ -342,6 +344,11 @@ export class Scenery {
 		this.shrines = SHRINES.map((s) => toWorld(s.lon, s.lat));
 		this.cities = CITIES.map((c) => Object.assign({ w: toWorld(c.lon, c.lat) }, c));
 		this.trees = new Trees(scene, low);
+		// the Kailash journey's great mountains are models standing on the ground: nothing grows on them
+		if (KAILASH) {
+			const nb = toWorld(KP.nabhidhang[0], KP.nabhidhang[1]), kc = toWorld(K_CENTRE[0], K_CENTRE[1]);
+			this.peaks = [[nb.x + OM_DIR[0] * 8 * 1, nb.z - OM_DIR[1] * 8, 5.4], [kc.x, kc.z, 7.2]];
+		}
 		// people and animals on the paths of the Kailash journey: drawn, but not counted as something the camera must
 		// keep clear of (it follows the traveller among them along the parikrama)
 		if (KAILASH) {
@@ -460,6 +467,7 @@ export class Scenery {
 		this.foot.remove(k);
 	}
 	near(x, z, margin) {
+		if (this.peaks) for (const [px, pz, r] of this.peaks) if (Math.hypot(x - px, z - pz) < r + margin) return true;
 		// (the Kailash journey's stops are camps and cairns, not temple towns: they keep a smaller ground)
 		for (const w of this.shrines) if (Math.hypot(x - w.x, z - w.z) < (KAILASH ? 4.6 : 12) + margin) return true;
 		const sp = this.roads.shrinePos, cr = this.roads.clearR;
@@ -469,6 +477,7 @@ export class Scenery {
 	// inside a temple's paved courtyard and approach
 	precinct(x, z) {
 		for (const w of this.shrines) if (Math.hypot(x - w.x, z - w.z) < (KAILASH ? 4.2 : 7.5)) return true;
+		if (this.peaks) for (const [px, pz, r] of this.peaks) if (Math.hypot(x - px, z - pz) < r) return true;
 		return false;
 	}
 	ok(x, z, margin = 0.3) {
@@ -516,6 +525,11 @@ export class Scenery {
 			blob: (x, z, r, a) => blobs.add(world, x, z, 0, r * 2, r * 2, a),
 			blobRect: (x, z, yaw, w, d, a) => blobs.add(world, x, z, yaw, w, d, a),
 			tree: (x, z, kind, sc = 1, painted = false) => {
+				// above the tree line on the Kailash journey (the Byans valley, Tibet): scrub only
+				if (KAILASH && kind !== "bush") {
+					const g = toGeo(x, z), rg = region(g.lon, g.lat);
+					if (rg === "byans" || rg === "tibet") return 0;
+				}
 				const ki = this.trees.kind(kind, R);
 				const s = sc * (0.75 + R() * 0.4);
 				// the whole crown keeps clear of the road, the line and its wires, not just the trunk

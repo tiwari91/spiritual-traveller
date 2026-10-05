@@ -388,11 +388,16 @@ function cameraGoal() {
 		g.dist = innerWidth < innerHeight ? 12 : 6.2;
 		const v = l.shrine.view;
 		if (v) {
-			// at the Kailash stops the shot looks up past the traveller to the mountain
-			g.target.y = l.pos.y + v.lift;
-			g.yaw = l.shrine.facing + (v.yaw ?? 0.28) + Math.sin(app.darshanT * 0.1) * 0.16;
-			g.pitch = v.pitch;
-			g.dist = v.dist * (innerWidth < innerHeight ? 1.5 : 1);
+			// at the Kailash stops the shot looks up past the traveller to the mountain, from wherever behind them the
+			// camera stands clear of the hillside and of the camp (chosen once on arrival, then held)
+			const tp = traveller.group.position;
+			g.target.copy(tp).lerp(l.pos, 0.35);
+			g.target.y = tp.y + v.lift;
+			const k = kView(l, v, g.target.clone());
+			g.target.y = tp.y + k.lift;
+			g.yaw = l.shrine.facing + k.yaw + Math.sin(app.darshanT * 0.1) * 0.08;
+			g.pitch = v.pitch + k.pitch;
+			g.dist = k.dist;
 		}
 		return g;
 	}
@@ -422,6 +427,61 @@ function cameraGoal() {
 		g.dist = jc.dist * (innerWidth < innerHeight ? 1.35 : 1);
 	}
 	return g;
+}
+// The Kailash stops' darshan shot: of a few framings behind the traveller (turned either way, further back, higher),
+// the one whose camera stands above the ground, sees the traveller with nothing in between and, where the stop looks
+// to Kailash, has the summit in the frame with no ridge in front of it. Chosen once on arrival, then held.
+// the top of the mountain a stop looks to: Kailash, or Om Parvat over Nabhidhang
+function kSummit(name) {
+	rig.summits = rig.summits || {};
+	if (rig.summits[name] !== undefined) return rig.summits[name];
+	rig.summits[name] = null;
+	for (const l of landmarks) l.decor.traverse((o) => {
+		if (o.name !== name) return;
+		const b = new THREE.Box3().setFromObject(o);
+		rig.summits[name] = new THREE.Vector3((b.min.x + b.max.x) / 2, b.max.y, (b.min.z + b.max.z) / 2);
+	});
+	return rig.summits[name];
+}
+function kView(l, v, target) {
+	const key = app.at + "|" + (innerWidth < innerHeight);
+	if (rig.kView && rig.kView.key === key) return rig.kView;
+	const far = v.dist * (innerWidth < innerHeight ? 1.5 : 1);
+	const head = traveller.group.position.clone();
+	head.y += 0.4;
+	const top = l.shrine.lookKailash ? kSummit("kailash") : l.shrine.key === "omparvat" ? kSummit("omparvat") : null;
+	const half = THREE.MathUtils.degToRad(camera.fov / 2), halfW = Math.atan(Math.tan(half) * Math.max(0.6, camera.aspect));
+	let best = null;
+	const base = target.y;
+	for (const dk of [0.55, 0.75, 1, 1.4, 1.9, 2.5]) for (const yo of [v.yaw ?? 0.28, -(v.yaw ?? 0.28), 0.6, -0.6, 1.0, -1.0, 1.5, -1.5]) for (const up of top ? [0, 0.14, 0.28, 0.5, 0.75] : [0, 0.14, 0.28]) for (const lift of top ? [0, 2, 4, 6] : [0]) {
+		// (looking up to a near peak, the shot aims higher, so long as the traveller stays in the frame)
+		target.y = base + lift;
+		const d = far * dk, yw = l.shrine.facing + yo, pt = v.pitch + up, cp = Math.cos(pt);
+		const c = new THREE.Vector3(target.x + Math.sin(yw) * cp * d, target.y + Math.sin(pt) * d, target.z + Math.cos(yw) * cp * d);
+		const clear = c.y - world.height(c.x, c.z);
+		if (clear < 0.2) continue;
+		// nothing in between: the roadside and the camp, and the ground itself (a ridge or the hillside behind)
+		let blocked = occlusion(head, c) != null || occlusion(target, c) != null;
+		for (let q = 0.06; q < 0.97 && !blocked; q += 0.04) if (world.height(lerp(c.x, head.x, q), lerp(c.z, head.z, q)) > lerp(c.y, head.y, q) - 0.05) blocked = true;
+		let score = (blocked ? -10 : 0) + Math.min(clear, 1) * 2 - up * 2 - dk * 0.5 - Math.abs(yo) * 0.5 - lift * 0.1;
+		if (top) {
+			// the summit's direction from the camera, against where the camera looks
+			const f = target.clone().sub(c).normalize(), s = top.clone().sub(c);
+			const ang = Math.atan2(s.y, Math.hypot(s.x, s.z)) - Math.atan2(f.y, Math.hypot(f.x, f.z));
+			const turn = Math.atan2(Math.sin(Math.atan2(s.x, s.z) - Math.atan2(f.x, f.z)), Math.cos(Math.atan2(s.x, s.z) - Math.atan2(f.x, f.z)));
+			let seen = Math.abs(ang) < half * 0.85 && Math.abs(turn) < halfW * 0.8;
+			for (let k = 0.1; k < 0.95 && seen; k += 0.06) {
+				const x = lerp(c.x, top.x, k), z = lerp(c.z, top.z, k), y = lerp(c.y, top.y, k);
+				if (world.height(x, z) > y - 0.6 * k) seen = false;
+			}
+			// and the traveller still in the frame, below the middle
+			const hv = head.clone().sub(c), ha = Math.atan2(hv.y, Math.hypot(hv.x, hv.z)) - Math.atan2(f.y, Math.hypot(f.x, f.z));
+			if (ha < -half * 0.8) seen = false;
+			if (seen) score += 4 + Math.min(ang, half * 0.6) * 2;
+		}
+		if (!best || score > best.score) best = { key, yaw: yo, pitch: up, dist: d, lift: v.lift + lift, score };
+	}
+	return (rig.kView = best || { key, yaw: 0.28, pitch: 0.2, dist: far, lift: v.lift, score: -99 });
 }
 // The shrine forests (Bhimashankar's, the Tirumala hills) keep back from the way on foot to and from each door,
 // so the camera following a pilgrim along it is not in among the leaves.

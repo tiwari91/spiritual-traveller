@@ -267,41 +267,53 @@ function finish(b, g) {
 // ---------- the mountains ----------
 // Kailash: a great four-sided dome of dark rock in level strata, every ledge holding snow, the faces turned to the
 // four quarters, the south face cut by the vertical gully of the 'stairway', snow thick towards the rounded summit.
-function kailashMesh(H = 19, R0 = 5.4) {
-	const NA = 200, NH = 150;
-	const pos = new Float32Array((NA + 1) * (NH + 1) * 3), col = new Float32Array((NA + 1) * (NH + 1) * 3);
-	const tt = new Float32Array((NA + 1) * (NH + 1)), band = new Float32Array((NA + 1) * (NH + 1)), gul = new Float32Array((NA + 1) * (NH + 1));
-	const BANDS = 26;
+function kailashMesh(H = 12, R0 = 6.2) {
+	const NA = 220, NH = 140;
+	const N = (NA + 1) * (NH + 1);
+	const pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+	const tt = new Float32Array(N), band = new Float32Array(N), gul = new Float32Array(N), face = new Float32Array(N);
+	// strata of uneven thickness, each a ledge stepping back
+	const R = rand(17), cuts = [0];
+	while (cuts[cuts.length - 1] < 1) cuts.push(cuts[cuts.length - 1] + 0.028 + R() * 0.035);
+	const bandAt = (t) => {
+		let i = 0;
+		while (cuts[i + 1] < t) i++;
+		return [i, (t - cuts[i]) / (cuts[i + 1] - cuts[i])];
+	};
 	for (let j = 0; j <= NH; j++) {
 		// the first ring is a skirt, straight down into the ground under the foot of the faces
 		const t = Math.max(0, (j - 1) / (NH - 1));
 		for (let i = 0; i <= NA; i++) {
-			// round from the south-east corner (so the seam of the mesh lies on a corner, not in a face); 0 is south (+z)
+			// round from the south-east corner, so the seam lies on a corner; 0 is south (+z)
 			const th = (i / NA) * Math.PI * 2 + Math.PI / 4;
 			const k = j * (NA + 1) + i;
-			// the plan: a square with rounded corners, its sides facing the four quarters, rounder towards the top
-			const p = lerp(3.2, 2.2, t);
+			// the plan: nearly square, its sides to the four quarters, the corners a little rounded, rounder up high
+			const p = lerp(7, 3.4, t * t);
 			const cs = Math.abs(Math.cos(th)), sn = Math.abs(Math.sin(th));
 			const plan = 1 / Math.pow(Math.pow(cs, p) + Math.pow(sn, p), 1 / p);
-			// the profile: steep walls rising into a rounded dome
-			let r = R0 * Math.pow(Math.max(0, 1 - t), 0.5);
-			// strata: each band a ledge that steps back, its lip catching snow
-			const bt = t * BANDS + fbm(th * 3, t * 4, 2) * 0.6, f = bt - Math.floor(bt);
-			r *= 1 - 0.022 * smoothstep(0.0, 0.85, f) * (t < 0.92 ? 1 : 0);
-			// the gully down the middle of the south face, and a lesser one on the north
+			// the profile: a broad foot of scree, steep straight faces, the shoulders rolling over into the dome
+			// the profile: a foot of scree, then four steep faces drawing in (a truncated pyramid), and the summit dome
+			const u = Math.max(0, (t - 0.08) / 0.92);
+			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.56 * u) * (u > 0.8 ? Math.sqrt(Math.max(0, 1 - ((u - 0.8) / 0.2) ** 2)) : 1));
+			// the strata dip gently to the west and wander a little
+			const [bi, f] = bandAt(clamp(t + 0.035 * Math.sin(th) + 0.012 * Math.sin(th * 3 + 1) + 0.01 * (fbm(th * 2, t * 3, 2) - 0.5), 0, 0.999));
+			const jag = fbm(th * 5 + bi, bi * 0.7, 2);
+			// each ledge steps back by a little; some bands are cliffs, some shelves
+			r *= 1 - (0.004 + 0.008 * jag) * smoothstep(0.1, 0.9, f) * (t < 0.93 ? 1 : 0);
+			// the gully down the middle of the south face (the 'stairway'), and a lesser one on the north
 			const ds = Math.atan2(Math.sin(th), Math.cos(th)), dn = Math.atan2(Math.sin(th - Math.PI), Math.cos(th - Math.PI));
-			const gS = Math.exp(-((ds / 0.07) ** 2)) * smoothstep(0.08, 0.2, t) * (1 - smoothstep(0.78, 0.9, t));
-			const gN = Math.exp(-((dn / 0.05) ** 2)) * smoothstep(0.2, 0.3, t) * (1 - smoothstep(0.7, 0.8, t)) * 0.5;
-			r *= 1 - 0.1 * (gS + gN);
-			// rock buttresses and broken faces
-			r *= 1 + (fbm(th * 6 + 3, t * 9, 3) - 0.5) * 0.06 * (1 - t);
+			const gS = Math.exp(-((ds / (0.07 + 0.04 * fbm(t * 9, 3, 2))) ** 2)) * smoothstep(0.1, 0.22, t) * (1 - smoothstep(0.8, 0.92, t));
+			const gN = Math.exp(-((dn / 0.045) ** 2)) * smoothstep(0.2, 0.3, t) * (1 - smoothstep(0.7, 0.8, t)) * 0.6;
+			r *= 1 - 0.09 * (gS + gN);
+			// buttresses and broken rock
+			r *= 1 + (fbm(th * 7 + 3, t * 10, 3) - 0.5) * 0.07 * (1 - t);
 			const x = Math.sin(th) * r * plan, z = Math.cos(th) * r * plan;
 			let y = t * H;
-			if (t > 0.86) y = H * (0.86 + 0.14 * Math.sin(((t - 0.86) / 0.14) * Math.PI / 2)); // the rounded summit
 			pos.set([x, j === 0 ? -5 : y, z], k * 3);
 			tt[k] = t;
 			band[k] = f;
-			gul[k] = gS;
+			gul[k] = gS + gN;
+			face[k] = jag;
 		}
 	}
 	const idx = [];
@@ -314,26 +326,28 @@ function kailashMesh(H = 19, R0 = 5.4) {
 	g.setIndex(idx);
 	g.computeVertexNormals();
 	const nrm = g.attributes.normal;
-	const rock = new THREE.Color(0x3a3430), rock2 = new THREE.Color(0x4e4640), snow = new THREE.Color(0xf2f4f7), blue = new THREE.Color(0xc4d0e0), tmp = new THREE.Color();
-	for (let k = 0; k < tt.length; k++) {
+	// dark brown-grey rock, warmer in some strata; snow only where it can lie: thin lines on the ledges, the gully,
+	// the dome; the north face darker and bluer, holding less
+	const rock = new THREE.Color(0x2e2925), rock2 = new THREE.Color(0x4a3f36), rock3 = new THREE.Color(0x5a4d40), snow = new THREE.Color(0xeef1f5), blue = new THREE.Color(0xb8c6da), tmp = new THREE.Color();
+	for (let k = 0; k < N; k++) {
 		const t = tt[k], f = band[k], ny = nrm.getY(k), nz = nrm.getZ(k);
 		const i = k % (NA + 1), th = (i / NA) * Math.PI * 2 + Math.PI / 4;
-		// snow on the lips of the ledges and on any face that is not too steep; more of it higher up, less on the
-		// sheer north face
 		const north = smoothstep(0.2, -0.8, nz);
-		const ledge = smoothstep(0.48, 0.82, f) * (0.75 + 0.35 * fbm(th * 18, t * 30, 2));
-		const flat = smoothstep(0.42, 0.7, ny);
-		let s = Math.max(ledge * smoothstep(0.02, 0.25, t), flat * 0.85) * (1 - north * 0.45);
-		s = Math.max(s, smoothstep(0.55, 0.8, t + (fbm(th * 4, t * 6, 3) - 0.5) * 0.2)); // the snow cap
-		s = Math.max(s, gul[k] * smoothstep(0.3, 0.6, fbm(th * 40, t * 18, 2) + 0.3) * 0.9); // snow down the gully
-		s *= smoothstep(0.0, 0.06, t);
-		tmp.copy(rock).lerp(rock2, fbm(th * 7, t * BANDS * 0.5, 2));
-		tmp.multiplyScalar(0.8 + 0.35 * (1 - f));
-		tmp.lerp(snow, clamp(s, 0, 1)).lerp(blue, clamp(s, 0, 1) * north * 0.35);
+		const broken = fbm(th * 22, t * 40, 2);
+		const ledge = smoothstep(0.84, 0.97, f) * smoothstep(0.5, 0.72, fbm(th * 9 + face[k] * 4, t * 26, 3) + 0.15 * face[k]) * (0.4 + 0.6 * t);
+		const flat = smoothstep(0.82, 0.95, ny) * smoothstep(0.45, 0.65, fbm(th * 13, t * 31, 2));
+		let s = Math.max(ledge, flat * 0.8) * smoothstep(0.03, 0.2, t) * (1 - north * 0.4);
+		void broken;
+		s = Math.max(s, smoothstep(0.76, 0.88, t + (fbm(th * 4, t * 6, 3) - 0.5) * 0.16)); // the snow on the dome
+		s = Math.max(s, smoothstep(0.25, 0.6, gul[k]) * smoothstep(0.35, 0.6, broken + 0.2) * 0.95); // down the gully
+		tmp.copy(rock).lerp(rock2, fbm(th * 3, t * 9, 2)).lerp(rock3, smoothstep(0.55, 0.8, face[k]) * 0.6);
+		tmp.multiplyScalar(0.9 + 0.14 * (1 - f));
+		if (t < 0.08) tmp.lerp(new THREE.Color(0x6a5e52), 0.6);
+		tmp.lerp(snow, clamp(s, 0, 1)).lerp(blue, clamp(s, 0, 1) * north * 0.4);
 		col.set([tmp.r, tmp.g, tmp.b], k * 3);
 	}
 	g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-	const m = new THREE.Mesh(g, terrainDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88 }), "peak"));
+	const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
 	m.castShadow = true;
 	m.receiveShadow = true;
 	m.name = "kailash";
@@ -515,10 +529,12 @@ function omparvat(ctx) {
 		const l = Math.hypot(dx, dz) || 1;
 		dx /= l;
 		dz /= l;
-		let x = nb.x + dx * 6.2, z = nb.z + dz * 6.2;
+		let x = nb.x + dx * 8, z = nb.z + dz * 8;
 		for (let k = 0; k < 20 && wayDist(x, z) < 4.4; k++) (x += dx * 0.3), (z += dz * 0.3);
-		const yb = h.world.height(x, z);
-		const peakG = omParvat(10.5, 3.1, [-dx, -dz]);
+		// standing at the head of the side valley opened for it (kailash-world.js), its foot at the camp's level
+		const yb = Math.min(h.world.height(x, z), h.y + 1.6);
+		const peakG = omParvat(10, 4.6, [-dx, -dz]);
+		peakG.name = "omparvat";
 		peakG.position.set(x, yb - 1.4, z);
 		decor.add(peakG);
 	};
@@ -656,7 +672,7 @@ function yamdwar(ctx) {
 			for (const r of [5, 6]) foot = Math.min(foot, h.world.height(kw.x + sa * r, kw.z + ca * r));
 		}
 		void base;
-		const km = kailashMesh(top + 7.5 - (foot - 0.6), 5.4);
+		const km = kailashMesh(Math.max(10.5, top + 5.5 - (foot - 0.6)), 6.3);
 		km.position.set(kw.x, foot - 0.6, kw.z);
 		decor.add(km);
 		decor.add(cloudCollar(kw.x, base + 2.6, kw.z, 6.2, 16, 5));

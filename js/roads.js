@@ -268,7 +268,9 @@ function riverLines() {
 			for (let k = 0; k < n; k++) {
 				const t = k / n;
 				// the same meander world.js draws, with the same gaps where the Himalayan shrines draw their own river
-				const lon = lerp(a[0], b[0], t) + Math.sin(t * 9 + i) * 0.03, lat = lerp(a[1], b[1], t) + Math.cos(t * 7 + i) * 0.03;
+				// (on the Kailash journey the rivers lie in the valleys cut for them, so they are drawn without the meander)
+				const mq = KAILASH ? 0 : 0.03;
+				const lon = lerp(a[0], b[0], t) + Math.sin(t * 9 + i) * mq, lat = lerp(a[1], b[1], t) + Math.cos(t * 7 + i) * mq;
 				if (SHRINES.some((sh) => sh.weather !== "monsoon" && sh.lat > 25 && Math.hypot(lon - sh.lon, lat - sh.lat) < 0.12)) {
 					if (pts.length > 1) out.push({ w: r.w * 0.9, pts: pts.splice(0) });
 					else pts.length = 0;
@@ -967,7 +969,22 @@ export class Roads {
 		const y = this.world.height(cx, cz);
 		const g = toGeo(cx, cz), tb = region(g.lon, g.lat) === "tibet";
 		const b = new Batch();
-		b.add(T.box, place(cx, y - 0.12, cz, yaw, 2.4, 0.16, 3.4), tb ? 0x8f8474 : 0x77736c);
+		// packed gravel draped over the ground (a slab would stand proud of it on a slope)
+		{
+			const n = 6, P = [], N = [], C = [], col = new THREE.Color(tb ? 0x8f8474 : 0x77736c), cs = Math.cos(yaw), sn = Math.sin(yaw);
+			const at = (u, v) => {
+				const x = cx + u * cs + v * sn, z = cz - u * sn + v * cs;
+				return [x, this.world.height(x, z) + 0.035, z];
+			};
+			for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+				const u0 = -1.2 + (2.4 * i) / n, u1 = -1.2 + (2.4 * (i + 1)) / n, v0 = -1.7 + (3.4 * j) / n, v1 = -1.7 + (3.4 * (j + 1)) / n;
+				const A = at(u0, v0), B2 = at(u1, v0), Cc = at(u0, v1), D = at(u1, v1);
+				for (const t of [[A, Cc, B2], [B2, Cc, D]]) {
+					for (const q of t) P.push(...q), N.push(0, 1, 0), C.push(col.r, col.g, col.b);
+				}
+			}
+			b.addTris(P, N, C);
+		}
 		const R = rand(st.shrine * 37 + 11);
 		if (tb) {
 			// a flag pole with strings of prayer flags run out to the ground

@@ -373,7 +373,8 @@ export class World {
 				const n = Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.08));
 				for (let k = 0; k < n; k++) {
 					const t = k / n;
-					const lon = lerp(a[0], b[0], t) + (Math.sin(t * 9 + i) * 0.03), lat = lerp(a[1], b[1], t) + Math.cos(t * 7 + i) * 0.03;
+					const mq = KAILASH ? 0 : 0.03;
+					const lon = lerp(a[0], b[0], t) + (Math.sin(t * 9 + i) * mq), lat = lerp(a[1], b[1], t) + Math.cos(t * 7 + i) * mq;
 					const w = toWorld(lon, lat);
 					// the Himalayan shrines draw their own river; keep this one out of the courtyards
 					if (SHRINES.some((s) => s.weather !== "monsoon" && s.lat > 25 && Math.hypot(lon - s.lon, lat - s.lat) < 0.12)) {
@@ -452,7 +453,8 @@ function lakeMesh(L, world) {
 		const k = j * nx + i;
 		if (Math.min(sd[k], sd[k + 1], sd[k + nx], sd[k + nx + 1]) > 0.7) continue;
 		const a = vert(i, j), b = vert(i + 1, j), c = vert(i, j + 1), d = vert(i + 1, j + 1);
-		idx.push(a, c, b, b, c, d);
+		// (wound to face up: c is one step north, -z)
+		idx.push(a, b, c, b, d, c);
 	}
 	const g = new THREE.BufferGeometry();
 	g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));

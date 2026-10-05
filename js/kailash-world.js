@@ -100,6 +100,12 @@ function ridged(x, y, oct = 4) {
 	return s / n;
 }
 const KX = KAILASH[0] * U, KY = KAILASH[1] * U;
+// the direction from Nabhidhang to Om Parvat (on the map, x east and y north, as lon and lat)
+const OM_DIR = (() => {
+	const dx = P.omParvat[0] - P.nabhidhang[0], dy = P.omParvat[1] - P.nabhidhang[1], l = Math.hypot(dx, dy);
+	return [dx / l, dy / l];
+})();
+export { OM_DIR };
 // each stop's level shelf: flat out to r0 units, eased into the hillside by r1
 const STOPS = SHRINES.map((s) => ({ x: s.lon * U, y: s.lat * U, r0: (s.shelf || [1.9, 3.4])[0], r1: (s.shelf || [1.9, 3.4])[1] }));
 // How much of the map here is the region drawn by this module (1 inside, easing to 0 at its edges).
@@ -139,6 +145,12 @@ export function kHeight(lon, lat, h) {
 		const south = Math.max(h, crest);
 		const plateau = Math.max(pl, crest);
 		h = lerp(h, lerp(south, plateau, north), m);
+	}
+	// from the camp at Nabhidhang a side valley opens towards Om Parvat, so the mountain is seen whole from its foot
+	{
+		const ax = P.nabhidhang[0] * U, ay = P.nabhidhang[1] * U, dx = OM_DIR[0], dy = OM_DIR[1];
+		const tr = (x - ax) * dx + (y - ay) * dy, t = clamp(tr, 0, 8.5), d = Math.hypot(x - ax - dx * t, y - ay - dy * t);
+		if (d < 6 && tr > 0.6) h = smin(h, 49.9 + t * 0.12 + 1.4 * Math.pow(Math.max(0, d - 1.1), 1.15) + Math.max(0, 1.6 - tr) * 2, 0.8);
 	}
 	// Om Parvat above Nabhidhang
 	const dom = Math.hypot(x - P.omParvat[0] * U, y - P.omParvat[1] * U);

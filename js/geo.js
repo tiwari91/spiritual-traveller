@@ -173,6 +173,7 @@ export const GAURIKUND = [79.02, 30.62];
 if (KAILASH) for (const sh of KJ.SHRINES) {
 	const a = toWorld(sh.lon, sh.lat), b = toWorld(sh.look[0], sh.look[1]);
 	sh.facing = Math.atan2(a.x - b.x, a.z - b.z);
+	sh.lookKailash = sh.look === KJ.KAILASH || sh.key === "mansarovar";
 }
 export const SHRINES = KAILASH ? KJ.SHRINES : YATRA_SHRINES;
 export const ROUTE = KAILASH ? KJ.ROUTE : YATRA_ROUTE;
