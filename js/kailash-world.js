@@ -3,7 +3,7 @@
 // it with Gurla Mandhata, Mansarovar and Rakshas Tal sunk in it, the Barkha plain, and the Kailash range with the
 // valleys of the parikrama cut round the mountain. Heights are in world units, as the rest of the map's (its
 // relief exaggerated many times, and softened here so that the passes can be walked).
-import { KAILASH, KORA, LAKES, P, RIVERS, SHRINES } from "./kailash-geo.js";
+import { KAILASH, KORA, LAKES, P, RIVERS, ROUTE, SHRINES } from "./kailash-geo.js";
 import { clamp, fbm, inPoly, lerp, smoothstep } from "./util.js";
 
 const U = 40; // world units to the degree
@@ -14,17 +14,28 @@ const CREST = [[80.2, 30.52], [80.6, 30.38], [80.9, 30.28], [81.029, 30.236], [8
 const GORGE = { w: 1.0, k: 1.5, e: 1.18 }, PLAIN = { w: 0.8, k: 0.55, e: 1.0 }, KORA_V = { w: 0.95, k: 1.15, e: 1.12 }, PASS = { w: 0.9, k: 1.2, e: 1.38 };
 const WAYS = [
 	// Pithoragarh down to the Kali at Jauljibi and up the gorge to Gunji, Kalapani and Nabhidhang
-	{ ...GORGE, pts: [[80.22, 29.58, 32.5], [80.36, 29.68, 33.6], [80.38, 29.75, 32.6], [80.47, 29.8, 33.2], [P.dharchula[0], P.dharchula[1], 34], [80.6, 29.95, 36], [80.67, 30.03, 38.8], [80.76, 30.11, 41.6], [80.83, 30.15, 44.2], [P.gunji[0], P.gunji[1], 45.6], [80.89, 30.197, 46.6], [P.kalapani[0], P.kalapani[1], 47.8], [80.958, 30.212, 48.9], [P.nabhidhang[0], P.nabhidhang[1], 49.9]] },
+	{ ...GORGE, pts: [[80.36, 29.68, 24.6], [80.38, 29.75, 25.2], [80.47, 29.8, 26.2], [P.dharchula[0], P.dharchula[1], 27.4], [80.6, 29.95, 30.5], [80.67, 30.03, 34.4], [80.76, 30.11, 39.0], [80.83, 30.15, 43.4], [P.gunji[0], P.gunji[1], 45.4], [80.89, 30.197, 47.0], [P.kalapani[0], P.kalapani[1], 48.6], [80.958, 30.212, 49.5], [P.nabhidhang[0], P.nabhidhang[1], 49.9]] },
 	// over the Lipulekh and down into the Karnali valley to Taklakot, then over the Gurla La to the lakes
 	{ ...PASS, pts: [[P.nabhidhang[0], P.nabhidhang[1], 49.9], [80.995, 30.231, 50.5], [81.008, 30.226, 51.2], [P.roadHead[0], P.roadHead[1], 51.9], [81.022, 30.231, 52.6], [P.lipulekh[0], P.lipulekh[1], 53.2], [81.038, 30.239, 52.7], [P.busStand[0], P.busStand[1], 52.1], [81.06, 30.252, 51.4], [P.pala[0], P.pala[1], 50.4], [81.13, 30.27, 47.8], [P.taklakot[0], P.taklakot[1], 46.4], [81.18, 30.33, 47.1], [81.17, 30.39, 48.7], [P.gurlaLa[0], P.gurlaLa[1], 50.4], [81.2, 30.5, 48.2], [81.31, 30.548, 47.2], [81.335, 30.6, 47.0]] },
-	// round Mansarovar and across the Barkha plain to Darchen
-	{ ...PLAIN, pts: [[81.335, 30.6, 47.0], [P.isthmus[0], P.isthmus[1], 46.95], [81.35, 30.72, 47.0], [P.chiu[0], P.chiu[1], 47.25], [81.43, 30.79, 47.0], [81.51, 30.792, 46.9], [81.57, 30.775, 46.9], [P.hor[0], P.hor[1], 46.9], [81.608, 30.68, 46.9], [81.59, 30.6, 46.9], [81.54, 30.55, 46.85], [81.47, 30.535, 46.85], [P.qugu[0], P.qugu[1], 46.85], [81.39, 30.556, 46.9], [81.36, 30.584, 46.95], [81.335, 30.6, 47.0]] },
-	{ ...PLAIN, pts: [[P.chiu[0], P.chiu[1], 47.25], [81.35, 30.8, 47.3], [81.33, 30.87, 47.4], [81.3, 30.935, 47.7], [P.pastDarchen[0], P.pastDarchen[1], 48.0], [81.25, 30.985, 48.3], [P.tarboche[0], P.tarboche[1], 48.6]] },
+	// round Mansarovar and across the Barkha plain to Darchen, on the route's own line (kailash-geo.js)
+	{ ...PLAIN, pts: lakeRing() },
+	{ ...PLAIN, pts: toDarchen() },
 	// the parikrama: up the Lha Chu, over the Dolma La, down the Lham Chu Khir
 	{ ...KORA_V, pts: withFloors(KORA.west, [48.6, 48.9, 49.2, 49.5, 49.8, 50.1, 50.4]) },
 	{ ...KORA_V, pts: withFloors(KORA.north, [50.4, 51.2, 52.3, 53.3, 54.0]) },
 	{ ...KORA_V, pts: withFloors(KORA.east, [54.0, 53.0, 52.0, 51.0, 50.2, 49.6, 49.2, 48.9, 48.5, 48.3, 48.2]) },
 ];
+// the road round the lake: leg 2 from the isthmus to Qugu and leg 3 from Qugu back to it, nearly level
+function lakeRing() {
+	const L2 = ROUTE[1].pts, L3 = ROUTE[2].pts;
+	const i2 = L2.findIndex((p) => p[0] > 81.3 && p[1] > 30.55), i3 = L3.findIndex((p) => p === P.chiu);
+	return [...L2.slice(i2), ...L3.slice(1, i3 + 1)].map((p) => [p[0], p[1], p === P.chiu ? 47.25 : 46.95]);
+}
+// from Chiu across the Barkha plain past Darchen to Tarboche, rising gently
+function toDarchen() {
+	const L3 = ROUTE[2].pts, i = L3.indexOf(P.chiu), pts = L3.slice(i);
+	return pts.map((p, k) => [p[0], p[1], lerp(47.25, 48.6, k / (pts.length - 1))]);
+}
 function withFloors(pts, f) {
 	return pts.map((p, i) => [p[0], p[1], f[i]]);
 }
@@ -117,10 +128,43 @@ export function tibet(lon, lat) {
 	return smoothstep(-0.02, 0.1, lat - crestLat(lon));
 }
 
-// The height at lon, lat, given the map's own height h there.
-export function kHeight(lon, lat, h) {
+// The road out of Delhi into the hills (before the gorge drawn above takes over) runs on a bench cut level across
+// the slope, its floor the ground along the way smoothed to a road's gradient, so nothing on it lies on its side.
+let BENCH = null;
+function bench(base) {
+	const pts = ROUTE[0].pts, out = [];
+	for (let i = 0; i < pts.length - 1; i++) {
+		const [a0, a1] = pts[i], [b0, b1] = pts[i + 1], n = Math.max(1, Math.ceil((Math.hypot(b0 - a0, b1 - a1) * U) / 0.25));
+		for (let k = 0; k < n; k++) {
+			const lo = lerp(a0, b0, k / n), la = lerp(a1, b1, k / n);
+			// on the drawn gorge, the gorge's own floor, so the bench runs on into it without a step
+			const w = nearestWay(lo * U, la * U, SEGS, 3);
+			out.push({ x: lo * U, y: la * U, f: w.d < 1.2 ? w.floor : base(lo, la, true), fixed: w.d < 1.2 });
+		}
+	}
+	// a running mean, then no steeper than a hill road
+	const f = out.map((p) => p.f);
+	for (let it = 0; it < 3; it++) for (let i = 0; i < f.length; i++) {
+		let s = 0, c = 0;
+		for (let j = Math.max(0, i - 6); j <= Math.min(f.length - 1, i + 6); j++) (s += f[j]), c++;
+		out[i].f = s / c;
+	}
+	for (let i = 0; i < out.length; i++) if (out[i].fixed) out[i].f = f[i];
+	for (let i = 1; i < out.length; i++) out[i].f = clamp(out[i].f, out[i - 1].f - 0.12, out[i - 1].f + 0.12);
+	for (let i = out.length - 2; i >= 0; i--) out[i].f = clamp(out[i].f, out[i + 1].f - 0.12, out[i + 1].f + 0.12);
+	const grid = new Map();
+	for (const p of out) {
+		const key = Math.floor(p.x / 2) * 100003 + Math.floor(p.y / 2);
+		if (!grid.has(key)) grid.set(key, []);
+		grid.get(key).push(p);
+	}
+	return grid;
+}
+// The height at lon, lat, given the map's own height h there (and base, the map's own height anywhere).
+export function kHeight(lon, lat, h, base) {
 	const m = kRegion(lon, lat);
 	const x = lon * U, y = lat * U;
+
 	if (m > 0) {
 		const dN = lat - crestLat(lon);
 		// the crest: a wall of snow peaks, falling away north to the plateau over about a third of a degree
@@ -146,6 +190,16 @@ export function kHeight(lon, lat, h) {
 		const plateau = Math.max(pl, crest);
 		h = lerp(h, lerp(south, plateau, north), m);
 	}
+	if (base && lat > 28.95 && lon < 80.5) {
+		BENCH ||= bench(base);
+		let best = Infinity, fl = 0;
+		const cx = Math.floor(x / 2), cy = Math.floor(y / 2);
+		for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const p of BENCH.get((cx + i) * 100003 + (cy + j)) || []) {
+			const d = Math.hypot(p.x - x, p.y - y);
+			if (d < best) (best = d), (fl = p.f);
+		}
+		if (best < 2.4) h = lerp(h, fl, smoothstep(2.4, 0.9, best));
+	}
 	// from the camp at Nabhidhang a side valley opens towards Om Parvat, so the mountain is seen whole from its foot
 	{
 		const ax = P.nabhidhang[0] * U, ay = P.nabhidhang[1] * U, dx = OM_DIR[0], dy = OM_DIR[1];
@@ -160,15 +214,19 @@ export function kHeight(lon, lat, h) {
 		const n = nearestWay(x, y, list);
 		if (n.s) {
 			const e = Math.max(0, n.d - n.s.w);
-			h = smin(h, n.floor + n.s.k * Math.pow(e, n.s.e), 0.8);
+			const cut = smin(h, n.floor + n.s.k * Math.pow(e, n.s.e), 0.8);
+			// a way is a level bench across (built up on the valley side where the ground falls away); a river only cuts
+			h = list === SEGS ? lerp(n.floor, cut, smoothstep(n.s.w * 0.6, n.s.w + 1.0, n.d)) : cut;
 		}
 	}
 	// each stop stands on a level shelf
 	for (const s of STOPS) {
 		const d = Math.hypot(x - s.x, y - s.y);
 		if (d < s.r1) {
-			const n = nearestWay(s.x, s.y);
-			h = lerp(h, n.floor, smoothstep(s.r1, s.r0, d));
+			// level round the stop itself, easing out towards the floor of the way passing it (which may climb)
+			const n = nearestWay(s.x, s.y), here = nearestWay(x, y);
+			const fl = lerp(n.floor, here.s ? here.floor : n.floor, smoothstep(s.r0 * 0.45, s.r1, d));
+			h = lerp(h, fl, smoothstep(s.r1, s.r0, d));
 		}
 	}
 	// the lakes: flat water at their level, the shore shelving up from just above it

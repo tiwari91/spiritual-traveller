@@ -32,6 +32,10 @@ export const isIndia = (lon, lat) => inPoly(INDIA, lon, lat) || inPoly(LANKA, lo
 export const isLand = (lon, lat) => isIndia(lon, lat) || inPoly(NEIGHBOURS, lon, lat);
 
 export function heightAt(lon, lat, land) {
+	const h = baseHeight(lon, lat, land);
+	return KAILASH ? kHeight(lon, lat, h, baseHeight) : h;
+}
+function baseHeight(lon, lat, land) {
 	const inside = land === undefined ? isLand(lon, lat) : land;
 	if (!inside) return -3;
 	// Base relief by region.
@@ -73,7 +77,6 @@ export function heightAt(lon, lat, land) {
 		const t = smoothstep(s.r + s.blend, s.r, d);
 		h = lerp(h, s.h, t);
 	}
-	if (KAILASH) h = kHeight(lon, lat, h);
 	return h;
 }
 
@@ -218,7 +221,7 @@ export class World {
 		if (KAILASH) {
 			// the Kailash journey needs only northern India and western Tibet, drawn much finer: the lakes, the
 			// passes and the valleys of the parikrama are walked on, so they have to be in the ground itself
-			Object.assign(this, { lon0: 76, lon1: 82.6, lat0: 27, lat1: 32.1 });
+			Object.assign(this, { lon0: 75, lon1: 82.6, lat0: 26.6, lat1: 32.1 });
 			this.step = this.step > 0.1 ? 0.026 : 0.016;
 		}
 		this.nx = Math.round((this.lon1 - this.lon0) / this.step) + 1;

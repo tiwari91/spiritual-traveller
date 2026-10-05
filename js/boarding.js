@@ -770,7 +770,7 @@ Object.assign(Journey.prototype, {
 		const sx = Math.abs(v.seat.x), seat = [v.seat.x, v.seat.z], slide = [side * sx, v.seat.z], inn = [side * (hw - 0.28), dz], out = [side * (hw + 0.42), dz];
 		const yawV = () => v.group.rotation.y;
 		// a coach: its floor is up a few steps, and nobody ducks through its door
-		const fl = v.floor || 0, D = v.tall ? mix(STAND, DUCK, 0.25) : DUCK, up = (p, k = 1) => (fl && (p.y += fl * k), p);
+		const fl = v.floor || 0, D = v.tall ? mix(STAND, DUCK, 0.25) : DUCK, up = (p, k = 1) => (fl && (p.y += fl * M * k), p);
 		let outW = null;
 		const cs = T.to === "walk" ? -1 : side; // at a bus stand, from the road side, clear of the parked buses
 		const cam = () => (st ? this.frame(L(out[0], out[1]), yawV() + 0.9, 1, 4.6, 0.26) : v.tall ? this.roadCam(L(out[0], out[1]), yawV(), 4.6, 0.42, side * 0.55) : this.roadCam(L(out[0], out[1]), yawV()));
@@ -781,7 +781,8 @@ Object.assign(Journey.prototype, {
 				put();
 				door && door.open(1);
 				const a = side < 0 ? (k < 0.5 ? [lerp(seat[0], slide[0], k * 2), seat[1]] : [lerp(slide[0], inn[0], k * 2 - 1), lerp(slide[1], inn[1], k * 2 - 1)]) : [lerp(seat[0], inn[0], k), lerp(seat[1], inn[1], k)];
-				this.tvSet(up(L(a[0], a[1])), (side * Math.PI) / 2 * smoothstep(0, 0.6, k), "idle", mix(sit(v), D, smoothstep(0, 1, k)), 1, { quat: v.group.quaternion, staff: false });
+				// (in a coach, up off the seat onto its floor: the seat's height is in the sitting pose, the floor's in the position)
+				this.tvSet(up(L(a[0], a[1]), smoothstep(0, 1, k)), (side * Math.PI) / 2 * smoothstep(0, 0.6, k), "idle", mix(sit(v), D, smoothstep(0, 1, k)), 1, { quat: v.group.quaternion, staff: false });
 				cam();
 			} },
 			{ d: 1.0, f: (k) => {
@@ -819,7 +820,7 @@ Object.assign(Journey.prototype, {
 		const sx = Math.abs(v.seat.x), seat = [v.seat.x, v.seat.z], slide = [side * sx, v.seat.z], inn = [side * (hw - 0.28), dz], out = [side * (hw + 0.42), dz];
 		const yawV = () => v.group.rotation.y;
 		const cam = () => (st ? this.frame(L(out[0], out[1]), yawV() + 0.9, 1, 4.6, 0.26) : v.tall ? this.roadCam(L(out[0], out[1]), yawV(), 4.6, 0.42, side * 0.55) : this.roadCam(L(out[0], out[1]), yawV()));
-		const fl = v.floor || 0, D = v.tall ? mix(STAND, DUCK, 0.25) : DUCK, up = (p, k = 1) => (fl && (p.y += fl * k), p);
+		const fl = v.floor || 0, D = v.tall ? mix(STAND, DUCK, 0.25) : DUCK, up = (p, k = 1) => (fl && (p.y += fl * M * k), p);
 		let P0 = null, prevS = sv - 9;
 		const steps = [];
 		if (!st) steps.push({ d: 2.6, start: () => (P0 = this.traveller.group.position.clone()), f: (k) => {
@@ -836,7 +837,14 @@ Object.assign(Journey.prototype, {
 		steps.push(
 			{ d: 0.4, start: () => (P0 = P0 || this.traveller.group.position.clone()), f: () => (put(), P0 && this.tvSet(P0, yawV(), "idle", STAND, 1), cam()) },
 			{ d: door ? 0.6 : 0.2, f: (k) => (put(), door && door.open(k), P0 && this.tvSet(P0, yawV(), "idle", STAND, 1), cam()) },
-			{ d: 0.8, f: (k) => {
+			{ d: 0.8, start() {
+				// (on the Kailash journey the way to the door can be longer, across a yard or to a coach's front door:
+				// walked at a walking pace, not hurried)
+				if (KAILASH && P0) {
+					put();
+					this.d = Math.max(0.8, P0.distanceTo(L(out[0], out[1])) / (WALK * 1.5));
+				}
+			}, f: (k) => {
 				put();
 				door && door.open(1);
 				const o = L(out[0], out[1]);
@@ -862,7 +870,7 @@ Object.assign(Journey.prototype, {
 				put();
 				door && door.open(1);
 				const a = side < 0 ? (k < 0.5 ? [lerp(inn[0], slide[0], k * 2), lerp(inn[1], slide[1], k * 2)] : [lerp(slide[0], seat[0], k * 2 - 1), seat[1]]) : [lerp(inn[0], seat[0], k), lerp(inn[1], seat[1], k)];
-				this.tvSet(up(L(a[0], a[1])), ((-side * Math.PI) / 2) * (1 - smoothstep(0.3, 1, k)), "idle", mix(D, sit(v), smoothstep(0, 1, k)), 1, { quat: v.group.quaternion, staff: false });
+				this.tvSet(up(L(a[0], a[1]), 1 - smoothstep(0, 1, k)), ((-side * Math.PI) / 2) * (1 - smoothstep(0.3, 1, k)), "idle", mix(D, sit(v), smoothstep(0, 1, k)), 1, { quat: v.group.quaternion, staff: false });
 				cam();
 			} },
 			{ d: door ? 0.6 : 0.2, f: (k) => (put(), door && door.open(1 - k), this.seated(v), cam()) },
@@ -1205,10 +1213,28 @@ Object.assign(Journey.prototype, {
 			if (v.tall) {
 				// in a coach: framed on the traveller in the window seat, from outside on the door's side, close or
 				// wider by turns, as the train is shot at its open door
-				const side = this.keep(app.s), shot = Math.floor(app.t / 12) % 2;
+				const shot = Math.floor(app.t / 12) % 2;
 				const me = this.local(v, v.seat.x, v.seat.y + 0.55, v.seat.z);
 				const h = v.group.rotation.y;
-				this.cam = shot ? { target: me, yaw: h + side * (Math.PI / 2 - 0.75), pitch: 0.16, dist: 4.4, key: "coach1" } : { target: me, yaw: h + side * (Math.PI / 2 - 0.3), pitch: 0.06, dist: 2.1, key: "coach0" };
+				const make = (sd) => (shot ? { target: me, yaw: h + sd * (Math.PI / 2 - 0.75), pitch: 0.16, dist: 4.4 } : { target: me, yaw: h + sd * (Math.PI / 2 - 0.3), pitch: 0.06, dist: 2.1 });
+				// the window seat is on the door's side; the shot is from that side, or (where the hillside rises there,
+				// in the gorge) from the open side, looking in across the aisle; judged once for each shot
+				const key = "coach" + shot + "|" + Math.floor(app.t / 12);
+				if (this.coachKey !== key) {
+					this.coachKey = key;
+					const room = (sd) => {
+						const c = make(sd), cp = Math.cos(c.pitch), q = new THREE.Vector3(me.x + Math.sin(c.yaw) * cp * c.dist, me.y + Math.sin(c.pitch) * c.dist, me.z + Math.cos(c.yaw) * cp * c.dist);
+						let lo = Infinity;
+						for (let k = 0.2; k <= 1.001; k += 0.2) lo = Math.min(lo, lerp(me.y, q.y, k) - this.world.height(lerp(me.x, q.x, k), lerp(me.z, q.z, k)));
+						// and nothing by the road (a house, a wall, trees) between the lens and the window
+						if (this.app.viewFrom && this.app.viewFrom(me, q) != null) lo = Math.min(lo, 0);
+						return lo;
+					};
+					const own = this.keep(app.s), ro = room(own), rx = room(-own);
+					// hemmed in on both sides (a gorge road cut into the cliff): from behind and above instead
+					this.coachSide = ro > 0.3 ? own : rx > 0.3 ? -own : 0;
+				}
+				this.cam = this.coachSide ? Object.assign(make(this.coachSide), { key: "coach" + shot + (this.coachSide > 0 ? "L" : "R") }) : { target: me, yaw: h + Math.PI, pitch: 0.62, dist: 6.5, key: "coachUp" };
 			}
 		}
 	},

@@ -955,11 +955,13 @@ function updateTraveller(dt) {
 		const d = Math.hypot(p.x - l.pos.x, p.z - l.pos.z);
 		const [rx, rz] = l.shrine.rest;
 		const R = Math.hypot(rx, rz);
-		if (d > R + 2) continue;
+		// (at the Kailash stops the walk turns off to the spot nearer it, the road ending closer than at a temple town)
+		const reach = KAILASH ? 0.9 : 2;
+		if (d > R + reach) continue;
 		// walk off the road to the spot before the door, then turn to face the shrine
 		const f = l.shrine.facing, c = Math.cos(f), sn = Math.sin(f);
 		const wx = l.pos.x + rx * c + rz * sn, wz = l.pos.z - rx * sn + rz * c;
-		const k = app.state === "darshan" ? 1 : smoothstep(R + 2, R * 0.55, d);
+		const k = app.state === "darshan" ? 1 : smoothstep(R + reach, R * 0.55, d);
 		if (l.shrine.gate && k > 0 && k < 1) {
 			// by way of the gate points, not through the temple's walls: from the path, round by each point, to the spot
 			const Q = [[p.x, p.z], ...l.shrine.gate.map(([gx, gz]) => [l.pos.x + gx * c + gz * sn, l.pos.z - gx * sn + gz * c]), [wx, wz]];
@@ -1010,6 +1012,13 @@ function updateTraveller(dt) {
 	if (app.state === "travel" && mode !== "walk") mode = journey.mode();
 	const placed = journey.place(dt, app.t, camera, dist);
 	traveller.group.visible = app.state !== "intro" && app.state !== "finale" && (placed ? traveller.group.visible : true);
+	// (on the Kailash journey, where a ride or a getting-off hands back to walking, the walk eases on from where the
+	// traveller was left rather than stepping to its own line in one frame)
+	if (KAILASH && placed && app.state === "travel") {
+		app.walkShown = traveller.group.position.clone();
+		app.walkS = app.s;
+		app.walkFix = app.walkFix || new THREE.Vector3();
+	}
 	if (!placed) {
 		journey.release();
 		// on foot along the route, where one path hands over to the next (a road's verge to the trek, a road deck

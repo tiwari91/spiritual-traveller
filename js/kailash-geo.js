@@ -36,11 +36,12 @@ export function trueGeo([lon, lat]) {
 
 // Named points on the way.
 export const P = {
-	delhi: [77.21, 28.61], moradabad: [78.78, 28.84], rampur: [79.03, 28.8], bareilly: [79.43, 28.37], pilibhit: [79.8, 28.63], khatima: [79.97, 28.92],
+	// the yatra's Delhi stay, west of the Yamuna (the road east crosses it at once)
+	delhi: [77.13, 28.62], moradabad: [78.78, 28.84], rampur: [79.03, 28.8], bareilly: [79.43, 28.37], pilibhit: [79.8, 28.63], khatima: [79.97, 28.92],
 	tanakpur: [80.109, 29.074], champawat: [80.1, 29.33], lohaghat: [80.08, 29.4], pithoragarh: [80.22, 29.58], ogla: [80.36, 29.68], jauljibi: [80.38, 29.75],
 	dharchula: [80.543, 29.8485], tawaghat: [80.6, 29.95], malpa: [80.67, 30.03], budhi: [80.76, 30.11], garbyang: [80.83, 30.15], gunji: [80.851, 30.187],
 	kalapani: [80.93, 30.206], nabhidhang: [80.985, 30.222], roadHead: [81.016, 30.236], lipulekh: [81.029, 30.233], busStand: [81.046, 30.243], pala: [81.08, 30.262], taklakot: [81.177, 30.29],
-	gurlaLa: [81.158, 30.452], isthmus: [81.345, 30.66], chiu: [81.373, 30.758], hor: [81.6, 30.735], qugu: [81.418, 30.543],
+	gurlaLa: [81.158, 30.452], isthmus: [81.345, 30.66], chiu: [81.353, 30.777], hor: [81.624, 30.750], qugu: [81.405, 30.518],
 	darchen: [81.287, 30.976], tarboche: [81.245, 31.004],
 	// where the parikrama path comes back into Darchen from the east, on the edge of the town
 	darchenEnd: [81.335, 30.988], pastDarchen: [81.268, 30.962],
@@ -57,15 +58,15 @@ export const KORA = {
 	east: [P.dolmaLa, P.gauriKund, K(62, 10.9), K(80, 11.3), K(96, 11.5), P.zuthulphuk, K(126, 11.8), K(142, 12.0), K(158, 11.7), [81.355, 30.984], P.darchenEnd],
 };
 
-// Lakes, traced round their shores (approximate).
+// Lakes, traced round their shores (approximate); the road round Mansarovar is drawn a little out from the shore.
 export const LAKES = [
 	{
 		name: "Mansarovar", deva: "मानसरोवर", level: 46.5, deep: [0.05, 0.22, 0.38], shallow: [0.2, 0.5, 0.54],
-		pts: [[81.372, 30.7], [81.385, 30.742], [81.42, 30.764], [81.48, 30.772], [81.54, 30.757], [81.574, 30.722], [81.586, 30.668], [81.572, 30.612], [81.532, 30.567], [81.472, 30.551], [81.418, 30.556], [81.385, 30.588], [81.37, 30.642]],
+		pts: [[81.376, 30.698], [81.390, 30.738], [81.423, 30.759], [81.479, 30.767], [81.536, 30.752], [81.569, 30.719], [81.580, 30.668], [81.566, 30.615], [81.529, 30.571], [81.471, 30.557], [81.420, 30.561], [81.390, 30.591], [81.375, 30.643]],
 	},
 	{
 		name: "Rakshas Tal", deva: "राक्षस ताल", level: 46.35, deep: [0.03, 0.14, 0.28], shallow: [0.12, 0.34, 0.44],
-		pts: [[81.296, 30.8], [81.318, 30.772], [81.322, 30.724], [81.31, 30.672], [81.302, 30.622], [81.284, 30.574], [81.25, 30.548], [81.214, 30.56], [81.2, 30.598], [81.162, 30.628], [81.152, 30.668], [81.188, 30.702], [81.226, 30.722], [81.246, 30.768], [81.27, 30.8]],
+		pts: [[81.293, 30.790], [81.312, 30.764], [81.316, 30.721], [81.305, 30.672], [81.297, 30.626], [81.281, 30.583], [81.250, 30.559], [81.217, 30.569], [81.204, 30.605], [81.168, 30.632], [81.159, 30.669], [81.193, 30.700], [81.228, 30.718], [81.247, 30.761], [81.269, 30.790]],
 	},
 ];
 
@@ -77,9 +78,9 @@ export const RIVERS = [
 	{ name: "Ganga", w: 1.5, pts: [[78.16, 29.95], [78.05, 29.3], [78.3, 28.5], [78.6, 27.7]] },
 	{ name: "Ramganga", w: 0.7, pts: [[79.25, 29.75], [78.96, 29.2], [78.8, 28.9], [79.35, 28.33], [79.6, 27.8]] },
 	{ name: "Sharda", w: 0.9, pts: [[80.38, 29.75], [80.24, 29.42], [80.12, 29.1], [80.06, 28.9], [80.15, 28.4]] },
-	{ name: "Kali", w: 0.55, pts: [[80.94, 30.204], [80.9, 30.198], [80.851, 30.18], [80.8, 30.13], [80.72, 30.07], [80.64, 29.99], [80.58, 29.9], [80.53, 29.84], [80.45, 29.78], [80.38, 29.75]] },
+	{ name: "Kali", w: 0.55, pts: [[80.905, 30.2], [80.851, 30.18], [80.8, 30.13], [80.72, 30.07], [80.64, 29.99], [80.58, 29.9], [80.53, 29.84], [80.45, 29.78], [80.38, 29.75]] },
 	{ name: "Karnali", w: 0.45, pts: [[81.26, 30.34], [81.22, 30.315], [81.18, 30.282], [81.13, 30.22], [81.1, 30.13]] },
-	{ name: "Ganga Chhu", w: 0.22, pts: [[81.377, 30.745], [81.352, 30.758], [81.33, 30.766], [81.313, 30.775]] },
+	{ name: "Ganga Chhu", w: 0.22, pts: [[81.402, 30.718], [81.375, 30.735], [81.348, 30.742], [81.322, 30.748], [81.306, 30.748]] },
 	{ name: "Lha Chu", w: 0.24, pts: [K(312, 8.6), K(290, 9.2), K(268, 9.6), K(246, 9.9), K(224, 10.0), K(206, 10.4), [81.25, 30.98], [81.25, 30.9]] },
 	{ name: "Lham Chu Khir", w: 0.22, pts: [K(58, 10.3), K(78, 10.8), K(96, 11.0), K(112, 11.1), K(128, 11.3), K(146, 11.7), [81.36, 30.95], [81.37, 30.88]] },
 ];
@@ -116,7 +117,7 @@ export const SHRINES = [
 		access: "From Delhi by road through Tanakpur (the 2025 and 2026 batches spent the first night there), Dharchula and Gunji, now on the Border Roads road up the Kali gorge (the old 27 km of trekking is almost all gone). Two nights at Gunji and two at Nabhidhang to acclimatise. An Inner Line Permit is needed above Dharchula.",
 		note: "Om Parvat stands above the camp at Nabhidhang, the last halt before Tibet. Snow lying in the gullies of its face draws ॐ, the sacred syllable. Below it the Kali rises at Kalapani, where there is a Kali temple and the cave of Ved Vyas. Adi Kailash (Jolingkong, 5,945 m), up the Kuti valley from Gunji, is not on the MEA route.",
 		mantra: "ॐ नमः शिवाय", mantraLatin: "Om Namah Shivaya", greeting: "Har Har Mahadev",
-		hour: 6.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [4.0, 5.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 },
+		hour: 6.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [3.6, 4.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 },
 	},
 	{
 		key: "mansarovar", name: "Mansarovar", deva: "मानसरोवर", lon: P.qugu[0], lat: P.qugu[1], look: [81.36, 31.0],
@@ -182,16 +183,16 @@ export const ROUTE = [
 	{
 		title: "Delhi to the Kumaon Himalaya", secs: 120, overnight: true, kicker: "From Delhi · by road", mode: "By road and jeep",
 		pts: [P.delhi, [77.7, 28.72], P.moradabad, P.rampur, P.bareilly, P.pilibhit, P.khatima, P.tanakpur, [80.13, 29.2], P.champawat, P.lohaghat, [80.16, 29.49], P.pithoragarh, P.ogla, P.jauljibi, [80.47, 29.8], P.dharchula, P.tawaghat, P.malpa, P.budhi, P.garbyang, P.gunji, [80.92, 30.2], P.kalapani, P.nabhidhang],
-		ways: [["choice", P.delhi], ["jeep", P.dharchula, "By jeep up the Kali gorge"]],
+		ways: [["choice", P.delhi], ["jeep", [80.45, 29.789], "By jeep up the Kali gorge"]],
 	},
 	{
 		title: "Over the Lipulekh to Mansarovar", secs: 90, overnight: true, kicker: "Into Tibet", mode: "On foot and by bus",
-		pts: [P.nabhidhang, [80.995, 30.231], [81.008, 30.226], P.roadHead, [81.022, 30.231], P.lipulekh, [81.038, 30.239], P.busStand, [81.06, 30.252], P.pala, [81.13, 30.27], P.taklakot, [81.18, 30.33], [81.17, 30.39], P.gurlaLa, [81.2, 30.5], [81.31, 30.548], [81.335, 30.6], P.isthmus, [81.35, 30.72], P.chiu, [81.43, 30.79], [81.51, 30.792], [81.57, 30.775], P.hor, [81.608, 30.68], [81.59, 30.6], [81.54, 30.55], [81.47, 30.535], P.qugu],
+		pts: [P.nabhidhang, [80.995, 30.231], [81.008, 30.226], P.roadHead, [81.022, 30.231], P.lipulekh, [81.038, 30.239], P.busStand, [81.06, 30.252], P.pala, [81.13, 30.27], P.taklakot, [81.18, 30.33], [81.17, 30.39], P.gurlaLa, [81.2, 30.5], [81.31, 30.548], [81.335, 30.6], P.isthmus, [81.35, 30.72], P.chiu, [81.420, 30.816], [81.517, 30.819], [81.587, 30.797], P.hor, [81.636, 30.684], [81.615, 30.587], [81.554, 30.526], [81.468, 30.507], P.qugu],
 		ways: [["walk", P.nabhidhang, "On foot over the Lipulekh"], ["tibet", P.busStand, "By bus down to Taklakot"], ["tibet", P.taklakot, "By bus over the Gurla La"], ["tibet", P.chiu, "By bus round the lake"]],
 	},
 	{
 		title: "Round the lake to Darchen", secs: 46, kicker: "Morning · by bus", mode: "By bus, then on foot",
-		pts: [P.qugu, [81.39, 30.556], [81.36, 30.584], [81.335, 30.6], P.isthmus, [81.35, 30.72], P.chiu, [81.35, 30.8], [81.33, 30.87], [81.3, 30.935], P.pastDarchen, [81.25, 30.985], P.tarboche],
+		pts: [P.qugu, [81.372, 30.535], [81.336, 30.569], [81.335, 30.6], P.isthmus, [81.35, 30.72], P.chiu, [81.35, 30.8], [81.33, 30.87], [81.3, 30.935], P.pastDarchen, [81.25, 30.985], P.tarboche],
 		ways: [["tibet", P.qugu, "By bus round the lake"], ["tibet", [81.335, 30.6], "By bus round the lake", { shared: true }], ["tibet", P.chiu, "By bus across the Barkha plain"], ["tibet", P.pastDarchen, "By bus past Darchen"]],
 	},
 	{ title: "Up the Lha Chu to Dirapuk", secs: 60, kicker: "The parikrama · day one", mode: "On foot, about 20 km", pts: KORA.west, ways: [["walk", P.tarboche, "On foot up the Lha Chu"]] },

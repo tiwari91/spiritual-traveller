@@ -351,7 +351,9 @@ function bridges(pts, rivers, world, halfW, ramp = 1.6) {
 				const sin = Math.abs(((b.x - a.x) * (q.z - p.z) - (b.z - a.z) * (q.x - p.x)) / (rd * pd));
 				// over a road the deck clears a truck (about 6 m); over a river it sits just above the water
 				const deck = r.over ? Math.max(world.height(a.x, a.z), world.height(p.x, p.z)) + 6 * M : world.height(a.x, a.z) + 0.25 + 0.55;
-				spans.push({ s: lerp(p.s, q.s, t), half: Math.min(5, r.w / 2 / Math.max(0.35, sin) + 0.5), deck });
+				// (in the Kailash journey's gorges a river drawn on the valley side never lifts a deck high over the road)
+				const deckK = KAILASH && !r.over ? Math.min(deck, Math.max(world.height(p.x, p.z), world.height(q.x, q.z)) + 0.8) : deck;
+				spans.push({ s: lerp(p.s, q.s, t), half: Math.min(5, r.w / 2 / Math.max(0.35, sin) + 0.5), deck: deckK });
 			}
 		}
 	}
@@ -860,7 +862,7 @@ export class Roads {
 		// from here on (the Tibet side) traffic keeps to the right
 		this.tibetFrom = Math.min(...this.ways.flat().filter((w) => w.kind === "tibet").map((w) => w.s)) - 0.5;
 		this.shrinePos = ch.map((c) => route.at(c.s1, {}));
-		this.clearR = ch.map((c) => K_CLEAR[c.shrine.key] ?? 2.6);
+		this.clearR = ch.map((c) => K_CLEAR[c.shrine.key] ?? 4.8);
 		const footPath = (a, b, kind = "trail") => bridges(samplePath(route, world, Math.max(0, a - STEP * 17), Math.min(route.length, b + STEP * 17), 0, { kind }), this.rivers, world, 0.5).filter((p) => p.s >= a - 1e-3 && p.s <= b + 1e-3);
 		// where the road at the start of a leg begins and the one at its end stops: clear of each stop
 		const out = (i) => {
@@ -880,21 +882,24 @@ export class Roads {
 		this.treks = [];
 		this.walks = [];
 		this.stands = [];
-		const offStops = (p) => this.shrinePos.every((w, i) => Math.hypot(p.x - w.x, p.z - w.z) > this.clearR[i] - 0.4);
 		ch.forEach((c, i) => {
 			const W = this.ways[i], lw = this.legWalk[i];
 			W.forEach((w, k) => {
-				const a = Math.max(w.s, k === 0 ? lw.out : w.s), b = Math.min(w.e, k === W.length - 1 ? lw.in : w.e);
-				if (b - a < 0.6 || w.shared) return;
+				if (w.shared) return;
 				if (w.kind === "walk") {
-					// a parikrama leg's path runs from just past the last stop to just short of the next
-					const pa = k === 0 ? c.s0 + Math.min(2.2, this.clearR[i - 1] ?? 2.2) : a, pb = k === W.length - 1 ? c.s1 - 2.4 : b;
+					// a path on foot runs from just past the last stop (or from where the ride before it ends) to just short
+					// of the next stop (or on to where the road after it begins)
+					const pa = k === 0 ? c.s0 + 2.2 : w.s, pb = k === W.length - 1 ? c.s1 - 2.4 : Math.max(w.e, k === 0 ? lw.out : w.e);
+					if (pb - pa < 0.6) return;
 					const path = footPath(pa, pb);
 					if (path.length > 2) this.treks.push(path);
 					return;
 				}
+				const a = Math.max(w.s, lw.out), b = Math.min(w.e, lw.in);
+				if (b - a < 0.6) return;
 				const pts = bridges(samplePath(route, world, Math.max(0.4, a), b, 0), this.rivers, world, 1.8);
-				for (const run of split(pts, offStops)) this.roads.push(run);
+				// (a road passing another stop part way along its leg runs on past it: only its ends stop short)
+				this.roads.push(pts);
 			});
 			// where a leg's last stretch is ridden, the road stops at a yard and a path goes on to the stop
 			const last = W[W.length - 1];
@@ -991,16 +996,7 @@ export class Roads {
 			b.add(T.cyl, place(cx + Math.cos(yaw) * 0.9, y, cz - Math.sin(yaw) * 0.9, 0, 0.05, 1.6, 0.05), 0x6a4a2e);
 		}
 		this.group.add(b.build(VCOL));
-		if (!tb) {
-			for (let k = 0; k < 2; k++) {
-				const m = parkedVehicle("car", R).build(VCOL);
-				const u = -0.5 + k * 0.95;
-				m.position.set(cx + Math.cos(yaw) * u, y, cz - Math.sin(yaw) * u);
-				m.rotation.y = yaw + (R() < 0.5 ? 0 : Math.PI);
-				m.scale.setScalar(M);
-				this.group.add(m);
-			}
-		}
+		void R;
 	}
 
 	// ---------- queries ----------
@@ -1816,8 +1812,9 @@ const K_LINES = [
 		halts: [[78.78, 28.84, "मुरादाबाद जंक्शन", "MORADABAD JN"], [79.43, 28.37, "बरेली जंक्शन", "BAREILLY JN"], [79.8, 28.63, "पीलीभीत जंक्शन", "PILIBHIT JN"]],
 	},
 ];
-// How far round each Kailash stop the road stops (world units): the stops are camps and viewpoints, not towns.
-const K_CLEAR = { omparvat: 1.6, mansarovar: 2.6, yamdwar: 2.6 };
+// How far round each Kailash stop the road stops (world units): far enough that the walk from the road to the
+// traveller's spot before the altar begins on the path, not straight out of the bus's door.
+const K_CLEAR = { omparvat: 4.4 };
 // How far around each shrine the roads stop, at a bus stand, and the last stretch is on foot (world units).
 const CLEAR = { tirupati: 10.5, shirdi: 6.5 };
 // Where the pilgrim path and its stalls stop short of the temple, leaving its courtyard open (world units).
