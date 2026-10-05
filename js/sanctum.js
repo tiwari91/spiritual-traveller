@@ -2589,15 +2589,29 @@ function paintKailash(g, cx, base, w, h, R, glow = 0, north = false) {
 	g.fill();
 	g.clip();
 	// the strata: ledges of snow lying across the face, thicker towards the top
-	for (let i = 0; i < 26; i++) {
-		const t = i / 26, y = base - h * (0.08 + t * 0.9);
-		const th = h * (0.006 + t * t * 0.018) * (0.6 + R() * 0.8);
-		g.fillStyle = `rgba(240,244,250,${0.55 + t * 0.4})`;
-		g.beginPath();
-		g.moveTo(cx - w, y);
-		for (let x = -w; x <= w; x += w / 30) g.lineTo(cx + x, y + Math.sin(x * 0.07 + i) * th * 0.8 + (R() - 0.5) * th);
-		for (let x = w; x >= -w; x -= w / 30) g.lineTo(cx + x, y + th + Math.sin(x * 0.05 + i * 2) * th * 0.6);
-		g.fill();
+	// (each ledge its own: some bare, some thick with snow, broken into drifts along its length, dipping a little)
+	for (let i = 0; i < 34; i++) {
+		if (R() < 0.22) continue;
+		const t = (i + (R() - 0.5) * 0.6) / 34, y0 = base - h * (0.08 + t * 0.9);
+		const thick = h * (0.004 + t * t * 0.02) * (0.4 + R() * R() * 2.2), dip = (R() - 0.5) * h * 0.02;
+		g.fillStyle = `rgba(240,244,250,${0.5 + t * 0.42})`;
+		for (let x = -w * 0.6; x < w * 0.6; ) {
+			const len = w * (0.04 + R() * 0.26), gap = w * (0.01 + R() * R() * (0.2 - t * 0.12));
+			if (R() < 0.7 + t * 0.25) {
+				const th = thick * (0.5 + R());
+				g.beginPath();
+				for (let k = 0; k <= 10; k++) {
+					const u = x + (len * k) / 10;
+					g.lineTo(cx + u, y0 + dip * (u / w) + (R() - 0.5) * th * 0.5);
+				}
+				for (let k = 10; k >= 0; k--) {
+					const u = x + (len * k) / 10;
+					g.lineTo(cx + u, y0 + dip * (u / w) + th * Math.pow(Math.sin((Math.PI * k) / 10), 0.6));
+				}
+				g.fill();
+			}
+			x += len + gap;
+		}
 	}
 	// the snowcap
 	g.fillStyle = "rgba(242,246,252,0.92)";
@@ -2681,7 +2695,7 @@ function panorama(kind) {
 			paintSnowRange(g, W, H, panX(W, deg(178)), panX(W, deg(138)), deg(1), deg(14), R);
 			hills(deg(-0.2), deg(4), "#7e705c", 11, 9);
 			// the far shore of the lake: a thin line of pale beach at the foot of the hills, water below it
-			g.fillStyle = "rgba(60,150,170,1)";
+			g.fillStyle = "rgba(22,70,128,1)";
 			g.fillRect(panX(W, deg(60)), panY(H, deg(0.25)), panX(W, deg(-60)) - panX(W, deg(60)), panY(H, deg(-6)) - panY(H, deg(0.25)));
 		} else if (kind === "dirapuk") {
 			// the north face, close and filling the head of the valley, the valley walls either side
@@ -2947,12 +2961,26 @@ function mansarovar(ctx) {
 	outdoorLight(ctx, { dir: [0.55, 0.62, -0.35], sunI: 5.4, hemi: 1.6, sky: 0xc0d8f2, ground: 0x9a8a70 });
 	groundGrid(ctx, floor, (x, z, y) => (y < 0 ? 0x8a8a7a : y < 0.12 ? 0xa49c8c : 0xa8946e));
 	stones(ctx, 380, 11, floor, (x, z) => z > -2 && Math.hypot(x - 0.4, z - 0.4) > 1.6 && Math.hypot(x + 2.2, z - 3.6) > 1.6, [0.05, 0.35], 0x9a948a);
-	const water = new THREE.Mesh(new THREE.PlaneGeometry(130, 75, 1, 1).rotateX(-Math.PI / 2), std(0x2a9ab0, { roughness: 0.06, metalness: 0.25, transparent: true, opacity: 0.78, envMapIntensity: 1.2 }));
+	// Mansarovar's own colours: turquoise over the pebbles at the edge, going to a deep sapphire blue a few metres out
+	// (the water is clear and very deep; the sky's glare is only a sheen on it, not its colour)
+	const wg = new THREE.PlaneGeometry(130, 75, 1, 60).rotateX(-Math.PI / 2);
+	{
+		const p = wg.attributes.position, c = [], near = new THREE.Color(0x137784), mid = new THREE.Color(0x0a4a80), deep = new THREE.Color(0x062a5c), t = new THREE.Color();
+		for (let i = 0; i < p.count; i++) {
+			// distance out from the shore line (the plane's +z edge lies on the shore)
+			const out = 37.5 - p.getZ(i);
+			const k = THREE.MathUtils.smoothstep(out, 0, 4), k2 = THREE.MathUtils.smoothstep(out, 4, 22);
+			t.copy(near).lerp(mid, k).lerp(deep, k2);
+			c.push(t.r, t.g, t.b);
+		}
+		wg.setAttribute("color", new THREE.Float32BufferAttribute(c, 3));
+	}
+	const water = new THREE.Mesh(wg, std(0xffffff, { vertexColors: true, roughness: 0.3, metalness: 0, transparent: true, opacity: 0.95, envMapIntensity: 0.3 }));
 	water.position.set(0, 0, 1.25 - 37.5);
 	water.receiveShadow = true;
 	g.add(water);
-	// shallows over the pebbles, paler
-	const shallow = new THREE.Mesh(new THREE.PlaneGeometry(60, 6).rotateX(-Math.PI / 2), std(0x6ad0d4, { roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.35, depthWrite: false }));
+	// shallows over the pebbles, the clear turquoise edge
+	const shallow = new THREE.Mesh(new THREE.PlaneGeometry(60, 6).rotateX(-Math.PI / 2), std(0x2fb8b4, { roughness: 0.08, metalness: 0, transparent: true, opacity: 0.3, depthWrite: false }));
 	shallow.position.set(0, 0.004, -1.8);
 	g.add(shallow);
 	// the havan kund: a square of stones round the fire, the elder's things beside it
@@ -3074,10 +3102,11 @@ function dirapuk(ctx) {
 		tick: (dt, t, F, S) => ctx.ticks.forEach((f) => f(dt, t, F, S)),
 		cams: {
 			darshan: C([1.7, 0.9, 6.4], [0, 4.6, -8]),
-			aarti: F(["T", "P", "D"], 30, 12, 1.2),
-			flame: F(["T", "P"], -110, 10, 1.15),
+			// (from the south, low, so the north face stands behind the aarti and the prostration)
+			aarti: F(["T", "P", "D"], 18, -6, 1.3),
+			flame: F(["T", "P"], 24, -7, 1.35),
 			lamp: F(["T", "altar"], 15, 14, 1.25),
-			bow: F(["T"], 110, 26, 1.3),
+			bow: F(["T"], 20, -2, 1.6),
 		},
 	};
 }
