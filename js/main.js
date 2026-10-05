@@ -7,7 +7,7 @@ import { buildLandmarks, GOLD, LAMP, beaconMaterial } from "./landmarks.js";
 import { routeLine, cityLights, Weather, Petals } from "./effects.js";
 import { Traveller, crowdFigure } from "./pilgrim.js";
 import { WINDOW_GLOW } from "./vehicles.js";
-import { Journey } from "./boarding.js";
+import { Journey, WALK } from "./boarding.js";
 import { M, Roads } from "./roads.js";
 import { Scenery } from "./scenery.js";
 import { TREE_STRIDE } from "./trees.js";
@@ -108,6 +108,7 @@ async function init() {
 	sky = new Sky(scene);
 	if (LOW) sky.sun.shadow.mapSize.set(1024, 1024);
 	Object.assign(app, { world, route, sky, landmarks, scene, roads, scenery, traffic, ride, journey, traveller });
+	if (KAILASH) await kRaycastTrees();
 	// where the road gives way to the footpath below Kedarnath, going up and coming back down
 	app.sGauri = roads.at.gauri;
 	app.sGauriBack = roads.at.gauriBack;
@@ -232,6 +233,7 @@ function arrive(i) {
 	app.s = route.chapters[i].s1;
 	app.visited[i] = true;
 	app.darshanT = 0;
+	app.leave = null;
 	const s = SHRINES[i];
 	$("d-kicker").textContent = `Darshan ${i + 1} of ${N} · ${s.kind}`;
 	$("d-name").textContent = s.name;
@@ -414,6 +416,18 @@ function cameraGoal() {
 				}
 				g.pitch += zo * 0.22 * (1 - smoothstep(0.3, 0.7, g.pitch));
 			}
+			// zooming right in turns from the mountain to the traveller: up to their face, level with it, and round
+			// to the front, with the people at the stop about them
+			const zi = zoomIn();
+			if (zi > 0) {
+				g.target.x = lerp(g.target.x, tp.x, zi);
+				g.target.z = lerp(g.target.z, tp.z, zi);
+				g.target.y = lerp(g.target.y, tp.y + 0.43 * traveller.group.scale.x, zi);
+				g.yaw += lerp(0, Math.PI * 0.72, zi);
+				g.pitch = lerp(g.pitch, 0.04, zi);
+				// (to within a stride of the face, whatever the shot's own distance)
+				g.dist = lerp(g.dist, 0.8 / ZCLOSE, zi);
+			}
 		}
 		return g;
 	}
@@ -433,6 +447,15 @@ function cameraGoal() {
 	g.yaw = Math.atan2(-p.dx, -p.dz) + 0.6 * (rig.side || 1);
 	g.pitch = app.travelMode === "walk" ? 0.24 : 0.3;
 	g.dist = closeDist * (innerWidth < innerHeight ? 1.45 : 1);
+	// (on the Kailash journey, zoomed right in: up to the face, level with it, and round to the front, so the
+	// traveller and whoever walks with them are seen close, as if walking alongside)
+	const zi = zoomIn();
+	if (zi > 0) {
+		g.target.y = lerp(g.target.y, me.y + 0.43 * traveller.group.scale.x, zi);
+		g.yaw += lerp(0, 1.7, zi) * (rig.side || 1);
+		g.pitch = lerp(g.pitch, 0.06, zi);
+		g.dist = lerp(g.dist, (app.travelMode === "bike" ? 0.85 : 0.6) / ZCLOSE, zi);
+	}
 	void close;
 	// getting on and off, close and low; on the train, alongside the line (boarding.js)
 	const jc = app.debugCam || journey.camera();
@@ -575,11 +598,39 @@ function clearForests() {
 	}
 }
 const occRay = new THREE.Raycaster(), occDir = new THREE.Vector3();
+// On the Kailash journey the hills, the camps and the roadside are merged into a few large meshes whose bounds take in
+// the whole view, so every sight line the camera tests (occlusion, bodyHidden, the coach shots) went through all their
+// triangles: a camera looking round for a clear view tried a dozen angles in one frame, took 150 to 200 ms, and the
+// journey stuttered. A bounding volume tree on each large mesh makes each test a fraction of a millisecond.
+let kBVH = null, kTreesAt = -1;
+async function kRaycastTrees() {
+	try {
+		kBVH = await import("three-mesh-bvh");
+	} catch (e) {
+		kBVH = null;
+		return;
+	}
+	THREE.Mesh.prototype.raycast = kBVH.acceleratedRaycast;
+	kTreesFor();
+}
+// (the roadside is streamed in and out as the traveller goes, so new meshes get theirs as they come)
+function kTreesFor() {
+	if (!kBVH) return;
+	for (const g of solids()) g.traverse((o) => {
+		if (!o.isMesh || o.isInstancedMesh || !o.geometry || o.geometry.boundsTree) return;
+		const p = o.geometry.attributes.position;
+		if (p && p.count > 1500) o.geometry.boundsTree = new kBVH.MeshBVH(o.geometry);
+	});
+}
 // Distance from the traveller towards the camera to the first solid thing in the way, or null.
 function occlusion(to, from = rig.target) {
 	const d = to.distanceTo(from);
 	// the roadside trees are instanced and streamed in and out: their bounds go stale unless refreshed now and then
 	if (app.frames % 30 === 0) scenery.trees.group.traverse((o) => o.isInstancedMesh && (o.boundingSphere = null));
+	if (kBVH && app.frames % 60 === 0 && app.frames !== kTreesAt) {
+		kTreesAt = app.frames;
+		kTreesFor();
+	}
 	occDir.subVectors(to, from).normalize();
 	occRay.set(from, occDir);
 	occRay.camera = camera; // sprites need it to be tested at all
@@ -664,8 +715,9 @@ function updateCamera(dt) {
 	const key = app.state === "travel" ? (journey.camera() || {}).key || null : undefined;
 	if (key === undefined) rig.camKey = undefined;
 	else if (key !== rig.camKey) {
-		const cp = Math.cos(g.pitch + rig.userPitch), want = new THREE.Vector3(g.target.x + Math.sin(g.yaw + rig.userYaw) * cp * g.dist * rig.zoom, g.target.y + Math.sin(g.pitch + rig.userPitch) * g.dist * rig.zoom, g.target.z + Math.cos(g.yaw + rig.userYaw) * cp * g.dist * rig.zoom);
-		if (rig.camKey !== undefined && want.distanceTo(camera.position) > Math.max(1.5, g.dist * rig.zoom * 0.6)) {
+		const zm = zoomNow();
+		const cp = Math.cos(g.pitch + rig.userPitch), want = new THREE.Vector3(g.target.x + Math.sin(g.yaw + rig.userYaw) * cp * g.dist * zm, g.target.y + Math.sin(g.pitch + rig.userPitch) * g.dist * zm, g.target.z + Math.cos(g.yaw + rig.userYaw) * cp * g.dist * zm);
+		if (rig.camKey !== undefined && want.distanceTo(camera.position) > Math.max(1.5, g.dist * zm * 0.6)) {
 			rig.snap = true;
 			rig.clear = undefined;
 		}
@@ -673,7 +725,7 @@ function updateCamera(dt) {
 		rig.swing = rig.rise = 0;
 		rig.camKey = key;
 	}
-	const yaw = g.yaw + rig.userYaw + (rig.swing || 0), pitch = clamp(g.pitch + rig.userPitch + (rig.rise || 0), -0.05, 1.45), dist = g.dist * rig.zoom;
+	const yaw = g.yaw + rig.userYaw + (rig.swing || 0), pitch = clamp(g.pitch + rig.userPitch + (rig.rise || 0), -0.05, 1.45), dist = g.dist * zoomNow();
 	// a cut (a new shot, or round to a clear view when something has come between) lands at once; a small move
 	// round something comes quickly, so the traveller is not lost behind it for long
 	const cut = rig.snap || rig.cut;
@@ -705,7 +757,8 @@ function updateCamera(dt) {
 	camera.position.set(rig.target.x + Math.sin(rig.yaw) * cp * rig.dist, rig.target.y + Math.sin(rig.pitch) * rig.dist, rig.target.z + Math.cos(rig.yaw) * cp * rig.dist);
 	// close and low for getting on and off: the camera may come down to eye height
 	const low = app.state === "travel" && journey && (app.debugCam || journey.camera());
-	const ground = world.height(camera.position.x, camera.position.z) + (low ? 0.22 : 1.2);
+	// (zoomed in to the face on the Kailash journey, the lens comes down to eye height, else it looks down from above)
+	const ground = world.height(camera.position.x, camera.position.z) + (low ? 0.22 : lerp(1.2, 0.22, zoomIn()));
 	if (camera.position.y < ground) camera.position.y = ground;
 	// rise over any ridge that would hide the traveller (outside darshan, where the shrine frames the view)
 	if (app.state === "travel") {
@@ -726,7 +779,8 @@ function updateCamera(dt) {
 		let lift = 0;
 		for (let k = 0.1; k < 1; k += 0.05) {
 			const x = lerp(rig.target.x, camera.position.x, k), z = lerp(rig.target.z, camera.position.z, k);
-			const need = world.height(x, z) + 0.6 - lerp(rig.target.y, camera.position.y, k);
+			// (zoomed in to the face, only clear of the ground itself)
+			const need = world.height(x, z) + lerp(0.6, 0.1, zoomIn()) - lerp(rig.target.y, camera.position.y, k);
 			if (need > 0) lift = Math.max(lift, need / k);
 		}
 		rig.lift = lerp(rig.lift || 0, Math.min(lift, rig.dist * 1.5), 1 - Math.exp(-dt * 4));
@@ -734,7 +788,8 @@ function updateCamera(dt) {
 	} else rig.lift = 0;
 	// nothing solid between the camera and the traveller: if a wall, a coach side, a house or a tree is in
 	// the way, the camera comes in to just in front of it (and eases back out once the view is clear)
-	if (app.state === "travel" && rig.dist < 40) {
+	// (and at a Kailash stop zoomed in close, where a house or a flagpole may stand between)
+	if ((app.state === "travel" || (KAILASH && app.state === "darshan" && !sanctum.active && zoomIn() > 0.05)) && rig.dist < 40) {
 		const d = camera.position.distanceTo(rig.target);
 		const jc = journey.camera();
 		if (app.frames % 3 === 0 || cut) rig.block = occlusion(camera.position);
@@ -782,9 +837,18 @@ function updateCamera(dt) {
 			rig.swing = (rig.swing || 0) * 0.98;
 			rig.rise = (rig.rise || 0) * 0.94;
 		}
-		const want = rig.block ?? 1e6;
-		const was = Number.isFinite(rig.clear) ? rig.clear : 1e6;
-		rig.clear = want < was ? want : lerp(was, want, 1 - Math.exp(-dt * 2));
+		if (KAILASH) {
+			// (on the Kailash journey: with nothing in the way the camera eases back out to the shot's own distance; it
+			// used to ease towards a million units, which brought it straight back out in a frame, so a pole or a truck
+			// going by jerked it in and out; and it comes in over a few frames rather than in one)
+			const want = rig.block ?? d * 1.02;
+			const was = Number.isFinite(rig.clear) ? Math.min(rig.clear, d * 1.02) : d * 1.02;
+			rig.clear = want < was ? (cut ? want : lerp(was, want, 1 - Math.exp(-dt * 30))) : lerp(was, want, 1 - Math.exp(-dt * 2));
+		} else {
+			const want = rig.block ?? 1e6;
+			const was = Number.isFinite(rig.clear) ? rig.clear : 1e6;
+			rig.clear = want < was ? want : lerp(was, want, 1 - Math.exp(-dt * 2));
+		}
 		// never closer than a little over a body length (the traveller is about 0.5 units tall): any nearer and
 		// the lens is inside their clothes; when the wall is closer than that, the swing above finds another side
 		if (rig.clear < d) camera.position.lerp(rig.target, 1 - Math.max(Math.min(d, 1.1), rig.clear) / d);
@@ -1036,7 +1100,11 @@ function updateTraveller(dt) {
 	let yaw = Math.atan2(p.dx, p.dz);
 	travPos.set(p.x, p.y, p.z);
 	let atShrine = false;
-	for (const l of landmarks) {
+	for (const [li, l] of landmarks.entries()) {
+		// (on the Kailash journey the stops stand close together, and the way out of Yam Dwar passes Darchen's: only
+		// the stop just left and the one ahead turn the walk aside, or the traveller went off to Darchen's spot and
+		// stood there a dozen seconds while the journey went on without them)
+		if (KAILASH && app.state === "travel" && li !== app.leg && li !== app.leg - 1) continue;
 		const d = Math.hypot(p.x - l.pos.x, p.z - l.pos.z);
 		const [rx, rz] = l.shrine.rest;
 		const R = Math.hypot(rx, rz);
@@ -1046,7 +1114,7 @@ function updateTraveller(dt) {
 		// walk off the road to the spot before the door, then turn to face the shrine
 		const f = l.shrine.facing, c = Math.cos(f), sn = Math.sin(f);
 		const wx = l.pos.x + rx * c + rz * sn, wz = l.pos.z - rx * sn + rz * c;
-		const k = app.state === "darshan" ? 1 : smoothstep(R + reach, R * 0.55, d);
+		let k = app.state === "darshan" ? 1 : smoothstep(R + reach, R * 0.55, d);
 		if (l.shrine.gate && k > 0 && k < 1) {
 			// by way of the gate points, not through the temple's walls: from the path, round by each point, to the spot
 			const Q = [[p.x, p.z], ...l.shrine.gate.map(([gx, gz]) => [l.pos.x + gx * c + gz * sn, l.pos.z - gx * sn + gz * c]), [wx, wz]];
@@ -1063,6 +1131,29 @@ function updateTraveller(dt) {
 				}
 				u -= l2;
 			}
+		} else if (KAILASH && app.state === "travel" && li === app.leg - 1) {
+			// leaving a Kailash stop: the traveller walks from the spot straight out to the way at a walking pace,
+			// rather than standing there until the route has gone far enough on to draw them off it
+			// (from wherever they stood at the darshan: at the altar for the aarti, or at the spot)
+			if (!app.leave || app.leave.leg !== app.leg) {
+				const tg = traveller.group.position, near = Math.hypot(tg.x - wx, tg.z - wz) < 8;
+				app.leave = { leg: app.leg, x: near ? tg.x : wx, z: near ? tg.z : wz, done: false };
+			}
+			const L = app.leave;
+			if (!L.done) {
+				const dx = p.x - L.x, dz = p.z - L.z, dd = Math.hypot(dx, dz);
+				const st = app.playing ? WALK * 1.08 * SPEEDS[app.speed] * dt : 0;
+				if (dd <= st || dd < 0.02) L.done = true;
+				else {
+					L.x += (dx / dd) * st;
+					L.z += (dz / dd) * st;
+				}
+			}
+			if (L.done) continue;
+			travPos.x = L.x;
+			travPos.z = L.z;
+			// (walking, facing the way they go: neither at the spot nor on the way)
+			k = 0.5;
 		} else {
 			travPos.x = lerp(p.x, wx, k);
 			travPos.z = lerp(p.z, wz, k);
@@ -1124,7 +1215,14 @@ function updateTraveller(dt) {
 		traveller.group.position.copy(travPos);
 		traveller.group.scale.setScalar(ls);
 		// the stride's cadence follows the ground actually covered (rate 1 is about 1.3 m/s), scaled for the figure's size
-		const v = journey.vWalk || 0, step = v / (1.3 * M * ls);
+		// (on the Kailash journey from the ground the figure actually covers, measured: where the footpath winds, one
+		// unit along the route is several on the ground, and the cadence of the route's pace left the feet sliding)
+		if (KAILASH) {
+			const was = app.walkAt || travPos, g = dt > 0 ? Math.hypot(travPos.x - was.x, travPos.z - was.z) / dt : 0;
+			app.walkV = lerp(app.walkV ?? g, Math.min(g, WALK * 6), 1 - Math.exp(-dt * 8));
+			app.walkAt = travPos.clone();
+		}
+		const v = KAILASH ? app.walkV : journey.vWalk || 0, step = v / (1.3 * M * ls);
 		const still = mode === "walk" && (!moving || step < 0.05);
 		traveller.update(dt, app.t, { mode: still ? "idle" : mode === "darshan" ? "darshan" : "walk", rate: clamp(step, 0.4, 3.2), yaw, distance: dist });
 	}
@@ -1490,7 +1588,7 @@ function installInput() {
 		} else if (ptrs.size === 2) {
 			const [a, b] = [...ptrs.values()];
 			const d = Math.hypot(a.x - b.x, a.y - b.y);
-			if (pinch > 0) rig.zoom = clamp(rig.zoom * (pinch / d), ZMIN, ZMAX);
+			if (pinch > 0) rig.zoom = clamp(rig.zoom * (pinch / d), zoomFloor(), ZMAX);
 			pinch = d;
 		}
 	});
@@ -1502,7 +1600,7 @@ function installInput() {
 	canvas.addEventListener("pointercancel", up);
 	canvas.addEventListener("wheel", (e) => {
 		e.preventDefault();
-		rig.zoom = clamp(rig.zoom * Math.exp(e.deltaY * 0.0012), ZMIN, ZMAX);
+		rig.zoom = clamp(rig.zoom * Math.exp(e.deltaY * 0.0012), zoomFloor(), ZMAX);
 	}, { passive: false });
 	canvas.addEventListener("dblclick", resetView);
 	addEventListener("keydown", (e) => {
@@ -1549,8 +1647,23 @@ function installInput() {
 }
 // from close enough to see faces to high enough to see half of India
 const ZMIN = 0.42, ZMAX = 8; // the closest zoom still keeps the whole traveller in view
+// (on the Kailash journey, on foot or on the bike and at the stops, it comes in to the traveller's face; in a bus or
+// a jeep they are inside, and it keeps to the whole vehicle)
+const ZCLOSE = 0.16;
+function zoomFloor() {
+	if (!KAILASH) return ZMIN;
+	const m = app.state === "darshan" ? "walk" : app.travelMode;
+	return m === "walk" || m === "bike" ? ZCLOSE : ZMIN;
+}
+function zoomNow() {
+	return Math.max(rig.zoom, zoomFloor());
+}
+// how far in past the ordinary closest view the camera has come: 0 at it, 1 at the face
+function zoomIn() {
+	return KAILASH ? smoothstep(ZMIN, ZCLOSE, zoomNow()) : 0;
+}
 function zoomBy(k) {
-	rig.zoom = clamp(rig.zoom * k, ZMIN, ZMAX);
+	rig.zoom = clamp(rig.zoom * k, zoomFloor(), ZMAX);
 }
 function resetView() {
 	rig.userYaw = 0;

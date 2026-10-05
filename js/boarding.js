@@ -588,6 +588,16 @@ export class Journey {
 				}
 				if (g) this.walkFrom = { s: app.s, x: g.x, z: g.z };
 				pace = Math.min(pace, (WALK * 1.08) / Math.max(1, this.groundPerS || 1));
+				// (on the Kailash journey on foot at the same pace all the way, up to the stops and away from them: the
+				// easing in and out at the ends is for the vehicles, and on foot it was a slow-motion walk for a minute
+				// either side of every stop; and while the traveller walks out from a stop to the way, the way waits)
+				if (KAILASH) {
+					pace = (WALK * 1.08) / Math.max(1, this.groundPerS || 1);
+					if (app.leave && app.leave.leg === app.leg && !app.leave.done) {
+						pace = 0;
+						this.walkFrom = null;
+					}
+				}
 			} else {
 				this.walkFrom = null;
 				this.groundPerS = 1;
