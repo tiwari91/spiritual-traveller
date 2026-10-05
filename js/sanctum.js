@@ -1,10 +1,10 @@
-// Inside the temple: an interior for each of the four shrines, where the traveller performs that shrine's
+// Inside the temple: an interior for each of the five shrines, where the traveller performs that shrine's
 // rituals one step at a time with a pujari. Self-contained: its own scene, camera, lights and DOM panel.
 //
 // API
 //   import { Sanctum } from "./sanctum.js";
 //   const sanctum = new Sanctum({ renderer, container: document.body, audio, low: false, onExit, onStep });
-//   sanctum.enter(key)       key is a SHRINES key: "bhimashankar", "tirupati", "kedarnath" or "badrinath".
+//   sanctum.enter(key)       key is a SHRINES key: "bhimashankar", "shirdi", "tirupati", "kedarnath" or "badrinath".
 //                            Builds that interior (one at a time) and shows the ritual panel inside container.
 //   sanctum.active           true from enter() until exit() has finished its fade.
 //   sanctum.update(dt, t)    advance the animation; dt and t in seconds.
@@ -344,6 +344,17 @@ const MARKS = {
 		g.fillRect(W * 0.55, H * 0.12, W * 0.05, H * 0.36);
 		g.fillStyle = "#d02a16";
 		g.fillRect(W * 0.48, H * 0.12, W * 0.04, H * 0.34);
+	},
+	udi(g, W, H) {
+		// a pinch of grey ash pressed on with the thumb
+		const gr = g.createRadialGradient(W / 2, H * 0.36, 1, W / 2, H * 0.36, W * 0.07);
+		gr.addColorStop(0, "rgba(150,146,140,0.95)");
+		gr.addColorStop(0.7, "rgba(165,160,152,0.8)");
+		gr.addColorStop(1, "rgba(170,165,158,0)");
+		g.fillStyle = gr;
+		g.beginPath();
+		g.ellipse(W / 2, H * 0.36, W * 0.07, H * 0.11, 0, 0, Math.PI * 2);
+		g.fill();
 	},
 	chandan(g, W, H) {
 		g.fillStyle = "rgba(240,190,110,0.95)";
@@ -1077,6 +1088,13 @@ function buildProps(ctx) {
 	mesh(lathe([[0, 0], [0.13, 0.004], [0.14, 0.02], [0.125, 0.018], [0, 0.008]], 24), M.brass, 0, 0, 0, thali);
 	heap(thali, [[new THREE.SphereGeometry(0.007, 5, 4), std(0xd9a21e, { roughness: 0.7 }), 0.5], [new THREE.BoxGeometry(0.012, 0.01, 0.012), std(0xf4f0e8, { roughness: 0.3 }), 0.3], [leafGeo().scale(0.6, 0.6, 0.6), M.tulsi, 0.4]], 40, domeSampler(0, 0.012, 0, 0.09, 0.025), 5);
 	add("thali", thali, { off: [0, 0.03, 0.1], both: true });
+	// a plate of flowers with a folded chadar for the samadhi
+	const chadar = new THREE.Group();
+	mesh(lathe([[0, 0], [0.13, 0.004], [0.14, 0.02], [0.125, 0.018], [0, 0.008]], 24), M.brass, 0, 0, 0, chadar);
+	mesh(new THREE.BoxGeometry(0.17, 0.035, 0.11), std(0x1f6a3a, { roughness: 0.75 }), 0, 0.028, -0.03, chadar);
+	for (const sx of [-1, 1]) mesh(new THREE.BoxGeometry(0.018, 0.037, 0.112), M.gold, sx * 0.07, 0.028, -0.03, chadar);
+	heap(chadar, flowerKinds(M, false), 26, (R) => V((R() - 0.5) * 0.18, 0.05 + R() * 0.01, 0.05 + (R() - 0.5) * 0.06), 6);
+	add("chadar", chadar, { off: [0, 0.03, 0.1], both: true });
 	const vessel = new THREE.Group();
 	mesh(lathe([[0, 0], [0.04, 0], [0.055, 0.04], [0.045, 0.08], [0.05, 0.09], [0, 0.085]], 16), M.silver, 0, 0, 0, vessel);
 	add("vessel", vessel, { off: [0, -0.06, 0.04] });
@@ -1112,7 +1130,7 @@ function buildProps(ctx) {
 	return P;
 }
 
-// ---------- the four interiors ----------
+// ---------- the interiors ----------
 // Each builder fills ctx.g and returns the layout L: floor(x,z), named spots, cameras and the steps' anchors.
 function common(ctx, wallTop) {
 	ctx.smokeFrom = ctx.smokeFrom || [];
@@ -1938,7 +1956,580 @@ function badrinath(ctx) {
 		},
 	};
 }
-const BUILD = { bhimashankar, kedarnath, tirupati: tirumala, badrinath };
+// Polished white marble: large slabs with fine grey veins and hairline joints. One tile per scale metres.
+function marbleMat(base, o = {}) {
+	const R = rand(o.seed ?? 1);
+	const rows = o.rows ?? 2, cols = o.cols ?? 2;
+	const veins = [];
+	for (let i = 0; i < (o.veins ?? 16); i++) {
+		const pts = [[R() * 512, R() * 512]];
+		for (let k = 0; k < 7; k++) pts.push([pts[k][0] + (R() - 0.3) * 90, pts[k][1] + (R() - 0.5) * 70]);
+		veins.push({ pts, w: 0.5 + R() * 1.6, a: 0.04 + R() * 0.1 });
+	}
+	const map = canvas(512, 512, (g, W, H) => {
+		g.fillStyle = css(base);
+		g.fillRect(0, 0, W, H);
+		for (let i = 0; i < 70; i++) {
+			const x = R() * W, y = R() * H, r = 30 + R() * 90;
+			const gr = g.createRadialGradient(x, y, 0, x, y, r);
+			gr.addColorStop(0, R() < 0.5 ? "rgba(255,252,245,0.18)" : "rgba(150,145,135,0.07)");
+			gr.addColorStop(1, "rgba(255,255,255,0)");
+			g.fillStyle = gr;
+			g.fillRect(0, 0, W, H);
+		}
+		for (const v of veins) {
+			g.strokeStyle = `rgba(110,108,104,${v.a})`;
+			g.lineWidth = v.w;
+			g.beginPath();
+			v.pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+			g.stroke();
+		}
+		g.fillStyle = css(base, 0.88);
+		for (let r = 0; r < rows; r++) g.fillRect(0, (r * H) / rows, W, 2);
+		for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) g.fillRect(((c + (r % 2) * 0.5) * W) / cols, (r * H) / rows, 2, H / rows);
+	});
+	const bump = canvas(256, 256, (g, W, H) => {
+		g.fillStyle = "#c0c0c0";
+		g.fillRect(0, 0, W, H);
+		g.fillStyle = "#404040";
+		for (let r = 0; r < rows; r++) g.fillRect(0, (r * H) / rows, W, 1.5);
+		for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) g.fillRect(((c + (r % 2) * 0.5) * W) / cols, (r * H) / rows, 1.5, H / rows);
+	});
+	const m = std(0xffffff, { map: texOf(map), bumpMap: texOf(bump, false), bumpScale: 0.6, roughness: o.rough ?? 0.24, metalness: 0, vertexColors: true });
+	m.userData.tri = o.scale ?? 1.6;
+	return m;
+}
+// Static pieces merged into one mesh per material: [geometry, x, y, z, rx?, ry?, rz?].
+function merged(g, mat, parts) {
+	const geos = parts.map(([geo, x, y, z, rx = 0, ry = 0, rz = 0]) => {
+		geo.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, rz)));
+		geo.translate(x, y, z);
+		return geo.index ? geo : mergeVertices(geo);
+	});
+	const m = mesh(mergeGeometries(geos), mat, 0, 0, 0, g);
+	for (const q of geos) q.dispose();
+	return m;
+}
+// Railing along a polyline: posts every gap metres, a top rail and a mid rail, merged.
+function railing(g, pts, h, mat, { r = 0.022, gap = 1.2, bars = 0, mid = true } = {}) {
+	const parts = [];
+	const tube = (a, b, y, rr) => {
+		const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+		parts.push([new THREE.CylinderGeometry(rr, rr, l, 8), (a[0] + b[0]) / 2, y, (a[1] + b[1]) / 2, Math.PI / 2, Math.atan2(b[0] - a[0], b[1] - a[1]), 0]);
+	};
+	for (let i = 1; i < pts.length; i++) {
+		const a = pts[i - 1], b = pts[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+		tube(a, b, h, r);
+		if (mid) tube(a, b, h * 0.45, r * 0.7);
+		const n = Math.max(1, Math.round(l / gap));
+		for (let k = i === 1 ? 0 : 1; k <= n; k++) {
+			const x = lerp(a[0], b[0], k / n), z = lerp(a[1], b[1], k / n);
+			parts.push([new THREE.CylinderGeometry(r * 1.1, r * 1.3, h, 8), x, h / 2, z]);
+			parts.push([new THREE.SphereGeometry(r * 1.7, 8, 6), x, h + r, z]);
+		}
+		// thin balusters between the posts
+		const nb = Math.round(l / (bars || 1e9));
+		for (let k = 1; k < nb; k++) parts.push([new THREE.CylinderGeometry(r * 0.35, r * 0.35, h, 5), lerp(a[0], b[0], k / nb), h / 2, lerp(a[1], b[1], k / nb)]);
+	}
+	return merged(g, mat, parts);
+}
+// A crystal chandelier: brass stem and two rings of lit bulbs hung with drops; electric, so its light is steady.
+function chandelier(ctx, x, y, z, s = 1, lit = true) {
+	const { g, M } = ctx;
+	const crystal = ctx.M.crystal || (ctx.M.crystal = std(0xfff6e8, { roughness: 0.05, metalness: 0.3, emissive: 0x6a5030, emissiveIntensity: 0.6 }));
+	const parts = [[new THREE.CylinderGeometry(0.012, 0.012, 0.9 * s, 6), x, y - 0.45 * s, z], [lathe([[0, 0], [0.09, 0.03], [0.13, 0.12], [0.07, 0.24], [0.03, 0.34], [0, 0.36]], 16, s), x, y - 1.25 * s, z]];
+	const drops = [];
+	for (const [r, h, n] of [[0.55, 1.05, 14], [0.34, 0.8, 10]]) {
+		parts.push([new THREE.TorusGeometry(r * s, 0.014 * s, 6, 40), x, y - h * s, z, Math.PI / 2]);
+		for (let i = 0; i < n; i++) {
+			const a = (i / n) * Math.PI * 2, bx = x + Math.cos(a) * r * s, bz = z + Math.sin(a) * r * s;
+			parts.push([new THREE.CylinderGeometry(0.018 * s, 0.012 * s, 0.05 * s, 8), bx, y - (h - 0.03) * s, bz]);
+			const b = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow(), color: 0xffe2b0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.9 }));
+			b.position.set(bx, y - (h - 0.085) * s, bz);
+			b.scale.setScalar(0.14 * s);
+			g.add(b);
+			drops.push(new THREE.OctahedronGeometry(0.022 * s).scale(0.7, 1.6, 0.7).translate(bx, y - (h + 0.07) * s, bz));
+		}
+	}
+	merged(g, M.brass, parts);
+	mesh(mergeGeometries(drops), crystal, 0, 0, 0, g).castShadow = false;
+	if (!lit) return null;
+	const l = new THREE.PointLight(0xfff0dc, 12 * s, 12, 2);
+	l.position.set(x, y - 1.0 * s, z);
+	g.add(l);
+	return l;
+}
+// A cloth laid over a profile [[z, y], ...] (from one side's foot over the top to the other's), along x from x0
+// to x1, with soft folds; UVs run 0..1 along x and round the profile, for a bordered chadar.
+function drapeGeo(prof, x0, x1, cz, off = 0.012, nu = 48, nv = 30) {
+	const len = [0];
+	for (let i = 1; i < prof.length; i++) len.push(len[i - 1] + Math.hypot(prof[i][0] - prof[i - 1][0], prof[i][1] - prof[i - 1][1]));
+	const L = len[len.length - 1];
+	const at = (d) => {
+		for (let i = 1; i < prof.length; i++)
+			if (d <= len[i] || i === prof.length - 1) {
+				const k = (d - len[i - 1]) / (len[i] - len[i - 1] || 1);
+				const a = prof[i - 1], b = prof[i];
+				const tz = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tz, ty) || 1;
+				return [lerp(a[0], b[0], k), lerp(a[1], b[1], k), -ty / tl, tz / tl];
+			}
+	};
+	const geo = new THREE.PlaneGeometry(1, 1, nu, nv);
+	const p = geo.attributes.position, uv = geo.attributes.uv;
+	for (let i = 0; i < p.count; i++) {
+		const u = uv.getX(i), v = uv.getY(i);
+		const [z, y, nz, ny] = at(v * L);
+		const f = off + 0.008 * Math.sin(u * 40 + v * 7) * Math.min(1, (1 - Math.abs(v - 0.5) * 2) * 3 + 0.3);
+		p.setXYZ(i, lerp(x0, x1, u), y + ny * f, cz + z + nz * f);
+	}
+	geo.computeVertexNormals();
+	return geo;
+}
+// The painted portrait of Baba in Dwarkamai: seated on the stone, in a white kafni and head cloth.
+function portraitTex() {
+	return texOf(canvas(256, 352, (g, W, H) => {
+		const bg = g.createLinearGradient(0, 0, 0, H);
+		bg.addColorStop(0, "#34524c");
+		bg.addColorStop(1, "#1a2a28");
+		g.fillStyle = bg;
+		g.fillRect(0, 0, W, H);
+		const halo = g.createRadialGradient(128, 96, 10, 128, 96, 80);
+		halo.addColorStop(0, "rgba(255,220,150,0.55)");
+		halo.addColorStop(1, "rgba(255,220,150,0)");
+		g.fillStyle = halo;
+		g.fillRect(0, 0, W, H);
+		const fill = (c, f) => {
+			g.fillStyle = c;
+			g.beginPath();
+			f();
+			g.fill();
+		};
+		// the stone, the kafni with the right leg across the left knee, the hands
+		fill("#7a756c", () => g.ellipse(128, 300, 92, 26, 0, 0, Math.PI * 2));
+		fill("#f2eee4", () => {
+			g.moveTo(92, 132);
+			g.quadraticCurveTo(128, 120, 164, 132);
+			g.lineTo(184, 240);
+			g.lineTo(196, 290);
+			g.lineTo(150, 296);
+			g.lineTo(140, 250);
+			g.lineTo(96, 262);
+			g.lineTo(60, 250);
+			g.lineTo(76, 200);
+			g.closePath();
+		});
+		fill("#e4dfd2", () => g.ellipse(112, 236, 62, 17, -0.12, 0, Math.PI * 2));
+		fill("#c08a60", () => g.ellipse(160, 296, 18, 8, 0, 0, Math.PI * 2));
+		fill("#c08a60", () => g.ellipse(64, 240, 12, 9, 0, 0, Math.PI * 2));
+		fill("#c08a60", () => g.ellipse(150, 222, 12, 10, 0.4, 0, Math.PI * 2));
+		g.strokeStyle = "rgba(120,110,95,0.5)";
+		g.lineWidth = 2;
+		for (const [a, b, c, d] of [[110, 140, 104, 230], [146, 140, 156, 226], [128, 150, 128, 228]]) {
+			g.beginPath();
+			g.moveTo(a, b);
+			g.lineTo(c, d);
+			g.stroke();
+		}
+		// the face, the white beard and the head cloth with its end over the left shoulder
+		fill("#c8956a", () => g.ellipse(128, 96, 24, 30, 0, 0, Math.PI * 2));
+		fill("#ece8e0", () => {
+			g.moveTo(106, 104);
+			g.quadraticCurveTo(128, 150, 150, 104);
+			g.quadraticCurveTo(128, 116, 106, 104);
+		});
+		fill("#2a201a", () => g.ellipse(119, 92, 3.4, 2.2, 0, 0, Math.PI * 2));
+		fill("#2a201a", () => g.ellipse(137, 92, 3.4, 2.2, 0, 0, Math.PI * 2));
+		fill("#f4f0e8", () => {
+			g.moveTo(101, 90);
+			g.quadraticCurveTo(100, 56, 128, 54);
+			g.quadraticCurveTo(158, 56, 155, 90);
+			g.quadraticCurveTo(128, 78, 101, 90);
+		});
+		fill("#f4f0e8", () => {
+			g.moveTo(152, 80);
+			g.quadraticCurveTo(170, 110, 168, 150);
+			g.lineTo(156, 148);
+			g.quadraticCurveTo(158, 112, 146, 88);
+		});
+		g.strokeStyle = "#c9a040";
+		g.lineWidth = 10;
+		g.strokeRect(5, 5, W - 10, H - 10);
+		g.strokeStyle = "#7a5a20";
+		g.lineWidth = 2;
+		g.strokeRect(12, 12, W - 24, H - 24);
+	}));
+}
+// A chadar: deep red velvet with a broad gold border and a line embroidered along its middle.
+function chadarTex(base, text) {
+	return texOf(canvas(512, 256, (g, W, H) => {
+		g.fillStyle = css(base);
+		g.fillRect(0, 0, W, H);
+		const R = rand(5);
+		for (let i = 0; i < 6000; i++) {
+			g.fillStyle = `rgba(${R() < 0.5 ? "0,0,0" : "255,220,220"},${0.06 * R()})`;
+			g.fillRect(R() * W, R() * H, 2, 2);
+		}
+		g.fillStyle = "#d8a63a";
+		g.fillRect(0, 0, W, 18);
+		g.fillRect(0, H - 18, W, 18);
+		g.fillRect(0, 0, 14, H);
+		g.fillRect(W - 14, 0, 14, H);
+		g.fillStyle = css(base, 0.75);
+		for (let x = 8; x < W; x += 16) {
+			g.fillRect(x, 6, 6, 6);
+			g.fillRect(x, H - 12, 6, 6);
+		}
+		g.fillStyle = "#e6b84a";
+		g.font = "bold 46px 'Tiro Devanagari Hindi', serif";
+		g.textAlign = "center";
+		g.textBaseline = "middle";
+		if (text) g.fillText(text, W / 2, H / 2 + 4);
+		for (const x of [70, W - 70]) {
+			g.beginPath();
+			g.arc(x, H / 2, 22, 0, Math.PI * 2);
+			g.fill();
+		}
+	}));
+}
+
+// Shirdi: the Samadhi Mandir, a hall of white marble where Sai Baba rests, his murti seated above the samadhi;
+// and, built some way off, Dwarkamai, the old mosque where he lived with the dhuni he kept burning.
+const DWARKA = 40; // Dwarkamai's x offset from the Samadhi Mandir
+function shirdi(ctx) {
+	const { g, M, kit } = ctx;
+	const floor = marbleMat(0xeeebe4, { seed: 91, rows: 2, cols: 2, scale: 1.4, rough: 0.16 });
+	const wall = marbleMat(0xf6f4f0, { seed: 92, rows: 2, cols: 2, scale: 2.4, rough: 0.4, veins: 8 });
+	const trim = marbleMat(0xe2ddd2, { seed: 93, rows: 1, cols: 1, scale: 1.0, rough: 0.3, veins: 6 });
+	const ceil = std(0xf2eee6, { roughness: 0.6, vertexColors: true });
+	const t = 0.4, H = 5.2;
+	// the hall
+	box(g, -6.5, 6.5, -0.3, 0, -7, 13.5, floor, 1);
+	wallX(g, -6.5 - t / 2, -7, 10.2, 0, H, t, wall);
+	wallX(g, 6.5 + t / 2, -7, 10.2, 0, H, t, wall);
+	wallZ(g, -7 - t / 2, -6.7, 6.7, 0, H, t, wall);
+	wallZ(g, 10, -6.7, 6.7, 0, H, t, wall, [-1.3, 1.3, 0, 3.2]);
+	box(g, -6.7, 6.7, H, H + 0.3, -7.2, 10.2, ceil, 1);
+	// a dado along the walls, and the gilt cornice under the ceiling
+	for (const sx of [-1, 1]) {
+		box(g, sx * 6.5 - 0.06, sx * 6.5 + 0.06, 0, 0.9, -7, 9.8, trim, 1);
+		box(g, sx * 6.5 - 0.08, sx * 6.5 + 0.08, H - 0.32, H - 0.22, -7, 9.8, M.gold, 1);
+	}
+	box(g, -6.5, 6.5, H - 0.32, H - 0.22, -6.88, -6.72, M.gold, 1);
+	// square marble pillars along the sides, beams across the ceiling between them
+	const pz = [7.6, 4.2, 0.8, -2.6];
+	for (const z of pz) {
+		for (const sx of [-1, 1]) {
+			const x = sx * 5.85;
+			box(g, x - 0.32, x + 0.32, 0, 0.5, z - 0.32, z + 0.32, trim, 1);
+			box(g, x - 0.24, x + 0.24, 0.5, H - 0.6, z - 0.24, z + 0.24, wall, 2);
+			box(g, x - 0.34, x + 0.34, H - 0.6, H - 0.35, z - 0.34, z + 0.34, trim, 1);
+			box(g, x - 0.27, x + 0.27, 2.6, 2.7, z - 0.27, z + 0.27, M.gold, 1);
+		}
+		box(g, -6.5, 6.5, H - 0.35, H, z - 0.2, z + 0.2, ceil, 1);
+	}
+	// arched recesses on the side walls between the pillars, outlined in gold
+	for (let i = 0; i < pz.length - 1; i++) {
+		const z = (pz[i] + pz[i + 1]) / 2;
+		for (const sx of [-1, 1]) {
+			const a = mesh(new THREE.TorusGeometry(1.15, 0.05, 6, 30, Math.PI), M.gold, sx * 6.28, 2.9, z, g);
+			a.rotation.y = Math.PI / 2;
+			for (const sz of [-1, 1]) box(g, sx * 6.28 - 0.05, sx * 6.28 + 0.05, 0.9, 2.9, z + sz * 1.15 - 0.05, z + sz * 1.15 + 0.05, M.gold, 1);
+		}
+	}
+	daylight(ctx, 0, 1.6, 13.4, 5, 3.6, "court", 10, [0, 0, 6]);
+	// the raised dais of the murti, its face banded in silver repousse
+	const rep = repousse(0xd8d8d2, 94, 1, 6);
+	const silverF = std(0xffffff, { map: rep.map, bumpMap: rep.bump, bumpScale: 3, metalness: 0.9, roughness: 0.26 });
+	silverF.userData.tri = 0.8;
+	box(g, -2.7, 2.7, 0, 1.2, -6.9, -4.0, wall, 1);
+	box(g, -2.72, 2.72, 0.3, 1.0, -4.02, -3.96, silverF, 1);
+	box(g, -2.8, 2.8, 1.16, 1.24, -6.9, -3.92, M.gold, 1);
+	// behind the throne: a tall marble arch in the back wall, outlined in gold
+	box(g, -2.3, 2.3, 1.2, 4.6, -6.98, -6.8, trim, 1);
+	mesh(new THREE.TorusGeometry(1.6, 0.07, 8, 40, Math.PI), M.gold, 0, 3.2, -6.78, g);
+	for (const sx of [-1, 1]) box(g, sx * 1.6 - 0.07, sx * 1.6 + 0.07, 1.2, 3.2, -6.85, -6.71, M.gold, 1);
+	// the silver throne: seat, an arched back and arms, on a low footstool
+	const s = 1.25, Z = -5.25, Y = 1.2; // the murti's root
+	const rep2 = repousse(0xd8d8d2, 95, 2, 2);
+	const silverT = std(0xffffff, { map: rep2.map, bumpMap: rep2.bump, bumpScale: 3, metalness: 0.92, roughness: 0.24 });
+	silverT.userData.tri = 0.6;
+	box(g, -0.55, 0.55, Y, Y + 0.48 * s, Z - 0.42, Z + 0.3, silverT, 1);
+	box(g, -0.58, 0.58, Y + 0.48 * s, Y + 0.53 * s, Z - 0.44, Z + 0.33, M.silver, 1);
+	const back = new THREE.Shape();
+	back.moveTo(-0.62, 0);
+	back.lineTo(0.62, 0);
+	back.lineTo(0.62, 0.95);
+	back.quadraticCurveTo(0.62, 1.45, 0, 1.62);
+	back.quadraticCurveTo(-0.62, 1.45, -0.62, 0.95);
+	back.closePath();
+	mesh(new THREE.ExtrudeGeometry(back, { depth: 0.08, bevelEnabled: true, bevelSize: 0.02, bevelThickness: 0.02, bevelSegments: 2 }), M.silver, 0, Y + 0.5 * s, Z - 0.52, g);
+	// a gilt halo on the throne's back, behind his head
+	mesh(new THREE.CircleGeometry(0.34, 40), silverT, 0, Y + 1.3 * s, Z - 0.41, g);
+	mesh(new THREE.TorusGeometry(0.34, 0.025, 8, 48), M.gold, 0, Y + 1.3 * s, Z - 0.4, g);
+	for (let i = 0; i < 24; i++) {
+		const a = (i / 24) * Math.PI * 2;
+		mesh(new THREE.ConeGeometry(0.025, 0.09, 5), M.gold, Math.cos(a) * 0.4, Y + 1.3 * s + Math.sin(a) * 0.4, Z - 0.41, g).rotation.z = a - Math.PI / 2;
+	}
+	const rim = new THREE.CatmullRomCurve3([V(-0.66, 0, 0), V(-0.66, 0.95, 0), V(-0.45, 1.4, 0), V(0, 1.67, 0), V(0.45, 1.4, 0), V(0.66, 0.95, 0), V(0.66, 0, 0)]);
+	mesh(new THREE.TubeGeometry(rim, 40, 0.03, 8), M.gold, 0, Y + 0.5 * s, Z - 0.42, g);
+	for (const sx of [-1, 1]) {
+		box(g, sx * 0.6 - 0.06, sx * 0.6 + 0.06, Y + 0.53 * s, Y + 0.85 * s, Z - 0.44, Z + 0.2, M.silver, 1);
+		mesh(new THREE.SphereGeometry(0.075, 14, 10), M.silver, sx * 0.6, Y + 0.9 * s, Z + 0.22, g); // a lion's head on each arm
+	}
+	box(g, -0.05, 0.38, Y, Y + 0.14, Z + 0.32, Z + 0.74, M.silver, 1);
+	// the silver canopy on four posts, its dome hung with a fringe
+	for (const [x, z] of [[-0.85, -5.95], [0.85, -5.95], [-0.85, -4.45], [0.85, -4.45]]) {
+		mesh(new THREE.CylinderGeometry(0.035, 0.045, 2.4, 10), M.silver, x, Y + 1.2, z, g);
+		mesh(new THREE.SphereGeometry(0.06, 10, 8), M.silver, x, Y + 2.42, z, g);
+	}
+	box(g, -0.95, 0.95, Y + 2.4, Y + 2.5, -6.05, -4.35, M.silver, 1);
+	mesh(lathe([[0, 0], [1.0, 0], [0.95, 0.12], [0.78, 0.3], [0.5, 0.46], [0.2, 0.55], [0.08, 0.62], [0.1, 0.7], [0.04, 0.78], [0.06, 0.86], [0, 0.94]], 32), M.silver, 0, Y + 2.5, -5.2, g).scale.set(1, 1, 0.9);
+	const fringe = [];
+	for (let i = 0; i < 40; i++) {
+		const a = (i / 40) * Math.PI * 2;
+		fringe.push([new THREE.ConeGeometry(0.022, 0.1, 5).rotateX(Math.PI), Math.cos(a) * 0.98, Y + 2.38, -5.2 + Math.sin(a) * 0.88]);
+	}
+	merged(g, M.silver, fringe);
+	// Sai Baba: white marble, seated with the right leg across the left knee, in a white kafni with a saffron
+	// cloth tied on the head; for the day, a gold crown and a shawl over the shoulders
+	const MJ = person({ skin: 0xf3efe8, top: 0xf8f6f0, bottom: 0xf8f6f0, sash: 0xf8f6f0, head: "pheta", headColor: 0xe46f1a, border: 0xd8a83a, beard: 0xd4d0c8, moustache: 0xd4d0c8, hairColor: 0xd8d4cc, age: "elder", sleeve: 1, dhoti: "long", shawl: 0x861824, mark: "none", lod: 2 });
+	const mp = { bob: -0.35, lean: -0.03, nod: 0.1, shR: -0.5, elR: -0.9, shL: -0.6, elL: -0.7 };
+	// own left foot down on the stool; own right ankle laid over the left knee, the right knee out to the side
+	for (const [S, side, K, A, fy] of [[LEFT, 1, V(0.11, -0.01, 0.45), V(0.13, -0.41, 0.48), -0.49], [RIGHT, -1, V(-0.26, 0.07, 0.37), V(0.15, 0.115, 0.43), -1]]) {
+		const r = legIK(side, K, A, fy);
+		Object.assign(mp, { ["hip" + S]: r.hip, ["hip" + S + "y"]: r.hipy, ["hip" + S + "z"]: r.hipz, ["knee" + S]: r.knee, ["ankle" + S]: S === RIGHT ? 0.35 : r.ankle });
+	}
+	pose(MJ, mp);
+	MJ.root.scale.setScalar(s);
+	MJ.root.position.set(0, Y, Z);
+	g.add(MJ.root);
+	MJ.root.updateMatrixWorld(true);
+	// the right hand rests on the right knee, the left on the right foot
+	const kneeW = MJ["knee" + RIGHT].getWorldPosition(V()).add(V(0.0, 0.1 * s, 0.03));
+	const footW = MJ["ankle" + RIGHT].localToWorld(V(0, 0.0, 0.08)).add(V(0, 0.07 * s, 0));
+	for (const [S, tg] of [[RIGHT, kneeW], [LEFT, footW]]) {
+		const r = reach(MJ, S, tg, mp);
+		Object.assign(mp, { ["sh" + S]: r.sh, ["sh" + S + "z"]: r.shz, ["el" + S]: r.el });
+		pose(MJ, mp);
+		MJ.root.updateMatrixWorld(true);
+	}
+	for (const f of MJ.feet) f.visible = false;
+	// the brows (and the hair under the cloth) carved in the marble, only a shade greyer
+	const browM = std(0xcac5bc, { roughness: 0.5 });
+	MJ.root.traverse((o) => o.isMesh && o.material.color && o.material.color.getHex() === 0xd8d4cc && (o.material = browM));
+	const crown = new THREE.Group();
+	mesh(lathe([[0, 0], [0.118, 0], [0.122, 0.03], [0.108, 0.045], [0.125, 0.09], [0.1, 0.12], [0.07, 0.15], [0.05, 0.2], [0.02, 0.25], [0, 0.27]], 28), M.gold, 0, 0, 0, crown);
+	for (let i = 0; i < 9; i++) {
+		const a = -1.0 + i * 0.25;
+		mesh(new THREE.SphereGeometry(0.011, 6, 4), i % 2 ? M.rose : std(0x1a7a3a, { roughness: 0.2, emissive: 0x002a10 }), Math.sin(a) * 0.121, 0.065, Math.cos(a) * 0.121, crown);
+	}
+	crown.position.set(0, 0.105, -0.01);
+	crown.scale.set(0.85, 0.55, 0.85);
+	MJ.head.add(crown);
+	const gl = (mat, d, r, low, w = 0.2) => {
+		const pts = [V(-0.13, 0.55, 0.06), V(-w, 0.3, 0.15 + d), V(-w * 0.8, low + 0.08, 0.2 + d), V(0, low, 0.23 + d), V(w * 0.8, low + 0.08, 0.2 + d), V(w, 0.3, 0.15 + d), V(0.13, 0.55, 0.06)];
+		beads(MJ.torso, new THREE.CatmullRomCurve3(pts), r, mat, M.jasmine);
+	};
+	gl(M.rose, 0.03, 0.028, 0.12, 0.19);
+	gl(M.marigold, 0.05, 0.03, 0.2, 0.17);
+	gl(M.jasmine, 0.06, 0.02, 0.3, 0.15);
+	// the samadhi: a raised white marble tomb under a red chadar heaped with flowers and garlands
+	const SZ = -2.82;
+	box(g, -1.4, 1.4, 0, 0.2, -3.5, -2.15, trim, 1);
+	box(g, -1.25, 1.25, 0.2, 0.4, -3.35, -2.3, wall, 1);
+	box(g, -1.27, 1.27, 0.36, 0.4, -3.37, -2.28, M.silver, 1);
+	const prof = [[-0.4, 0.4], [-0.4, 0.82], [-0.3, 0.98], [-0.12, 1.04], [0.12, 1.04], [0.3, 0.98], [0.4, 0.82], [0.4, 0.4]];
+	const tomb = new THREE.Shape(prof.map(([z, y]) => new THREE.Vector2(z, y)));
+	const tg = new THREE.ExtrudeGeometry(tomb, { depth: 2.1, bevelEnabled: false });
+	tg.rotateY(Math.PI / 2);
+	mesh(tg, wall, -1.05, 0, SZ, g);
+	const red = std(0xffffff, { map: chadarTex(0x8e1420, "ॐ साई राम"), roughness: 0.75, side: THREE.DoubleSide });
+	const drapeP = [[-0.43, 0.42], ...prof.slice(1, -1), [0.43, 0.42]];
+	mesh(drapeGeo(drapeP, -1.12, 1.12, SZ, 0.014), red, 0, 0, 0, g);
+	for (const sx of [-1, 1]) {
+		const cap = new THREE.ShapeGeometry(new THREE.Shape(drapeP.map(([z, y]) => new THREE.Vector2(z * 1.03, y))));
+		cap.rotateY(sx * Math.PI / 2);
+		mesh(cap, red, sx * 1.12, 0, SZ, g).material = std(0x8e1420, { roughness: 0.75, side: THREE.DoubleSide });
+	}
+	const topY = (z) => 1.04 - 0.4 * Math.max(0, Math.abs(z) - 0.12) - 0.9 * Math.max(0, Math.abs(z) - 0.3);
+	heap(g, flowerKinds(M), 260, (R) => {
+		const z = (R() - 0.5) * 0.6;
+		return V((R() - 0.5) * 1.9, topY(z) + 0.035, SZ + z);
+	}, 96);
+	for (const [dz, mat, acc, r] of [[-0.2, M.marigold, M.rose, 0.03], [0, M.rose, M.jasmine, 0.03], [0.2, M.marigold, M.jasmine, 0.03], [0.34, M.jasmine, M.rose, 0.022], [-0.34, M.jasmine, M.rose, 0.022]])
+		beads(g, new THREE.CatmullRomCurve3([V(-1.12, 0.6, SZ + dz * 1.25), V(-0.9, topY(dz) + 0.05, SZ + dz), V(0, topY(dz) + 0.07, SZ + dz), V(0.9, topY(dz) + 0.05, SZ + dz), V(1.12, 0.6, SZ + dz * 1.25)]), r, mat, acc);
+	// what the traveller offers: a green chadar laid across, and fresh flowers on it
+	const offered = new THREE.Group();
+	g.add(offered);
+	const green = std(0xffffff, { map: chadarTex(0x1f6a3a), roughness: 0.75, side: THREE.DoubleSide });
+	mesh(drapeGeo(drapeP, -0.42, 0.42, SZ, 0.03, 24, 30), green, 0, 0, 0, offered);
+	heap(offered, flowerKinds(M, false), 50, (R) => {
+		const z = (R() - 0.5) * 0.4;
+		return V((R() - 0.5) * 0.6, topY(z) + 0.06, SZ + z);
+	}, 97);
+	offered.visible = false;
+	ctx.offered = offered;
+	// the low silver railing round the samadhi
+	railing(g, [[-1.8, -4.0], [-1.8, -1.6], [1.8, -1.6], [1.8, -4.0]], 0.8, M.silver, { r: 0.024, gap: 0.6, bars: 0.12 });
+	// the queue: two lanes between steel railings down the right of the hall, then across before the samadhi
+	const steel = std(0xc4c4c0, { metalness: 0.85, roughness: 0.3 });
+	railing(g, [[3.0, 5.6], [3.0, -0.4], [-2.4, -0.4]], 1.0, steel, { gap: 1.3 });
+	railing(g, [[4.2, 5.6], [4.2, -1.6], [1.8, -1.6]], 1.0, steel, { gap: 1.3 });
+	railing(g, [[5.4, 5.6], [5.4, -1.2]], 1.0, steel, { gap: 1.3 });
+	// lamps: brass samai before the dais, chandeliers down the hall, light on Baba's face
+	kit.samai(g, -2.35, 0, -3.6, 1.2, 7);
+	kit.samai(g, 2.35, 0, -3.6, 1.2, 7);
+	kit.light(-2.2, 1.5, -3.3, 3, 6, 0xffa050);
+	kit.light(2.2, 1.5, -3.3, 3, 6, 0xffa050);
+	for (const x of [-1.6, -0.8, 0.8, 1.6]) kit.diya(g, x, 1.24, -4.15);
+	kit.incense(g, 1.45, 1.24, -4.25);
+	kit.incense(g, -1.45, 1.24, -4.25);
+	for (const z of [6.0, 2.4, -1.2]) chandelier(ctx, 0, H, z, 1.1);
+	chandelier(ctx, -3.6, H, 2.4, 0.8, false);
+	const spot = new THREE.SpotLight(0xfff0dc, 26, 12, 0.42, 0.6, 1.4);
+	spot.position.set(0, 4.8, -1.6);
+	spot.target.position.set(0, 2.0, -5.2);
+	if (!ctx.low) {
+		spot.castShadow = true;
+		spot.shadow.mapSize.set(1024, 1024);
+		spot.shadow.bias = -0.002;
+	}
+	g.add(spot, spot.target);
+	garland(g, V(-1.3, 3.2, 10.22), V(1.3, 3.2, 10.22), 0.3, 0.035, M.marigold, M.rose);
+	for (const sx of [-1, 1]) hangingGarland(g, sx * 1.3, 3.2, 10.22, 1.1, M.marigold, M.rose);
+	for (const sx of [-1, 1]) garland(g, V(sx * 0.85, Y + 2.4, -4.45), V(sx * 0.85, Y + 2.4, -5.95), 0.18, 0.026, M.marigold, M.rose);
+	garland(g, V(-0.85, Y + 2.4, -4.45), V(0.85, Y + 2.4, -4.45), 0.22, 0.03, M.rose, M.jasmine);
+	mesh(lathe([[0, 0], [0.14, 0], [0.2, 0.1], [0.19, 0.2], [0.13, 0.26], [0.15, 0.3], [0, 0.29]], 20), M.brass, -0.6, 0, 11.3, g);
+	// devotees: a second line in the queue beside the traveller's, and others standing to sing the aarti
+	const crowdSpots = [[4.8, 1.7], [4.85, 2.9], [4.8, 4.1], [4.85, 5.3], [4.9, 6.9], [-2.6, 0.6], [-3.4, 1.4], [-2.3, 2.2], [-4.2, 0.2], [-4.1, 2.6], [-3.1, 3.4]];
+	crowdSpots.forEach(([x, z], i) => {
+		const m = crowdFigure(701 + i * 19, "shirdi");
+		KEEP.add(m.material);
+		m.scale.setScalar(1 / 0.28);
+		m.position.set(x, 0, z);
+		m.rotation.y = x > 4 ? Math.PI : Math.atan2(-x, -5.2 - z);
+		g.add(m);
+	});
+
+	// ---- Dwarkamai ----
+	const X = DWARKA;
+	const plaster = stoneMat(0xe6dcc6, { rows: 3, cols: 1, jitter: 0.03, mortar: 0.96, streaks: 0.35, seed: 97, scale: 2.4, bump: 0.3 });
+	const flags = stoneMat(0x6e6456, { rows: 3, cols: 2, seed: 98, rough: 0.6, scale: 1.3, wear: 1, bump: 0.6 });
+	const timber = std(0x4a3220, { roughness: 0.75 });
+	const HD = 3.8;
+	box(g, X - 4.2, X + 4.2, -0.3, 0, -3.6, 7, flags, 1);
+	wallX(g, X - 4.2, -3.6, 4.2, 0, HD, t, plaster);
+	wallX(g, X + 4.2, -3.6, 4.2, 0, HD, t, plaster);
+	wallZ(g, -3.6, X - 4.4, X + 4.4, 0, HD, t, plaster);
+	wallZ(g, 4.2, X - 4.4, X + 4.4, 0, HD, t, plaster, [X - 1.0, X + 1.0, 0, 2.6]);
+	box(g, X - 4.4, X + 4.4, HD, HD + 0.2, -3.8, 4.4, timber, 1);
+	for (let z = -3.0; z < 4; z += 1.2) box(g, X - 4.0, X + 4.0, HD - 0.22, HD, z - 0.1, z + 0.1, timber, 1);
+	for (const x of [X - 1.6, X + 1.6]) {
+		mesh(new THREE.CylinderGeometry(0.16, 0.19, HD, 10), timber, x, HD / 2, 1.6, g);
+		box(g, x - 0.25, x + 0.25, 0, 0.18, 1.35, 1.85, flags, 1);
+	}
+	// arched niches in the side walls
+	const niche = std(0x3a2c20, { roughness: 0.9 }), rimM = std(0xcfc2a4, { roughness: 0.8 });
+	for (const z of [-1.4, 1.6]) for (const sx of [-1, 1]) {
+		const x = X + sx * 3.99;
+		box(g, x - 0.01, x + 0.01, 0.8, 1.9, z - 0.5, z + 0.5, niche, 1);
+		const c = mesh(new THREE.CircleGeometry(0.5, 20, 0, Math.PI), niche, x - sx * 0.005, 1.9, z, g);
+		c.rotation.y = -sx * Math.PI / 2;
+		const a = mesh(new THREE.TorusGeometry(0.55, 0.05, 6, 20, Math.PI), rimM, x - sx * 0.02, 1.9, z, g);
+		a.rotation.y = Math.PI / 2;
+		for (const sz of [-1, 1]) box(g, x - 0.04, x + 0.04, 0.8, 1.9, z + sz * 0.55 - 0.05, z + sz * 0.55 + 0.05, rimM, 1);
+	}
+	daylight(ctx, X, 1.6, 6.2, 4, 3.4, "court", 6, [X, 0, 1]);
+	// Baba's portrait on the back wall, the stone he sat on before it on a marble step
+	const pw = 1.25, ph = 1.72;
+	const pt = portraitTex();
+	mesh(new THREE.PlaneGeometry(pw, ph), std(0xffffff, { map: pt, roughness: 0.55, emissive: 0xffffff, emissiveMap: pt, emissiveIntensity: 0.12 }), X, 0.85 + ph / 2 + 0.1, -3.38, g);
+	box(g, X - pw / 2 - 0.06, X + pw / 2 + 0.06, 0.88, 0.95 + ph + 0.04, -3.42, -3.39, M.gold, 1);
+	garland(g, V(X - pw / 2, 0.95 + ph, -3.3), V(X + pw / 2, 0.95 + ph, -3.3), 0.4, 0.03, M.marigold, M.rose);
+	box(g, X - 0.85, X + 0.85, 0, 0.32, -3.4, -2.45, trim, 1);
+	let sg = new THREE.IcosahedronGeometry(1, 3);
+	sg.deleteAttribute("normal");
+	sg.deleteAttribute("uv");
+	sg = mergeVertices(sg);
+	const sp = sg.attributes.position;
+	for (let i = 0; i < sp.count; i++) {
+		const x = sp.getX(i), y = sp.getY(i), z = sp.getZ(i), n = 1 + (fbm(x * 2 + 5, z * 2 + y, 3) - 0.5) * 0.35;
+		sp.setXYZ(i, x * 0.42 * n, Math.max(-0.2, y) * 0.16 * n, z * 0.3 * n);
+	}
+	sg.computeVertexNormals();
+	mesh(sg, std(0xd8d0c4, { map: grainTex(0xa8a296, 99), roughness: 0.7 }), X, 0.36, -2.92, g);
+	beads(g, new THREE.CatmullRomCurve3(Array.from({ length: 24 }, (_, i) => V(X + Math.cos((i / 24) * Math.PI * 2) * 0.44, 0.37, -2.92 + Math.sin((i / 24) * Math.PI * 2) * 0.32)), true), 0.028, M.marigold, M.rose);
+	heap(g, flowerKinds(M, false), 30, (R) => V(X + (R() - 0.5) * 0.4, 0.43, -2.92 + (R() - 0.5) * 0.2), 100);
+	for (const x of [-0.65, 0.65]) kit.diya(g, X + x, 0.32, -2.6);
+	kit.samai(g, X + 1.25, 0, -2.8, 1.0, 5);
+	// the dhuni: a fire of logs in a raised pit, behind an iron grill, with a basin of its udi beside it
+	const D = [X - 2.4, -1.0];
+	const brick = std(0x7a3a26, { roughness: 0.9 });
+	box(g, D[0] - 0.6, D[0] + 0.6, 0, 0.28, D[1] - 0.6, D[1] + 0.6, brick, 1);
+	const cinder = std(0x6a625a, { roughness: 1, emissive: 0x2a0800, emissiveIntensity: 0.5 });
+	mesh(new THREE.SphereGeometry(0.5, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), cinder, D[0], 0.24, D[1], g).scale.y = 0.25;
+	const logs = [];
+	for (let i = 0; i < 6; i++) {
+		const a = (i / 6) * Math.PI * 2;
+		logs.push([new THREE.CylinderGeometry(0.05, 0.06, 0.7, 7), D[0] + Math.cos(a) * 0.12, 0.42, D[1] + Math.sin(a) * 0.12, 1.0, -a, 0]);
+	}
+	merged(g, std(0x2a1a10, { roughness: 0.9, emissive: 0x3a0e00, emissiveIntensity: 0.6 }), logs);
+	for (const [x, z, sc] of [[0, 0, 7.5], [0.12, 0.05, 5.5], [-0.12, -0.04, 6], [0.04, -0.13, 5], [-0.06, 0.13, 5.2]]) kit.flame(g, D[0] + x, 0.36, D[1] + z, sc, 0.6);
+	kit.light(D[0], 0.9, D[1] + 0.3, 7, 8, 0xff7a28, null, true);
+	ctx.smokeFrom.push(V(D[0], 1.0, D[1]));
+	const bars = [];
+	const gx0 = D[0] - 0.75, gx1 = D[0] + 0.75, gz0 = D[1] - 0.75, gz1 = D[1] + 0.75, gh = 1.45;
+	for (const [a, b] of [[[gx0, gz1], [gx1, gz1]], [[gx1, gz1], [gx1, gz0]], [[gx0, gz1], [gx0, gz0]], [[gx0, gz0], [gx1, gz0]]]) {
+		const l = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.round(l / 0.11);
+		for (let k = 0; k <= n; k++) bars.push([new THREE.CylinderGeometry(0.011, 0.011, gh, 5), lerp(a[0], b[0], k / n), gh / 2, lerp(a[1], b[1], k / n)]);
+		for (const y of [0.05, 0.7, gh]) bars.push([new THREE.BoxGeometry(l + 0.03, 0.035, 0.035), (a[0] + b[0]) / 2, y, (a[1] + b[1]) / 2, 0, Math.atan2(b[0] - a[0], b[1] - a[1]) + Math.PI / 2, 0]);
+	}
+	merged(g, std(0x1c1a18, { roughness: 0.5, metalness: 0.6 }), bars);
+	const U = [X - 1.32, -0.12];
+	mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.72, 10), timber, U[0], 0.36, U[1], g);
+	mesh(lathe([[0, 0], [0.12, 0.0], [0.2, 0.06], [0.22, 0.1], [0, 0.08]], 20), M.copper, U[0], 0.72, U[1], g);
+	mesh(new THREE.SphereGeometry(0.19, 16, 6, 0, Math.PI * 2, 0, Math.PI / 2), M.ash, U[0], 0.76, U[1], g).scale.y = 0.25;
+	kit.hanging(g, X - 0.8, HD, 0.4, 1.1);
+	kit.hanging(g, X + 1.2, HD, -1.4, 1.1);
+	kit.light(X + 0.2, 2.3, -0.8, 5, 9);
+	for (const [x, z] of [[X - 3.3, 1.6], [X - 3.4, 2.9], [X + 3.1, -2.5]]) {
+		const m = crowdFigure(811 + Math.round(x * 7 + z * 13), "shirdi");
+		KEEP.add(m.material);
+		m.scale.setScalar(1 / 0.28);
+		m.position.set(x, 0, z);
+		m.rotation.y = Math.atan2(X - x, -2.9 - z);
+		g.add(m);
+	}
+	common(ctx, 12);
+	const F = (fit, az, el, pad = 1) => ({ fit, dir: [az, el], pad });
+	return {
+		rooms: [[-5.4, 5.4, 0.15, 4.6, -6.7, 9.7], [X - 3.9, X + 3.9, 0.15, 3.5, -3.3, 3.95]],
+		deityPts: [[0, 1.2, -5.25], [0, 3.3, -5.25], [-1.1, 0.4, SZ], [1.1, 0.4, SZ]],
+		pts: { wash: [-0.6, 0.3, 11.3], samadhi: [0, 1.0, SZ], murti: [0, 2.8, -5.25], dhuni: [D[0], 0.6, D[1]], grill: [D[0], 1.45, D[1] - 0.75], udi: [U[0], 0.8, U[1]], shila: [X, 0.4, -2.92], portrait: [X, 2.75, -3.38] },
+		floor: () => 0, noTouch: true, highDeity: true, mark: "udi", priestMark: "chandan", plate: "chadar",
+		// sandals and staff at the door, outside; then into the queue
+		start: [1.4, 11.8], enterPath: [[1.4, 11.8], [0.3, 10.9]], staffRest: [1.62, 10.32], staffTilt: [-0.07, 0], sandals: [0.65, 11.15], washFace: [-0.6, 11.3],
+		queue: [[0.3, 10.9], [0.5, 8.8], [3.6, 5.8], [3.6, -0.2], [3.4, -0.98], [0.35, -1.08]], queueSpeed: 0.85, doorFace: [0, -5.25],
+		toFront: [[0.35, -1.08], [0.35, -1.15]], front: [0.35, -1.15], target: [0, -5.25],
+		priestHome: [-1.35, -1.95], priestFace: [0.35, -1.15], priestTake: [0.15, -1.92], priestPlace: [0.0, -1.98],
+		priestAarti: [0.2, -2.0], aartiSpot: [0.35, -1.2], markSpot: [0.35, -1.2], priestMarkSpot: [0.3, -1.85],
+		// Dwarkamai: in at the door, to the dhuni and its basin of udi; then the bow before the stone
+		dhuniPath: [[X + 0.4, 3.6], [X + 0.1, 1.8], [X - 0.92, 0.32]], dhuniFace: D, udiAt: [U[0], 0.84, U[1]],
+		bowPath: [[X - 0.92, 0.32], [X - 0.3, 0.9], [X, 0.45]], bowFace: [X, -2.92],
+		cams: {
+			enter: Object.assign(F(["T", "wash"], 182, 12, 1.15), { room: [-6.2, 6.2, 0.15, 4.9, 6.0, 12.8] }),
+			queue: { orbit: [0, -5.25], back: 2.3, out: 0, side: -0.9, h: 1.65, lookH: 1.5, ahead: 2 },
+			darshan: Object.assign(F(["T", "D"], 12, 8, 0.8), { padP: 0.95 }),
+			offer: F(["T", "P", "samadhi"], 55, 16),
+			aarti: F(["T", "P", "D"], 38, 10),
+			flame: F(["T", "P"], 70, 10),
+			mark: F(["T", "P"], 100, 8),
+			dhuni: F(["T", "dhuni", "udi"], 125, 14),
+			bow: F(["T", "shila", "portrait"], 50, 16),
+		},
+	};
+}
+const BUILD = { bhimashankar, shirdi, kedarnath, tirupati: tirumala, badrinath };
 
 // ---------- the rituals ----------
 // Each step: { title, note, mantra?, latin?, sets?: [flags], run(S, t) }. run sets the actors' targets,
@@ -2052,7 +2643,7 @@ function stepsFor(key, L) {
 		run(S, t) {
 			idlePriest(S, t);
 			S.cam = cam("queue");
-			const tw = walk(S.T, t, L.queue, 0, 0.55);
+			const tw = walk(S.T, t, L.queue, 0, L.queueSpeed ?? 0.55);
 			const u = t - tw;
 			S.T.face = L.doorFace;
 			S.T.arms = 0.4;
@@ -2198,7 +2789,8 @@ function stepsFor(key, L) {
 			const C = (k, s, y = 1.0) => V(c0[0] + side[0] * s - f[0] * k, y, c0[1] + side[1] * s - f[1] * k);
 			const give = P(STAND, { lean: 0.15, nod: 0.35, shL: -1.0, shLy: 0.3, elL: -0.6, shR: -1.0, shRy: -0.3, elR: -0.6 });
 			S.T.pose = kf(t, [[0, P(STAND, { shL: -0.7, shLy: 0.3, elL: -1.2, shR: -0.7, shRy: -0.3, elR: -1.2 })], [1.6, give], [2.6, give], [3.4, NAMASTE]]);
-			S.hold.tR = t < 2.5 ? "thali" : null;
+			const plate = L.plate || "thali";
+		S.hold.tR = t < 2.5 ? plate : null;
 			const pt = V(0, -0.05, 0.03);
 			if (t < 2.9) {
 				// before that the traveller carries the plate close: the same grip, nearer the chest
@@ -2212,7 +2804,7 @@ function stepsFor(key, L) {
 			S.P.face = L.front;
 			S.P.pose = kf(t, [[0, NAMASTE], [1.6, takeP], [2.6, carry]]);
 			if (t > 1.5 && t < 2.6) S.P.reach = { L: { p: C(-0.09, 0.08), w: 1, pt }, R: { p: C(-0.09, -0.08), w: 1, pt } };
-			if (t > 2.5) S.hold.pR = "thali";
+			if (t > 2.5) S.hold.pR = plate;
 			if (t > 3.0) {
 				const tw = walk(S.P, t, [L.priestTake, L.priestPlace], 3.0, 0.7);
 				S.P.face = L.target;
@@ -2245,10 +2837,10 @@ function stepsFor(key, L) {
 			S.hold.pL = "ghanti";
 			const a = Math.max(0, u - 0.8) * 2.4;
 			const k = clamp(u - 0.6, 0, 1);
-			const low = L.lowDeity ? 1 : 0;
+			const low = L.lowDeity ? 1 : 0, high = L.highDeity ? 1 : 0; // (raised to a murti seated high above)
 			S.P.pose = P(STAND, own({
-				shR: -0.95 + low * 0.3 - Math.sin(a) * 0.32 * k, shRz: -0.15 + Math.cos(a) * 0.3 * k, shRy: -0.2, elR: -0.75 + low * 0.3 + Math.cos(a) * 0.15 * k,
-				shL: -0.55, shLz: 0.25, elL: -1.2 + Math.sin(t * 22) * 0.06 * k, lean: 0.08 + low * 0.25, nod: 0.12 + low * 0.3,
+				shR: -0.95 + low * 0.3 - high * 0.55 - Math.sin(a) * 0.32 * k, shRz: -0.15 + Math.cos(a) * 0.3 * k, shRy: -0.2, elR: -0.75 + low * 0.3 + high * 0.2 + Math.cos(a) * 0.15 * k,
+				shL: -0.55, shLz: 0.25, elL: -1.2 + Math.sin(t * 22) * 0.06 * k, lean: 0.08 + low * 0.25 - high * 0.06, nod: 0.12 + low * 0.3 - high * 0.3,
 			}));
 			if (u > 0.5) S.once("bells", () => S.bigBell(2));
 			if (u > 0.8) S.every("ghanti", 0.42, u, () => S.ghanti());
@@ -2416,7 +3008,7 @@ function stepsFor(key, L) {
 			S.cam = cam("bow");
 			const tw = walk(S.T, t, L.bowPath, 0, 0.6);
 			const u = t - tw;
-			S.T.face = L.target;
+			S.T.face = L.bowFace || L.target;
 			S.T.rate = 14;
 			const arms = NA;
 			let pr = null;
@@ -2434,6 +3026,24 @@ function stepsFor(key, L) {
 				if (u > 4.7 && u < 6.5) S.T.pose.nod += Math.sin((u - 4.7) * 1.6) * 0.015;
 				S.T.reach = pr.hands;
 			}
+		},
+	});
+	// At Shirdi, on to Dwarkamai (a cut to the other set): a bow to the dhuni, then a pinch of its udi from the
+	// basin, touched to the forehead.
+	const dhuni = (text) => ({
+		...text,
+		run(S, t) {
+			S.once("cut", () => S.cut());
+			idlePriest(S, t);
+			S.cam = cam("dhuni");
+			const tw = walk(S.T, t, L.dhuniPath, 0, 0.7);
+			const u = t - tw;
+			S.T.face = L.dhuniFace;
+			const take = P(STAND, own({ lean: 0.32, nod: 0.45, shR: -1.0, elR: -0.5, shL: -0.6, shLy: 0.5, shLz: 0.2, elL: -1.4 }));
+			const brow = P(STAND, own({ shR: -0.9, shRy: -0.5, elR: -2.3, shL: -0.6, shLy: 0.5, shLz: 0.2, elL: -1.4, nod: 0.1 }));
+			S.T.pose = kf(u, [[0, NAMASTE], [1.2, BOWED], [2.4, NAMASTE], [3.2, take], [4.4, take], [5.2, brow], [6.4, brow], [7.2, NAMASTE], [8.2, BOWED], [9.2, NAMASTE]]);
+			if (u > 2.6 && u < 4.8) S.T.reach = own({ R: { p: V(...L.udiAt), w: u < 4.4 ? 1 : 0, rate: 4, pt: V(0, -0.07, 0.02) } });
+			if (u > 4.6 && u < 6.8) S.T.reach = own({ R: { p: headPt(S.TA, 0, 0.07, 0.13), w: u < 6.4 ? 1 : 0, rate: 4, pt: V(0, -0.09, 0.01) } });
 		},
 	});
 	const laddu = (text) => ({
@@ -2498,6 +3108,17 @@ function stepsFor(key, L) {
 		hundi({ title: "The hundi", note: "Offerings go into the Srivari hundi, a great vessel under a white cloth. Pilgrims drop in money and gold, often in fulfilment of a vow." }),
 		pradakshina({ title: "Vimana pradakshina", note: "Walk clockwise around the sanctum, keeping it on your right. Pilgrims look up for the Vimana Venkateswara, a small image of the Lord on the golden tower." }),
 		laddu({ title: "The laddu", note: "Leave with the Tirupati laddu, the temple's famous prasadam, collected at the counters outside, and a last call of the Lord's name.", mantra: "गोविन्दा गोविन्दा", latin: "Govinda, Govinda" }),
+	];
+	if (key === "shirdi") return [
+		enter({ title: "Leave sandals and staff", note: "Footwear is left at the stands outside the gates. Lean the staff by the door, slip off your sandals and rinse your hands and feet, then join the queue." }),
+		queue({ title: "Join the darshan queue", note: "The line winds between steel railings down the marble hall of the Samadhi Mandir towards Baba, devotees chanting his name as it moves.", mantra: "ॐ साईं राम", latin: "Om Sai Ram" }),
+		darshan({ title: "Darshan of Sai Baba", note: "Baba sits above his samadhi in white marble on a silver throne, the right leg crossed over the left knee, in a white kafni with a saffron cloth tied on his head. Fold your hands, bow and pause a moment; the murti is never touched.", mantra: "श्री सच्चिदानंद सद्गुरु साईनाथ महाराज की जय", latin: "Shri Sachchidanand Sadguru Sainath Maharaj ki Jai" }),
+		offerPlate({ title: "Offer flowers and a chadar", note: "Hand your plate of flowers and a chadar, a cloth for the samadhi, across the railing to the pujari. He lays them on the samadhi where Baba rests." }),
+		aarti({ title: "Madhyan aarti", note: "At noon the pujari waves the lamp before Baba as the hall sings his aarti. It is sung four times a day: Kakad at 5:15, Madhyan at noon, Dhoop at sunset and Shej at 10 at night.", mantra: "आरती साईबाबा । सौख्यदातार जीवा", latin: "Aarti Sai Baba, saukhyadatara jiva" }),
+		takeFlame(txt.flame),
+		markStep({ title: "Udi and prasad", note: "The pujari touches udi, the sacred ash of Baba's dhuni, to your forehead and gives prasad. Baba gave udi to all who came to him, for healing and protection." }),
+		dhuni({ title: "Dwarkamai and the dhuni", note: "In the old mosque where Baba lived, the dhuni he lit still burns behind its grill, near the stone he sat on and his portrait. Bow to the fire and take a pinch of its udi.", mantra: "सबका मालिक एक", latin: "Sabka Malik Ek" }),
+		bow({ title: "Bow and take leave", note: "Kneel and bow before Baba's portrait and his stone, then rise with folded hands, carrying his teaching: shraddha and saburi, faith and patience.", mantra: "श्रद्धा सबुरी", latin: "Shraddha, Saburi" }),
 	];
 	return [
 		enter({ title: "Bathe in Tapt Kund", note: "Before darshan pilgrims bathe in Tapt Kund, the hot spring below the temple steps, said to be the seat of Agni. Then leave sandals and staff at the door." }),
@@ -2594,12 +3215,12 @@ export class Sanctum {
 	_build(key) {
 		const scene = (this.scene = new THREE.Scene());
 		scene.background = new THREE.Color(0x060403);
-		scene.fog = new THREE.FogExp2(0x0b0705, key === "tirupati" || key === "badrinath" ? 0.045 : 0.06);
+		scene.fog = key === "shirdi" ? new THREE.FogExp2(0x2a2016, 0.022) : new THREE.FogExp2(0x0b0705, key === "tirupati" || key === "badrinath" ? 0.045 : 0.06);
 		const g = new THREE.Group();
 		scene.add(g);
 		const ctx = (this.ctx = { g, M: MAT(), low: this.low, flames: [], lights: [], bells: [], smokeFrom: [] });
 		ctx.kit = new Kit(ctx);
-		scene.add(new THREE.HemisphereLight(0x8a7a6a, 0x1a120c, { kedarnath: 0.35, badrinath: 0.1 }[key] ?? 0.22));
+		scene.add(new THREE.HemisphereLight(0x8a7a6a, 0x1a120c, { kedarnath: 0.35, badrinath: 0.1, shirdi: 0.5 }[key] ?? 0.22));
 		this.L = BUILD[key](ctx);
 		this.steps = stepsFor(key, this.L);
 		this.props = buildProps(ctx);
@@ -2615,10 +3236,11 @@ export class Sanctum {
 		// the pujari: bare-chested, white dhoti, the sacred thread across the chest, shaven head with a tuft
 		// (pujari: bare chest, the sacred thread, a long dhoti to the ankles, a shaven head with the shikha; a
 		// Maharashtrian pujari at Bhimashankar, an archaka at Tirumala, the Rawals of Kedarnath and Badrinath)
-		const skinP = { bhimashankar: SKIN[2], kedarnath: SKIN[6], tirupati: SKIN[3], badrinath: SKIN[1] }[key] ?? SKIN[2];
-		const PJ = person({ skin: skinP, top: skinP, bottom: 0xf2eee2, sash: 0xf4efe0, pujari: true, mark: "none", moustache: key === "bhimashankar" ? 0x1b1612 : 0 });
+		// (at Shirdi a white dhoti and a saffron shawl over the bare shoulders)
+		const skinP = { bhimashankar: SKIN[2], shirdi: SKIN[4], kedarnath: SKIN[6], tirupati: SKIN[3], badrinath: SKIN[1] }[key] ?? SKIN[2];
+		const PJ = person({ skin: skinP, top: skinP, bottom: 0xf2eee2, sash: 0xf4efe0, pujari: true, mark: "none", shawl: key === "shirdi" ? 0xe8822a : undefined, moustache: key === "bhimashankar" || key === "shirdi" ? 0x1b1612 : 0 });
 		for (const f of PJ.feet) f.visible = false;
-		if (PJ.shawl) PJ.shawl.visible = false;
+		if (PJ.shawl && key !== "shirdi") PJ.shawl.visible = false;
 		PJ.head.add(markPatch(this.L.priestMark || "tripundra"));
 		g.add(PJ.root);
 		this.priest = new Actor(PJ, this.L.floor);
@@ -2655,7 +3277,8 @@ export class Sanctum {
 		// warm reflections for the metal: a dark room with a few lamp-bright spots
 		const pm = new THREE.PMREMGenerator(this.renderer);
 		const es = new THREE.Scene();
-		const back = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 20), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.03, 0.02, 0.014), side: THREE.BackSide }));
+		// (at Shirdi the room is white marble under electric light, so the metal sees a bright room)
+		const back = new THREE.Mesh(new THREE.BoxGeometry(20, 10, 20), new THREE.MeshBasicMaterial({ color: key === "shirdi" ? new THREE.Color(0.32, 0.3, 0.27) : new THREE.Color(0.03, 0.02, 0.014), side: THREE.BackSide }));
 		es.add(back);
 		const hot = new THREE.MeshBasicMaterial({ color: new THREE.Color(6, 3.4, 1.4) });
 		const sph = new THREE.SphereGeometry(0.5, 12, 8);
@@ -2698,6 +3321,13 @@ export class Sanctum {
 				if (sound && self.audio && self.audio.bell) self.audio.bell(1);
 			},
 			bigBell(n) { if (self.audio && self.audio.bell) self.audio.bell(n); },
+			// a cut to another set: everything jumps there this frame, behind a blink
+			cut() {
+				self.snap = true;
+				if (!self.root) return;
+				self.root.classList.add("blink");
+				setTimeout(() => self.root && self.root.classList.remove("blink"), 220);
+			},
 			ghanti() { self._ghanti(); },
 			tx: () => self.trav.pos.x,
 			tz: () => self.trav.pos.z,
@@ -3178,7 +3808,7 @@ export class Sanctum {
 		const prev = { tm: r.toneMapping, ex: r.toneMappingExposure, sh: r.shadowMap.enabled, ac: r.autoClear, ca: r.getClearAlpha() };
 		r.getClearColor(this._cc);
 		r.toneMapping = THREE.ACESFilmicToneMapping;
-		r.toneMappingExposure = { kedarnath: 1.3, badrinath: 1.05, tirupati: 1.3 }[this.key] ?? 1.35;
+		r.toneMappingExposure = { kedarnath: 1.3, badrinath: 1.05, tirupati: 1.3, shirdi: 1.1 }[this.key] ?? 1.35;
 		r.shadowMap.enabled = !this.low;
 		r.autoClear = true;
 		r.setClearColor(0x060403, 1);
