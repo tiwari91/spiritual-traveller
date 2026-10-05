@@ -655,7 +655,15 @@ function mansarovar(ctx) {
 		const gw = toWorld(P.gurla[0], P.gurla[1]);
 		const gy = h.world.height(gw.x, gw.z);
 		for (const [ox, oz, r, hh, seed] of [[0, 1.2, 4.0, 8.5, 41], [2.6, 2.4, 3.2, 6, 42], [-2.4, 2.0, 3.0, 5.5, 43], [-3.4, -0.8, 2.8, 5, 44]]) {
-			const px = gw.x + ox, pz = gw.z + oz;
+			let px = gw.x + ox, pz = gw.z + oz;
+			// (none of its summits at the camp's door: the shore at Qugu, the road beside it and the camera looking
+			// back over them stand clear, the nearest pushed back south, away from the lake; one stood just behind
+			// the camp and was the white spike in the foreground of the shots from the road)
+			const ax = px - h.x, az = pz - h.z, al = Math.hypot(ax, az) || 1, room = r + 6;
+			if (al < room) {
+				px = h.x + (ax / al) * room;
+				pz = h.z + (az / al) * room;
+			}
 			if (wayDist(px, pz) < r * 1.1 + 0.8) continue;
 			const pk = massif(r, hh, seed, 0.42, 0x5a5048);
 			pk.position.set(px, Math.min(gy, h.world.height(px, pz)) - 2.2, pz);

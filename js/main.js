@@ -394,10 +394,26 @@ function cameraGoal() {
 			g.target.copy(tp).lerp(l.pos, 0.35);
 			g.target.y = tp.y + v.lift;
 			const k = kView(l, v, g.target.clone());
+			const top = kTop(l);
+			if (top && k.lean) {
+				g.target.x = lerp(g.target.x, top.x, k.lean);
+				g.target.z = lerp(g.target.z, top.z, k.lean);
+			}
 			g.target.y = tp.y + k.lift;
 			g.yaw = l.shrine.facing + k.yaw + Math.sin(app.darshanT * 0.1) * 0.08;
 			g.pitch = v.pitch + k.pitch;
 			g.dist = k.dist;
+			// zooming out draws the camera back and up over the camp, the aim going out to the mountain, so the whole
+			// of it comes into the picture (updateCamera keeps the camera above the ridges in between)
+			const zo = smoothstep(1, 4, rig.zoom);
+			if (zo > 0) {
+				if (top) {
+					g.target.x = lerp(g.target.x, top.x, zo * 0.5);
+					g.target.z = lerp(g.target.z, top.z, zo * 0.5);
+					g.target.y = lerp(g.target.y, (top.y + tp.y) / 2, zo * 0.6);
+				}
+				g.pitch += zo * 0.22 * (1 - smoothstep(0.3, 0.7, g.pitch));
+			}
 		}
 		return g;
 	}
@@ -443,6 +459,10 @@ function kSummit(name) {
 	});
 	return rig.summits[name];
 }
+// the summit a Kailash stop looks up to (Kailash itself, or Om Parvat), or null at the lake
+function kTop(l) {
+	return l.shrine.lookKailash ? kSummit("kailash") : l.shrine.key === "omparvat" ? kSummit("omparvat") : null;
+}
 // the big peaks of the stops' decor, as bounding spheres in the world (found once)
 function kBig() {
 	if (rig.kBig) return rig.kBig;
@@ -461,51 +481,79 @@ function kView(l, v, target) {
 	const far = v.dist * (innerWidth < innerHeight ? 1.5 : 1);
 	const head = traveller.group.position.clone();
 	head.y += 0.4;
-	const top = l.shrine.lookKailash ? kSummit("kailash") : l.shrine.key === "omparvat" ? kSummit("omparvat") : null;
+	const top = kTop(l);
 	const half = THREE.MathUtils.degToRad(camera.fov / 2), halfW = Math.atan(Math.tan(half) * Math.max(0.6, camera.aspect));
+	// the part of the frame left of the darshan panel: the view offset (updateCamera) pushes the scene left by vx,
+	// so the open picture runs from vx - W/2 to W - panel + vx - W/2 about the middle; as a fraction of the half width
+	const wide = innerWidth > 720, vx = wide ? Math.min(210, innerWidth * 0.17) : 0, panel = wide ? 412 : 0;
+	const visL = wide ? (innerWidth / 2 - vx) / (innerWidth / 2) : 0.9, visR = wide ? (innerWidth / 2 - panel + vx) / (innerWidth / 2) : 0.9;
+	const tanW = Math.tan(halfW);
+	// the mountain's own size: the half width of its body, a third of the way up, for keeping all of it in the picture
+	let body = 0;
+	if (top) for (const s of kBig()) if (s.center.distanceTo(top) < s.radius + 1) body = Math.max(body, s.radius * 0.7);
+	// the way the face looks (Om Parvat's ॐ faces the camp): from the summit back towards the stop
+	const face = top ? new THREE.Vector2(l.pos.x - top.x, l.pos.z - top.z).normalize() : null;
 	let best = null;
-	const base = target.y;
-	for (const dk of [0.55, 0.75, 1, 1.4, 1.9, 2.5]) for (const yo of [v.yaw ?? 0.28, -(v.yaw ?? 0.28), 0.6, -0.6, 1.0, -1.0, 1.5, -1.5]) for (const up of top ? [0, 0.14, 0.28, 0.5, 0.75] : [0, 0.14, 0.28]) for (const lift of top ? [0, 2, 4, 6] : [0]) {
-		// (looking up to a near peak, the shot aims higher, so long as the traveller stays in the frame)
-		target.y = base + lift;
+	const base = target.clone();
+	for (const lean of top && Math.hypot(top.x - base.x, top.z - base.z) < 16 ? [0, 0.25, 0.45] : [0]) for (const dk of top ? [0.55, 0.75, 1, 1.4, 1.9, 2.5, 3.2, 4] : [0.55, 0.75, 1, 1.4, 1.9, 2.5]) for (const yo of [v.yaw ?? 0.28, -(v.yaw ?? 0.28), 0.6, -0.6, 1.0, -1.0, 1.5, -1.5, 0, 0.3, -0.3]) for (const up of top ? [0, 0.14, 0.28, 0.4, 0.5, 0.62, 0.75] : [0, 0.14, 0.28]) for (const lift of top ? [0, 2, 4, 6] : [0]) {
+		// (looking up to a near peak, the shot aims higher, and leans towards it, so long as the traveller stays in the frame)
+		target.copy(base);
+		if (top) {
+			target.x = lerp(base.x, top.x, lean);
+			target.z = lerp(base.z, top.z, lean);
+		}
+		target.y = base.y + lift;
 		const d = far * dk, yw = l.shrine.facing + yo, pt = v.pitch + up, cp = Math.cos(pt);
 		const c = new THREE.Vector3(target.x + Math.sin(yw) * cp * d, target.y + Math.sin(pt) * d, target.z + Math.cos(yw) * cp * d);
 		const clear = c.y - world.height(c.x, c.z);
 		if (clear < 0.2) continue;
-		// nothing in between: the roadside and the camp, and the ground itself (a ridge or the hillside behind)
-		let blocked = occlusion(head, c) != null || occlusion(target, c) != null;
-		for (let q = 0.06; q < 0.97 && !blocked; q += 0.04) if (world.height(lerp(c.x, head.x, q), lerp(c.z, head.z, q)) > lerp(c.y, head.y, q) - 0.05) blocked = true;
-		let score = (blocked ? -10 : 0) + Math.min(clear, 1) * 2 - up * 2 - dk * 0.5 - Math.abs(yo) * 0.5 - lift * 0.1;
+		let score = Math.min(clear, 1) * 2 - up * 2 - dk * 0.5 - Math.abs(yo) * 0.5 - lift * 0.1 - lean;
+		const f = target.clone().sub(c);
+		const fa = Math.atan2(f.x, f.z);
 		// and no great mountain of the decor (Gurla's snows, a gompa's rock) standing close in the side of the frame
-		{
-			const f = target.clone().sub(c);
-			const fa = Math.atan2(f.x, f.z);
-			for (const s of kBig()) {
-				if (top && s.center.distanceTo(top) < s.radius + 1) continue;
-				const dx = s.center.x - c.x, dz = s.center.z - c.z, dd = Math.hypot(dx, dz) - s.radius;
-				if (dd > 14) continue;
-				const turn = Math.abs(Math.atan2(Math.sin(Math.atan2(dx, dz) - fa), Math.cos(Math.atan2(dx, dz) - fa)));
-				if (turn < halfW + Math.atan2(s.radius, Math.max(1, dd + s.radius))) score -= 3 * (1 - Math.max(0, dd) / 14);
-			}
+		for (const s of kBig()) {
+			if (top && s.center.distanceTo(top) < s.radius + 1) continue;
+			const dx = s.center.x - c.x, dz = s.center.z - c.z, dd = Math.hypot(dx, dz) - s.radius;
+			if (dd > 14) continue;
+			const turn = Math.abs(Math.atan2(Math.sin(Math.atan2(dx, dz) - fa), Math.cos(Math.atan2(dx, dz) - fa)));
+			if (turn < halfW + Math.atan2(s.radius, Math.max(1, dd + s.radius))) score -= 3 * (1 - Math.max(0, dd) / 14);
 		}
+		let seen = false;
 		if (top) {
 			// the summit's direction from the camera, against where the camera looks
-			const f = target.clone().sub(c).normalize(), s = top.clone().sub(c);
-			const ang = Math.atan2(s.y, Math.hypot(s.x, s.z)) - Math.atan2(f.y, Math.hypot(f.x, f.z));
-			const turn = Math.atan2(Math.sin(Math.atan2(s.x, s.z) - Math.atan2(f.x, f.z)), Math.cos(Math.atan2(s.x, s.z) - Math.atan2(f.x, f.z)));
-			let seen = Math.abs(ang) < half * 0.85 && Math.abs(turn) < halfW * 0.8;
+			const fn = f.clone().normalize(), s = top.clone().sub(c);
+			const ang = Math.atan2(s.y, Math.hypot(s.x, s.z)) - Math.atan2(fn.y, Math.hypot(fn.x, fn.z));
+			const turn = Math.atan2(Math.sin(Math.atan2(s.x, s.z) - fa), Math.cos(Math.atan2(s.x, s.z) - fa));
+			// where it falls across the frame (screen x, -1 to 1 about the middle; to the right is positive), with
+			// the mountain's half width either side, all of it in the open picture left of the panel
+			const sx = -Math.tan(turn) / tanW, sw = Math.atan2(body, Math.hypot(s.x, s.z)) / halfW;
+			seen = Math.abs(turn) < 1.2 && ang < half * 0.85 && ang > -half * 0.3 && sx - sw > -visL * 0.95 && sx + sw < visR * 0.95;
 			for (let k = 0.1; k < 0.95 && seen; k += 0.06) {
 				const x = lerp(c.x, top.x, k), z = lerp(c.z, top.z, k), y = lerp(c.y, top.y, k);
 				if (world.height(x, z) > y - 0.6 * k) seen = false;
 			}
 			// and the traveller still in the frame, below the middle
-			const hv = head.clone().sub(c), ha = Math.atan2(hv.y, Math.hypot(hv.x, hv.z)) - Math.atan2(f.y, Math.hypot(f.x, f.z));
-			if (ha < -half * 0.8) seen = false;
-			if (seen) score += 4 + Math.min(ang, half * 0.6) * 2;
+			const hv = head.clone().sub(c), ha = Math.atan2(hv.y, Math.hypot(hv.x, hv.z)) - Math.atan2(fn.y, Math.hypot(fn.x, fn.z));
+			const ht = Math.atan2(Math.sin(Math.atan2(hv.x, hv.z) - fa), Math.cos(Math.atan2(hv.x, hv.z) - fa)), hx = -Math.tan(ht) / tanW;
+			if (ha < -half * 0.8 || hx < -visL * 0.9 || hx > visR * 0.9) seen = false;
+			// from in front of its face (Om Parvat's ॐ is on the face towards the camp; seen from the side it is lost)
+			const cf = new THREE.Vector2(c.x - top.x, c.z - top.z).normalize();
+			if (cf.dot(face) < 0.85) seen = false;
+			if (seen) {
+				// the higher in the frame the better, nearest the middle of the open picture, and from in front of its face
+				const mid = (visR - visL) / 2;
+				score += 4 + Math.min(ang, half * 0.6) * 2 - Math.abs(sx - mid) * 2 + cf.dot(face) * 3;
+			}
 		}
-		if (!best || score > best.score) best = { key, yaw: yo, pitch: up, dist: d, lift: v.lift + lift, score };
+		// nothing in between: the roadside and the camp, and the ground itself (a ridge or the hillside behind);
+		// tested last, and only for a shot that could still be the best
+		if (best && score <= best.score) continue;
+		let blocked = occlusion(head, c) != null || occlusion(target, c) != null;
+		for (let q = 0.06; q < 0.97 && !blocked; q += 0.04) if (world.height(lerp(c.x, head.x, q), lerp(c.z, head.z, q)) > lerp(c.y, head.y, q) - 0.05) blocked = true;
+		if (blocked) score -= 10;
+		if (!best || score > best.score) best = { key, yaw: yo, pitch: up, dist: d, lift: v.lift + lift, lean, score, seen };
 	}
-	return (rig.kView = best || { key, yaw: 0.28, pitch: 0.2, dist: far, lift: v.lift, score: -99 });
+	return (rig.kView = best || { key, yaw: 0.28, pitch: 0.2, dist: far, lift: v.lift, lean: 0, score: -99 });
 }
 // The shrine forests (Bhimashankar's, the Tirumala hills) keep back from the way on foot to and from each door,
 // so the camera following a pilgrim along it is not in among the leaves.
@@ -671,6 +719,17 @@ function updateCamera(dt) {
 		// close in, never climb more than a little: better to look past a bank than from above the trees
 		if (rig.dist < 12) lift = Math.min(lift, 0.9);
 		rig.lift = lerp(rig.lift || 0, lift, 1 - Math.exp(-dt * 4));
+		camera.position.y += rig.lift;
+	} else if (KAILASH && app.state === "darshan" && !sanctum.active) {
+		// at a Kailash stop, zoomed out or turned round, the camera rises over the ridge or the camp's hillside rather
+		// than stand behind it (the shot chosen on arrival is clear, so this is nothing until the view is changed)
+		let lift = 0;
+		for (let k = 0.1; k < 1; k += 0.05) {
+			const x = lerp(rig.target.x, camera.position.x, k), z = lerp(rig.target.z, camera.position.z, k);
+			const need = world.height(x, z) + 0.6 - lerp(rig.target.y, camera.position.y, k);
+			if (need > 0) lift = Math.max(lift, need / k);
+		}
+		rig.lift = lerp(rig.lift || 0, Math.min(lift, rig.dist * 1.5), 1 - Math.exp(-dt * 4));
 		camera.position.y += rig.lift;
 	} else rig.lift = 0;
 	// nothing solid between the camera and the traveller: if a wall, a coach side, a house or a tree is in
