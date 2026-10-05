@@ -629,7 +629,7 @@ Object.assign(Journey.prototype, {
 			if (veh(T.to)) steps.push(...this.epBoard(T, T.to, null));
 		}
 		if (!steps.length) return;
-		this.ep = { steps, i: 0, t: 0, T, mode: "walk" };
+		this.ep = { steps, i: 0, t: 0, T, mode: "walk", id: (this.epN = (this.epN || 0) + 1) };
 		if (steps[0].start) steps[0].start();
 	},
 	runEp(dtA) {
@@ -688,8 +688,28 @@ Object.assign(Journey.prototype, {
 	},
 	// the close, low framing of a getting-on or -off: from beside and a little ahead, at the traveller's height
 	// on the road: from a few metres ahead and out over the carriageway, where no tree or bus stand is in the way
+	// the side is chosen once for the whole getting on or off: the first of these with a clear view of the traveller
+	// and not up a hillside (beside a bus stand on a slope, under a tree, behind a parked bus), else the clearest
 	roadCam(p, heading, dist = 3.2, pitch = 0.24) {
-		this.cam = { target: new THREE.Vector3(p.x, p.y + 0.3, p.z), yaw: heading - 0.55, pitch, dist };
+		const target = new THREE.Vector3(p.x, p.y + 0.3, p.z);
+		const e = this.ep;
+		if (e && e.roadYaw === undefined && this.app.viewFrom) {
+			let best = -0.55, bestScore = -Infinity;
+			for (const a of [-0.55, 0.55, -1.25, 1.25, Math.PI - 0.6, Math.PI + 0.6]) {
+				const yw = heading + a, cp = Math.cos(pitch);
+				const q = new THREE.Vector3(target.x + Math.sin(yw) * cp * dist, target.y + Math.sin(pitch) * dist, target.z + Math.cos(yw) * cp * dist);
+				const clear = this.app.viewFrom(target, q) ?? Infinity;
+				const hill = Math.max(0, this.world.height(q.x, q.z) + 0.3 - q.y);
+				const score = Math.min(clear, dist) - hill * 4 - (a === -0.55 ? 0 : 0.05);
+				if (clear === Infinity && hill === 0) {
+					best = a;
+					break;
+				}
+				if (score > bestScore) (bestScore = score), (best = a);
+			}
+			e.roadYaw = best;
+		}
+		this.cam = { target, yaw: heading + (e && e.roadYaw !== undefined ? e.roadYaw : -0.55), pitch, dist };
 	},
 	frame(p, yaw, side = 1, dist = 3.4, pitch = 0.2) {
 		this.cam = { target: new THREE.Vector3(p.x, p.y + 0.32, p.z), yaw: yaw + side * 1.15, pitch, dist };
@@ -908,6 +928,9 @@ Object.assign(Journey.prototype, {
 		const step = () => this.coachPt(r, S.W / 2 - 0.02, S.floor, d.z), inside = () => this.coachPt(r, S.W / 2 - 0.8, S.floor, d.z);
 		let P5;
 		const cam = (p) => this.platformCam(st, p, 1);
+		// where the traveller rides: in the open doorway, holding the grab rail, as renderRide has it
+		const sg = Math.sign(d.z) || 1;
+		const atDoor = () => this.coachPt(r, S.W / 2 - 0.17, S.floor, d.z - sg * 0.05), grip = () => this.coachPt(r, S.W / 2 + 0.07, S.floor + 1.08, d.z + S.doorW / 2 + 0.06);
 		return [
 			this.walkTo(() => (this.passengers(r, st), [this.traveller.group.position.clone(), ...stationPath(st, vD())]), (p) => this.platformCam(st, p, 1), st),
 			{ d: 0.7, start: () => (P5 = this.traveller.group.position.clone()), f: (k) => (d.open(k), this.tvSet(P5, face(), "idle", STAND, 1), cam(P5)) },
@@ -919,12 +942,24 @@ Object.assign(Journey.prototype, {
 			} },
 			{ d: 0.9, f: (k) => {
 				d.open(1);
-				this.tvSet(step().lerp(inside(), k), face(), "walk", null, 0, { vis: k < 0.8 });
+				this.tvSet(step().lerp(inside(), k), face(), "walk");
 				cam(P5);
 			} },
-			{ d: 0.7, f: (k) => (d.open(1 - k), this.tvSet(inside(), face(), "idle", STAND, 1, { vis: false }), cam(P5)) },
+			// a look down the coach for the berth, a bag pushed under it, then back to stand in the doorway, the way
+			// people ride in an Indian train, the door left open
+			{ d: 1.2, f: (k) => {
+				d.open(1);
+				this.tvSet(inside(), face() + Math.PI / 2 * Math.sin(Math.PI * k), "idle", STAND, 1);
+				cam(P5);
+			} },
+			{ d: 0.9, f: (k) => {
+				d.open(1);
+				// in the coach's own frame: from facing in (-x) round to facing out of the door, as renderRide stands
+				this.tvSet(inside().lerp(atDoor(), smoothstep(0, 1, k)), lerp(-Math.PI / 2, 1.0, smoothstep(0, 1, k)), k < 0.9 ? "walk" : "idle", mix(STAND, DOOR, smoothstep(0.4, 1, k)), 1, { quat: r.cars[r.tc].group.quaternion, diya: false });
+				cam(P5);
+			} },
 			// the guard's whistle, the horn, and away
-			{ d: 1.8, start: () => (this.sound.whistle(), setTimeout(() => this.sound.horn(1.2), 900)), f: () => (d.open(0), this.tvSet(inside(), face(), "idle", STAND, 1, { vis: false }), cam(P5)) },
+			{ d: 1.8, start: () => (this.sound.whistle(), setTimeout(() => this.sound.horn(1.2), 900)), f: () => (d.open(1), this.tvSet(atDoor(), 1.0, "idle", DOOR, 1, { quat: r.cars[r.tc].group.quaternion, diya: false, reachL: grip() }), cam(P5)) },
 		];
 	},
 	epTrainOff(T) {
@@ -941,7 +976,7 @@ Object.assign(Journey.prototype, {
 			const q = st.at(0, vD());
 			return Math.atan2(-q.dz, q.dx);
 		};
-		const step = () => this.coachPt(r, S.W / 2 - 0.02, S.floor, d.z), inside = () => this.coachPt(r, S.W / 2 - 0.5, S.floor, d.z);
+		const step = () => this.coachPt(r, S.W / 2 - 0.02, S.floor, d.z);
 		let P5;
 		const cam = () => this.platformCam(st, P5 || step(), -1);
 		const walk = this.walkTo(() => {
@@ -951,7 +986,14 @@ Object.assign(Journey.prototype, {
 		}, (p) => (wait(), this.platformCam(st, p, -1)), st);
 		const board = this.epBoard(T, kind, st);
 		return [
-			{ d: 0.7, start: () => ((P5 = stationPath(st, vD()).at(-1)), this.passengers(r, st)), f: (k) => (wait(), d.open(k), this.tvSet(inside(), face() + Math.PI, "idle", STAND, 1, { vis: k > 0.4 }), cam()) },
+			// from riding in the doorway (renderRide's spot and pose), a turn to face the platform, and down
+			{ d: 0.8, start: () => ((P5 = stationPath(st, vD()).at(-1)), this.passengers(r, st)), f: (k) => {
+				wait();
+				d.open(1);
+				const sg = Math.sign(d.z) || 1, at = this.coachPt(r, S.W / 2 - 0.17, S.floor, d.z - sg * 0.05);
+				this.tvSet(at.lerp(step(), smoothstep(0, 1, k)), lerp(1.0, Math.PI / 2, smoothstep(0, 1, k)), "idle", mix(DOOR, STAND, smoothstep(0, 0.7, k)), 1, { quat: c.group.quaternion, diya: false });
+				cam();
+			} },
 			{ d: 1.1, f: (k) => {
 				wait();
 				d.open(1);
@@ -1072,6 +1114,8 @@ Object.assign(Journey.prototype, {
 		this.renderTasks(this.rake);
 		this.renderCrowd(this.rake, camera);
 		if (this.tv) this.drive(dt, t, dist);
+		// which shot this is, so main.js cuts between shots rather than swinging the camera through a coach or a bus
+		if (this.cam && !this.cam.key) this.cam.key = this.ep ? "ep" + this.ep.id : "train";
 		return handled;
 	},
 	renderDrive(kind, t, vs) {
@@ -1096,8 +1140,8 @@ Object.assign(Journey.prototype, {
 	// on the train: standing at the open door, holding the rail, the country going by
 	renderRide(t) {
 		const r = this.rake, c = r.cars[r.tc], d = r.td, S = c.S, sg = Math.sign(d.z) || 1;
-		const k = this.halt ? 1 : smoothstep(2.5, 3.5, this.openT || 0);
-		d.open(k);
+		// the door stays open: the traveller rides in it, as so many do on an Indian train
+		d.open(1);
 		const pos = this.coachPt(r, S.W / 2 - 0.17, S.floor, d.z - sg * 0.05);
 		const grip = this.coachPt(r, S.W / 2 + 0.07, S.floor + 1.08, d.z + S.doorW / 2 + 0.06);
 		// the traveller rides at the open door, always in view, holding the grab rail
@@ -1118,6 +1162,7 @@ Object.assign(Journey.prototype, {
 		else if (shot === 1) this.cam = from(1.2, 0.9, 0.35);
 		else if (shot === 2) this.cam = from(3.6, 4.5, 1.4);
 		else this.cam = { target: pos.clone().add(new THREE.Vector3(0, 0.22, 0)), yaw: h + 0.16, pitch: 0.03, dist: 4.6 }; // at a halt, along the platform under the canopy
+		this.cam.key = "ride" + shot;
 	},
 	drive(dt, t, dist) {
 		const tv = this.tv, tr = this.traveller, J = tr.J;

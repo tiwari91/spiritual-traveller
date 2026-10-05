@@ -388,8 +388,10 @@ function cameraGoal() {
 }
 const occRay = new THREE.Raycaster(), occDir = new THREE.Vector3();
 // Distance from the traveller towards the camera to the first solid thing in the way, or null.
-function occlusion(to) {
-	const from = rig.target, d = to.distanceTo(from);
+function occlusion(to, from = rig.target) {
+	const d = to.distanceTo(from);
+	// the roadside trees are instanced and streamed in and out: their bounds go stale unless refreshed now and then
+	if (app.frames % 30 === 0) scenery.trees.group.traverse((o) => o.isInstancedMesh && (o.boundingSphere = null));
 	occDir.subVectors(to, from).normalize();
 	occRay.set(from, occDir);
 	occRay.camera = camera; // sprites need it to be tested at all
@@ -417,7 +419,21 @@ function occlusion(to) {
 }
 function updateCamera(dt) {
 	const g = cameraGoal();
-	const yaw = g.yaw + rig.userYaw + (rig.swing || 0), pitch = clamp(g.pitch + rig.userPitch, -0.05, 1.45), dist = g.dist * rig.zoom;
+	// a new shot (getting on or off, a new angle on the train, back to following): cut to it when it is far from
+	// where the camera is, rather than swing through the coach, the bus or the bank in between
+	const key = app.state === "travel" ? (journey.camera() || {}).key || null : undefined;
+	if (key === undefined) rig.camKey = undefined;
+	else if (key !== rig.camKey) {
+		const cp = Math.cos(g.pitch + rig.userPitch), want = new THREE.Vector3(g.target.x + Math.sin(g.yaw + rig.userYaw) * cp * g.dist * rig.zoom, g.target.y + Math.sin(g.pitch + rig.userPitch) * g.dist * rig.zoom, g.target.z + Math.cos(g.yaw + rig.userYaw) * cp * g.dist * rig.zoom);
+		if (rig.camKey !== undefined && want.distanceTo(camera.position) > Math.max(1.5, g.dist * rig.zoom * 0.6)) {
+			rig.snap = true;
+			rig.clear = undefined;
+		}
+		// each shot starts square: a framed shot is chosen to be clear, and following starts from behind
+		rig.swing = rig.rise = 0;
+		rig.camKey = key;
+	}
+	const yaw = g.yaw + rig.userYaw + (rig.swing || 0), pitch = clamp(g.pitch + rig.userPitch + (rig.rise || 0), -0.05, 1.45), dist = g.dist * rig.zoom;
 	const k = rig.snap ? 1 : 1 - Math.exp(-dt * 1.8), ky = rig.snap ? 1 : 1 - Math.exp(-dt * 1.1);
 	// while travelling the camera stays locked on the moving traveller (a slow ease would fall behind a
 	// train or a car and leave them at the edge of the frame); elsewhere it eases
@@ -465,19 +481,28 @@ function updateCamera(dt) {
 		const d = camera.position.distanceTo(rig.target);
 		if (app.frames % 3 === 0) rig.block = occlusion(camera.position);
 		// hard against a wall, coming in close does not help: swing round to whichever side is open
-		if (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5) {
-			let best = rig.swing || 0, bestD = rig.block;
-			for (const a of [0.9, -0.9, 1.8, -1.8, Math.PI]) {
-				const yw = rig.yaw + a, cp = Math.cos(rig.pitch);
-				const q = new THREE.Vector3(rig.target.x + Math.sin(yw) * cp * d, rig.target.y + Math.sin(rig.pitch) * d, rig.target.z + Math.cos(yw) * cp * d);
+		if (app.frames % 12 === 0 && rig.block != null && rig.block < d * 0.5 && !journey.camera()) {
+			// round to either side, or up and over (a stall's awning, a temple wall, a tree beside the path)
+			let best = rig.swing || 0, bestR = rig.rise || 0, bestD = rig.block;
+			for (const [a, up] of [[0.9, 0], [-0.9, 0], [0, 0.55], [1.8, 0], [-1.8, 0], [0.6, 0.5], [-0.6, 0.5], [Math.PI, 0], [0, 0.95]]) {
+				const yw = rig.yaw + a, pt = Math.min(1.4, rig.pitch + up), cp = Math.cos(pt);
+				const q = new THREE.Vector3(rig.target.x + Math.sin(yw) * cp * d, rig.target.y + Math.sin(pt) * d, rig.target.z + Math.cos(yw) * cp * d);
 				const c = occlusion(q) ?? Infinity;
+				// rising only to a view that is wholly clear, and never over a framed shot (a platform has its canopy)
+				if (up && (c !== Infinity || journey.camera())) continue;
 				if (c > bestD + 0.5) {
 					best = (rig.swing || 0) + a;
+					bestR = Math.min(0.7, (rig.rise || 0) + up);
 					bestD = c;
 				}
 			}
-			rig.swing = best;
-		} else if (app.frames % 12 === 0 && rig.block == null) rig.swing = (rig.swing || 0) * 0.98;
+			// never more than half a turn either way
+			rig.swing = Math.atan2(Math.sin(best), Math.cos(best));
+			rig.rise = bestR;
+		} else if (app.frames % 12 === 0 && rig.block == null) {
+			rig.swing = (rig.swing || 0) * 0.98;
+			rig.rise = (rig.rise || 0) * 0.94;
+		}
 		const want = rig.block ?? 1e6;
 		const was = Number.isFinite(rig.clear) ? rig.clear : 1e6;
 		rig.clear = want < was ? want : lerp(was, want, 1 - Math.exp(-dt * 2));
@@ -487,6 +512,7 @@ function updateCamera(dt) {
 	} else {
 		rig.clear = undefined;
 		rig.swing = 0;
+		rig.rise = 0;
 	}
 	camera.lookAt(rig.target);
 	// keep the shrine clear of the darshan panel
@@ -654,16 +680,40 @@ function updateTraveller(dt) {
 		const f = l.shrine.facing, c = Math.cos(f), sn = Math.sin(f);
 		const wx = l.pos.x + rx * c + rz * sn, wz = l.pos.z - rx * sn + rz * c;
 		const k = app.state === "darshan" ? 1 : smoothstep(R + 2, R * 0.55, d);
-		travPos.x = lerp(p.x, wx, k);
-		travPos.z = lerp(p.z, wz, k);
+		if (l.shrine.gate && k > 0 && k < 1) {
+			// by way of the gate points, not through the temple's walls: from the path, round by each point, to the spot
+			const Q = [[p.x, p.z], ...l.shrine.gate.map(([gx, gz]) => [l.pos.x + gx * c + gz * sn, l.pos.z - gx * sn + gz * c]), [wx, wz]];
+			let L = 0;
+			for (let i = 1; i < Q.length; i++) L += Math.hypot(Q[i][0] - Q[i - 1][0], Q[i][1] - Q[i - 1][1]);
+			let u = k * L;
+			for (let i = 1; i < Q.length; i++) {
+				const l2 = Math.hypot(Q[i][0] - Q[i - 1][0], Q[i][1] - Q[i - 1][1]);
+				if (u <= l2 || i === Q.length - 1) {
+					const t = l2 ? Math.min(1, u / l2) : 1;
+					travPos.x = lerp(Q[i - 1][0], Q[i][0], t);
+					travPos.z = lerp(Q[i - 1][1], Q[i][1], t);
+					break;
+				}
+				u -= l2;
+			}
+		} else {
+			travPos.x = lerp(p.x, wx, k);
+			travPos.z = lerp(p.z, wz, k);
+		}
 		travPos.y = world.height(travPos.x, travPos.z) + l.shrine.floor * k;
 		// the door is at about z = 1.9 in front of the sanctum
 		const door = { x: l.pos.x + 1.9 * sn, z: l.pos.z + 1.9 * c };
 		const face = Math.atan2(door.x - travPos.x, door.z - travPos.z);
+		// facing the way they walk (round a gate, out and back), turning to the door at the end
+		const mx = travPos.x - (app.lastTrav ? app.lastTrav.x : travPos.x), mz = travPos.z - (app.lastTrav ? app.lastTrav.z : travPos.z);
+		if (Math.hypot(mx, mz) > 1e-4 && k > 0.02 && k < 0.98) app.walkYaw = Math.atan2(mx, mz);
+		if (app.walkYaw !== undefined && k > 0.02) yaw = app.walkYaw;
 		const tf = smoothstep(0.5, 0.95, k);
 		yaw = Math.atan2(lerp(Math.sin(yaw), Math.sin(face), tf), lerp(Math.cos(yaw), Math.cos(face), tf));
 		atShrine = k > 0.02;
 	}
+	app.lastTrav = { x: travPos.x, z: travPos.z };
+	if (!atShrine) app.walkYaw = undefined;
 	const moving = app.state === "travel" && app.playing;
 	let mode = app.state === "darshan" ? "darshan" : app.state === "travel" ? modeAt(app.s) : "walk";
 	if (atShrine && mode !== "darshan") mode = "walk";
@@ -871,6 +921,8 @@ function updateLabels() {
 		if (l.shrine === undefined && (d > l.maxDist || rig.dist < 30)) on = false;
 		if (l.shrine !== undefined && app.state === "darshan") on = false;
 		if (l.shrine !== undefined && d < 30 && app.state !== "darshan") on = false;
+		// close in on the traveller, a far shrine's name would float over whatever is in front (a coach, a bus)
+		if (l.shrine !== undefined && app.state === "travel" && rig.dist < 30) on = false;
 		if (on) {
 			pv.copy(l.v).project(camera);
 			if (pv.z > 1 || pv.x < -1.1 || pv.x > 1.1 || pv.y < -1.1 || pv.y > 1.1) on = false;
@@ -1093,7 +1145,7 @@ function resetView() {
 }
 
 app.THREE = THREE;
-Object.assign(app, { begin, next, jump, restart, setSpeed, cycleTime, cycleWeather, cycleTransport, enterTemple, rig });
+Object.assign(app, { begin, next, jump, restart, setSpeed, cycleTime, cycleWeather, cycleTransport, enterTemple, rig, viewFrom: (from, to) => occlusion(to, from) });
 init().catch((e) => {
 	console.error(e);
 	$("loader-msg").textContent = "Sorry, this needs WebGL. " + (e && e.message ? e.message : "");

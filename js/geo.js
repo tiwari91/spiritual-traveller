@@ -86,7 +86,8 @@ export const CITIES = [
 ];
 
 // The shrines, in the order of the yatra, with what the darshan card says. rest: where the traveller stands for
-// darshan in the shrine's local frame (x across, z out from the door), clear of the crowd; floor: the height there.
+// darshan in the shrine's local frame (x across, z out from the door), clear of the crowd; floor: the height there;
+// gate: points the traveller walks by on the way to it and back (round the outside of Tirumala's prakara wall).
 export const SHRINES = [
 	{
 		key: "bhimashankar", name: "Bhimashankar", deva: "भीमाशंकर", lon: 73.535, lat: 19.072, facing: Math.PI / 2,
@@ -119,7 +120,7 @@ export const SHRINES = [
 		access: "Walk the Alipiri footpath from Tirupati town (about 3,550 steps, roughly 9 km, three to four hours) or the shorter Srivari Mettu (about 2,400 steps), or ride the 20-odd km ghat road by bus or taxi. Renigunta airport and Tirupati station are close by.",
 		note: "The Ananda Nilayam, the gold-covered vimana over the sanctum, rises inside the white gopuram of the Mahadwaram with the golden dhvajastambha before it. It is one of the most visited shrines on earth; pilgrims leave with the Tirupati laddu and the cry of Govinda in their ears.",
 		mantra: "ॐ नमो वेङ्कटेशाय", mantraLatin: "Om Namo Venkatesaya", greeting: "Govinda, Govinda",
-		hour: 16.6, weather: "clear", rest: [0.15, 4.1], floor: 0.15,
+		hour: 16.6, weather: "clear", rest: [0.15, 4.1], floor: 0.15, gate: [[3.75, 3.6]],
 	},
 	{
 		key: "kedarnath", name: "Kedarnath", deva: "केदारनाथ", lon: 79.067, lat: 30.735, facing: 0,
