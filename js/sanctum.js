@@ -4252,7 +4252,11 @@ export class Sanctum {
 		this.props = buildProps(ctx);
 		if (this.L.props) Object.assign(this.props, this.L.props());
 		// the traveller: as outside, in saffron kurta, white dhoti, the angavastram, the tilak and a saffron pheta
-		const TJ = person({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, sleeve: 0.6 });
+		// (out of doors at 4,600 to 5,600 m on the Kailash journey, dressed as outside for the cold: long sleeves, a
+		// maroon woollen shawl, a woollen cap and warm trousers)
+		const TJ = this.L.outdoor
+			? person({ skin: SKIN[0], top: 0xd8661a, bottom: 0x6a6258, sash: 0x6a1a22, shawl: 0x6a1a22, head: "cap", headColor: 0xe2761b, capBand: 0x6a1a22, beard: 0x5d554e, sleeve: 1, pyjama: true })
+			: person({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, sleeve: 0.6 });
 		TJ.skinMat = TJ.palmL.material;
 		TJ.soleMat = TJ.feet[0].material;
 		this.markT = markPatch(this.L.mark || "tripundra", 0.107, 1.0, 1.75);
