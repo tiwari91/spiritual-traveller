@@ -154,8 +154,11 @@ export function* kailashCountry(sc, ctx, reg) {
 	};
 	if (!tib) {
 		// ---------- the Byans valley: juniper and wild rose scrub, a few stone houses, goats ----------
+		// (the scrub thins out above Garbyang and is gone by Gunji: the high gorge to Nabhidhang is bare rock and scree)
 		for (let i = 0; i < 70 * (sc.low ? 0.55 : 1); i++) {
 			const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (1.6 + Math.pow(R(), 0.8) * 14), {});
+			const g = toGeo(c.x, c.z);
+			if (R() > 1 - (g.lon - 80.76) / 0.1) continue;
 			if (okAt(c.x, c.z, 0.4)) ctx.tree(c.x, c.z, "bush", 0.7 + R() * 0.5);
 		}
 		for (let v = 0; v < 2; v++) {

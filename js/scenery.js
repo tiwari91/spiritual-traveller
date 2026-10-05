@@ -217,16 +217,18 @@ class Clutter {
 		const reg = region(g.lon, g.lat);
 		const gr = groundAt(g.lon, g.lat, world.height(x0 + S / 2, z0 + S / 2));
 		const dry = clamp(gr[3] + 0.1, 0, 1), green = gr[2];
-		const n = Math.round((this.low ? 34 : 80) * (0.4 + green * 0.9));
+		// (above the trees on the Kailash journey: sparse tufts of dry grass, and nothing green)
+		const high = KAILASH && (reg === "tibet" || reg === "byans");
+		const n = Math.round((this.low ? 34 : 80) * (0.4 + green * 0.9) * (high ? 0.4 : 1));
 		const data = [];
 		for (let k = 0; k < n; k++) {
 			const x = x0 + R() * S, z = z0 + R() * S;
 			const y = world.height(x, z);
 			if (y < 0.3 || sc.roads.clearance(x, z) < 0.12 || sc.foot.hits(x, z, 0.02) || sc.precinct(x, z)) continue;
 			const r = R();
-			const kind = reg === "garhwal" || reg === "sahyadri" ? (r < 0.62 ? 0 : r < 0.8 ? 2 : r < 0.9 ? 3 : 1) : reg === "deccan" || reg === "nagar" || reg === "south" || reg === "central" ? (r < 0.35 ? 0 : r < 0.8 ? 1 : 2) : r < 0.6 ? 0 : r < 0.8 ? 1 : r < 0.95 ? 2 : 3;
-			const w = (kind === 1 ? 0.7 : 0.5) + R() * 0.5, h = kind === 1 ? 0.6 + R() * 0.7 : kind === 3 ? 0.35 + R() * 0.2 : 0.3 + R() * 0.35;
-			const c = new THREE.Color().setRGB(lerp(0.24, 0.5, dry), lerp(0.36, 0.42, dry), lerp(0.12, 0.2, dry)).multiplyScalar(0.8 + R() * 0.3);
+			const kind = high ? (r < 0.75 ? 0 : 1) : reg === "garhwal" || reg === "sahyadri" ? (r < 0.62 ? 0 : r < 0.8 ? 2 : r < 0.9 ? 3 : 1) : reg === "deccan" || reg === "nagar" || reg === "south" || reg === "central" ? (r < 0.35 ? 0 : r < 0.8 ? 1 : 2) : r < 0.6 ? 0 : r < 0.8 ? 1 : r < 0.95 ? 2 : 3;
+			const w = ((kind === 1 ? 0.7 : 0.5) + R() * 0.5) * (high ? 0.8 : 1), h = (kind === 1 ? 0.6 + R() * 0.7 : kind === 3 ? 0.35 + R() * 0.2 : 0.3 + R() * 0.35) * (high ? 0.7 : 1);
+			const c = high ? new THREE.Color().setRGB(0.6, 0.5, 0.3).multiplyScalar(0.8 + R() * 0.35) : new THREE.Color().setRGB(lerp(0.24, 0.5, dry), lerp(0.36, 0.42, dry), lerp(0.12, 0.2, dry)).multiplyScalar(0.8 + R() * 0.3);
 			data.push(x, y - 0.01, z, R() * 6.3, w * M, h * M, kind, c.r, c.g, c.b);
 		}
 		t = { x: x0 + S / 2, z: z0 + S / 2, data };
@@ -525,10 +527,17 @@ export class Scenery {
 			blob: (x, z, r, a) => blobs.add(world, x, z, 0, r * 2, r * 2, a),
 			blobRect: (x, z, yaw, w, d, a) => blobs.add(world, x, z, yaw, w, d, a),
 			tree: (x, z, kind, sc = 1, painted = false) => {
-				// above the tree line on the Kailash journey (the Byans valley, Tibet): scrub only
-				if (KAILASH && kind !== "bush") {
-					const g = toGeo(x, z), rg = region(g.lon, g.lat);
-					if (rg === "byans" || rg === "tibet") return 0;
+				// above the tree line on the Kailash journey (the Byans valley, Tibet): scrub only; and on the drawn map
+				// the lower Kali valley's pines stand a few units from the camps above, so the tree line is a height too
+				if (KAILASH) {
+					const yy = world.height(x, z);
+					if (yy > (kind === "bush" ? 53 : 45.5)) return 0;
+					if (kind !== "bush") {
+						const g = toGeo(x, z), rg = region(g.lon, g.lat);
+						if (rg === "byans" || rg === "tibet") return 0;
+						// (nor up the Kali gorge above Malpa, whose sides are bare rock and scree under the camps)
+						if (g.lat > 30.0 && g.lon > 80.6) return 0;
+					}
 				}
 				const ki = this.trees.kind(kind, R);
 				const s = sc * (0.75 + R() * 0.4);

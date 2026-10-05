@@ -957,7 +957,9 @@ function loop(now) {
 		const fg = toGeo(focus.x, focus.z);
 		wx.thin = tibet(fg.lon, fg.lat) * kRegion(fg.lon, fg.lat);
 	}
-	sky.update(hour, focus, dt, { overcast: wx.overcast, snow: wx.snow > 0.3 });
+	// (the thin air of the plateau, and over it the summer's cumulus; the plateau rises from the crest, and under
+	// a stop's own weather the clouds thin or thicken with the hour)
+	sky.update(hour, focus, dt, { overcast: wx.overcast, snow: wx.snow > 0.3, thin: wx.thin || 0, cumulus: KAILASH ? (wx.thin || 0) * (0.55 + 0.4 * Math.sin(app.t * 0.004 + 1)) : 0 });
 	scene.fog.density *= clamp(70 / rig.dist, 0.12, 1.2);
 	const night = smoothstep(4, -8, sky.elev);
 	app.night = night;

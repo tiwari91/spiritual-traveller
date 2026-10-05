@@ -217,6 +217,17 @@ export function kHeight(lon, lat, h, base) {
 	// summit of the ground's own beside it read as a needle next to the mountain)
 	const dom = Math.hypot(x - (P.nabhidhang[0] * U + OM_DIR[0] * 8), y - (P.nabhidhang[1] * U + OM_DIR[1] * 8));
 	if (dom < 6.5) h += 5 * Math.pow(1 - dom / 6.5, 1.6);
+	// the high Kali gorge above Garbyang (Gunji, Kalapani, Nabhidhang, and the ground about Om Parvat): rugged, layered
+	// rock, the strata standing out as ledges and terraces across the steep valley sides, rather than smooth cones
+	if (m > 0 && lat > 30.1 && lon > 80.78) {
+		const g = m * smoothstep(30.1, 30.15, lat) * (1 - tibet(lon, lat));
+		if (g > 0.01) {
+			const r2 = ridged(lon * 38 + 7, lat * 38 + 2, 2);
+			const ph = h * 2.6 + r2 * 1.4 + fbm(lon * 55, lat * 55, 2) * 1.6;
+			const terr = Math.abs(((ph % 1) + 1) % 1 - 0.5) * 2 - 0.5;
+			h += g * (0.26 * terr + 0.35 * (r2 - 0.5));
+		}
+	}
 	// the ways and rivers, cut into whatever is there
 	for (const list of [SEGS, RIVER_SEGS]) {
 		const n = nearestWay(x, y, list);
@@ -269,9 +280,15 @@ export function kColour(lon, lat, h, slope, c) {
 	t = mix3(t, C.grass, wet * (0.55 + 0.3 * n2));
 	for (const L of LAKES) t = mix3(t, C.shore, smoothstep(1.2, 0.2, Math.abs(lakeDist(L, lon, lat))) * 0.8);
 	const rocky = smoothstep(0.18, 0.5, slope + (n - 0.5) * 0.25);
-	const redRock = smoothstep(0.45, 0.7, fbm(lon * 6 + 1, lat * 6 + 8, 3)) * smoothstep(30.98, 31.08, lat);
-	t = mix3(t, mix3(C.scree, C.red, redRock), rocky);
-	t = mix3(t, C.dark, smoothstep(0.55, 0.85, slope) * 0.5);
+	// the cliffs are reddish-brown sedimentary rock (the Kailash conglomerate, and the red beds round the Lha Chu),
+	// in level strata: the bands show as lighter and darker layers across every steep face, with grey scree below
+	const redRock = 0.35 + 0.65 * smoothstep(0.35, 0.65, fbm(lon * 6 + 1, lat * 6 + 8, 3)) * smoothstep(30.9, 31.05, lat);
+	const strata = 0.5 + 0.5 * Math.sin(h * 9.5 + fbm(lon * 23, lat * 23, 2) * 2.2), bandy = smoothstep(0.3, 0.6, slope);
+	let cliff = mix3(C.scree, C.red, redRock);
+	cliff = mix3(cliff, [cliff[0] * 0.72, cliff[1] * 0.68, cliff[2] * 0.66], bandy * smoothstep(0.35, 0.7, strata) * 0.75);
+	cliff = mix3(cliff, [0.68, 0.5, 0.36], bandy * smoothstep(0.7, 0.3, strata) * redRock * 0.35);
+	t = mix3(t, cliff, rocky);
+	t = mix3(t, C.dark, smoothstep(0.6, 0.9, slope) * 0.35);
 	const snowLine = 55.2 + n * 2.4 - slope * 2.5;
 	t = mix3(t, slope > 0.75 ? C.ice : C.snow, smoothstep(snowLine, snowLine + 1.6, h) * (1 - smoothstep(0.82, 0.95, slope) * 0.6));
 	// the Indian side keeps the map's colours, but the Byans valley above Gunji is alpine scrub and meadow

@@ -26,7 +26,7 @@ void main() {
 }`;
 const FS = `
 uniform vec3 uZenith, uHorizon, uGlow, uSunDir, uMoonDir;
-uniform float uStars, uTime, uOvercast, uSunVis;
+uniform float uStars, uTime, uOvercast, uSunVis, uCumulus;
 varying vec3 vDir;
 float h21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float n2(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -45,6 +45,21 @@ void main() {
 	float cl = smoothstep(0.55, 0.85, c) * smoothstep(0.0, 0.14, h) * (1.0 - uOvercast);
 	vec3 cloudCol = mix(uHorizon * 1.1 + 0.05, uGlow * 1.1 + uHorizon * 0.4, pow(sd, 3.0) * 0.8);
 	col = mix(col, cloudCol, cl * 0.5);
+	// the plateau's sky (the Kailash journey): great heaps of cumulus, white in the sun with grey undersides, sailing
+	// over the ranges, between them the deep blue
+	if (uCumulus > 0.01) {
+		vec2 cq = d.xz / (h + 0.25);
+		float base = fbm(cq * vec2(0.5, 1.0) + vec2(uTime * 0.0016, 2.7));
+		float detail = fbm(cq * vec2(2.6, 5.2) + vec2(uTime * 0.003, 9.1));
+		float body = smoothstep(0.5, 0.62, base + 0.18 * (detail - 0.5));
+		float cover = body * smoothstep(0.0, 0.1, h) * (1.0 - uOvercast) * uCumulus;
+		// lit from the sun's side: white tops, grey bases shading away from it
+		float lit = clamp(0.35 + 0.65 * smoothstep(0.55, 0.85, base + 0.25 * detail) , 0.0, 1.0);
+		float sunside = 0.5 + 0.5 * dot(normalize(vec3(d.x, 0.0, d.z) + 1e-4), normalize(vec3(uSunDir.x, 0.0, uSunDir.z) + 1e-4));
+		vec3 cuCol = mix(vec3(0.58, 0.62, 0.68), vec3(1.0, 1.0, 0.99), lit * (0.75 + 0.25 * sunside)) * (0.55 + 0.45 * uSunVis);
+		cuCol = mix(cuCol, cuCol * (uHorizon + 0.4), 1.0 - uSunVis);
+		col = mix(col, cuCol, cover * 0.96);
+	}
 	float disc = smoothstep(0.9995, 0.9998, dot(d, uSunDir));
 	col += vec3(1.0, 0.93, 0.8) * disc * 10.0 * uSunVis * (1.0 - uOvercast * 0.9);
 	// moon
@@ -74,7 +89,7 @@ export class Sky {
 		this.u = {
 			uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() },
 			uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uMoonDir: { value: new THREE.Vector3(0, 1, 0) },
-			uStars: { value: 0 }, uTime: { value: 0 }, uOvercast: { value: 0 }, uSunVis: { value: 1 },
+			uStars: { value: 0 }, uTime: { value: 0 }, uOvercast: { value: 0 }, uSunVis: { value: 1 }, uCumulus: { value: 0 },
 		};
 		this.dome = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.ShaderMaterial({ uniforms: this.u, vertexShader: VS, fragmentShader: FS, side: THREE.BackSide, depthWrite: false }));
 		this.dome.frustumCulled = false;
@@ -130,6 +145,7 @@ export class Sky {
 		this.u.uMoonDir.value.copy(sunDir).multiplyScalar(-1).setY(Math.abs(sunDir.y) * 0.8 + 0.2).normalize();
 		this.u.uStars.value = smoothstep(-2, -12, elev);
 		this.u.uOvercast.value = oc;
+		this.u.uCumulus.value = weather.cumulus || 0;
 		this.u.uSunVis.value = smoothstep(-3, 2, elev);
 		this.sun.color.copy(sunCol);
 		this.sun.intensity = inten * (1 - oc * 0.7) * LIGHT;

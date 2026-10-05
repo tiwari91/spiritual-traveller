@@ -304,23 +304,23 @@ function kailashMesh(H = 12, R0 = 6.2) {
 			const th = (i / NA) * Math.PI * 2 + Math.PI / 4;
 			const k = j * (NA + 1) + i;
 			// the plan: nearly square, its sides to the four quarters, the corners a little rounded, rounder up high
-			const p = lerp(7, 3.4, t * t);
+			const p = lerp(7, 4.2, t * t);
 			const cs = Math.abs(Math.cos(th)), sn = Math.abs(Math.sin(th));
 			const plan = 1 / Math.pow(Math.pow(cs, p) + Math.pow(sn, p), 1 / p);
 			// the profile: a broad foot of scree, steep straight faces, the shoulders rolling over into the dome
 			// the profile: a foot of scree, then four steep faces drawing in (a truncated pyramid), and the summit dome
 			const u = Math.max(0, (t - 0.08) / 0.92);
-			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.72 * Math.pow(u, 0.9)) * (u > 0.82 ? Math.sqrt(Math.max(0, 1 - ((u - 0.82) / 0.18) ** 2)) : 1));
+			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.76 * Math.pow(u, 1.05)) * (u > 0.88 ? Math.sqrt(Math.max(0, 1 - ((u - 0.88) / 0.12) ** 2)) : 1));
 			// the strata dip gently to the west and wander a little
 			const [bi, f] = bandAt(clamp(t + 0.035 * Math.sin(th) + 0.012 * Math.sin(th * 3 + 1) + 0.03 * (fbm(th * 1.6 + 5, t * 2.5, 3) - 0.5), 0, 0.999));
 			const jag = fbm(th * 5 + bi, bi * 0.7, 2);
 			// each ledge steps back by a little; some bands are cliffs, some shelves (the snowy ones the broader shelves)
-			r *= 1 - (0.004 + 0.008 * jag) * (0.6 + bandP[bi].w * 3) * smoothstep(0.1, 0.9, f) * (t < 0.93 ? 1 : 0);
+			r *= 1 - (0.006 + 0.011 * jag) * (0.6 + bandP[bi].w * 3) * smoothstep(0.1, 0.9, f) * (t < 0.93 ? 1 : 0);
 			// the gully down the middle of the south face (the 'stairway'), and a lesser one on the north
 			const ds = Math.atan2(Math.sin(th), Math.cos(th)), dn = Math.atan2(Math.sin(th - Math.PI), Math.cos(th - Math.PI));
 			const gS = Math.exp(-((ds / (0.07 + 0.04 * fbm(t * 9, 3, 2))) ** 2)) * smoothstep(0.1, 0.22, t) * (1 - smoothstep(0.8, 0.92, t));
 			const gN = Math.exp(-((dn / 0.045) ** 2)) * smoothstep(0.2, 0.3, t) * (1 - smoothstep(0.7, 0.8, t)) * 0.6;
-			r *= 1 - 0.09 * (gS + gN);
+			r *= 1 - 0.12 * (gS + gN);
 			// buttresses and broken rock
 			r *= 1 + (fbm(th * 7 + 3, t * 10, 3) - 0.5) * 0.07 * (1 - t);
 			const x = Math.sin(th) * r * plan, z = Math.cos(th) * r * plan;
@@ -343,25 +343,34 @@ function kailashMesh(H = 12, R0 = 6.2) {
 	g.setIndex(idx);
 	g.computeVertexNormals();
 	const nrm = g.attributes.normal;
-	// dark brown-grey rock, warmer in some strata; snow only where it can lie: thin lines on the ledges, the gully,
-	// the dome; the north face darker and bluer, holding less
-	const rock = new THREE.Color(0x2e2925), rock2 = new THREE.Color(0x4a3f36), rock3 = new THREE.Color(0x5a4d40), snow = new THREE.Color(0xeef1f5), blue = new THREE.Color(0xb8c6da), tmp = new THREE.Color();
+	// A snow mountain (as it is seen from Dirapuk and Ashtapad, or from the Barkha plain in summer): the snow lies
+	// over the whole of the pyramid and the dome, and the dark grey-brown rock shows through in horizontal bands
+	// like steps, where each stratum's face is too steep to hold it, with more rock showing lower down and in the
+	// broken ground round the foot. The gully down the south face is a dark cleft with snow banked in it; the north
+	// face, in shadow, holds a little less and its snow is bluer.
+	const rock = new THREE.Color(0x3a332d), rock2 = new THREE.Color(0x574a3e), rock3 = new THREE.Color(0x6d5e4e), snow = new THREE.Color(0xf2f4f7), blue = new THREE.Color(0xb8c6da), tmp = new THREE.Color();
 	for (let k = 0; k < N; k++) {
 		const t = tt[k], f = band[k], ny = nrm.getY(k), nz = nrm.getZ(k);
 		const i = k % (NA + 1), th = (i / NA) * Math.PI * 2 + Math.PI / 4;
 		const north = smoothstep(0.2, -0.8, nz);
 		const broken = fbm(th * 22, t * 40, 2);
-		// snow lies along the top of each stratum's ledge: thicker on some, none on others, in drifts broken by bare rock,
-		// and more where the shelf is flatter
 		const P = bandP[bidx[k]];
+		// the stratum's face: bare rock through its lower, steeper part (f small), snow on the shelf at its top; the
+		// line between them wanders along the band, and the bare band is wider where the band is a cliff (P.w small)
 		const along = fbm(th * P.fq + P.o, t * 7 + P.o, 3) + 0.25 * (fbm(th * 17 + P.o, t * 30, 2) - 0.5);
-		const lip = P.w ? smoothstep(1 - P.w * (0.6 + 0.8 * along) - 0.03, 1 - P.w * 0.25, f) : 0;
-		const ledge = lip * smoothstep(P.gap, P.gap + 0.12, along + 0.12 * face[k]) * (0.55 + 0.45 * smoothstep(0.15, 0.55, ny)) * (0.45 + 0.55 * t);
-		const flat = smoothstep(0.82, 0.95, ny) * smoothstep(0.45, 0.65, fbm(th * 13, t * 31, 2));
-		let s = Math.max(ledge, flat * 0.8) * smoothstep(0.03, 0.2, t) * (1 - north * 0.4);
-		void broken;
-		s = Math.max(s, smoothstep(0.76, 0.88, t + (fbm(th * 4, t * 6, 3) - 0.5) * 0.16)); // the snow on the dome
-		s = Math.max(s, smoothstep(0.25, 0.6, gul[k]) * smoothstep(0.35, 0.6, broken + 0.2) * 0.95); // down the gully
+		const edge = 0.42 + 0.3 * (1 - P.w) + 0.2 * (along - 0.5);
+		const bare = (1 - smoothstep(edge - 0.07, edge + 0.07, f)) * smoothstep(0.04, 0.2, f + 0.1 * (broken - 0.5));
+		// more rock lower down and where the slope is steepest; the flat shelves and the summit all snow
+		const low = 1 - 0.4 * smoothstep(0.25, 0.75, t);
+		const steep = 0.75 + 0.25 * (1 - smoothstep(0.25, 0.6, ny));
+		let s = 1 - clamp(bare * (0.8 + 0.2 * low) * steep + 0.25 * low * smoothstep(0.55, 0.75, broken) * (1 - smoothstep(0.3, 0.6, ny)), 0, 1);
+		s = Math.max(s, smoothstep(0.82, 0.95, ny) * 0.9); // the shelves
+		s = Math.max(s, smoothstep(0.76, 0.86, t + (fbm(th * 4, t * 6, 3) - 0.5) * 0.1)); // the dome
+		s *= smoothstep(0.05, 0.18, t); // the scree at the foot
+		s *= 1 - north * 0.15;
+		// the cleft: snow banked in the gully, a dark shadow line down its middle
+		s = lerp(s, 0.95, smoothstep(0.2, 0.5, gul[k]) * (1 - smoothstep(0.2, 0.75, t) * 0.3));
+		s *= 1 - 0.75 * smoothstep(0.55, 0.9, gul[k]);
 		tmp.copy(rock).lerp(rock2, fbm(th * 3, t * 9, 2) * (0.5 + P.tone)).lerp(rock3, smoothstep(0.55, 0.8, face[k]) * 0.6 * P.tone);
 		tmp.multiplyScalar(0.9 + 0.14 * (1 - f));
 		if (t < 0.08) tmp.lerp(new THREE.Color(0x6a5e52), 0.6);
