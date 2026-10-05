@@ -707,10 +707,14 @@ Object.assign(Journey.prototype, {
 		const dx = Math.sin(st.yaw), dz = Math.cos(st.yaw);
 		const u = (p.x - st.x) * dz - (p.z - st.z) * dx, v = (p.x - st.x) * dx + (p.z - st.z) * dz;
 		// only on the flight itself: it is 1.4 wide, and an auto can set down beside it, level with its treads
-		if (u < S.u0 - 0.02 || u > S.u1 + 0.02 || Math.abs(v) > 0.72) return p.y;
+		if (u < S.u0 - (KAILASH ? 0.08 : 0.02) || u > S.u1 + 0.02 || Math.abs(v) > 0.72) return p.y;
+		// (and level at the top until the flight begins, however far it falls)
+		if (KAILASH && u < S.u0) return S.top;
 		const f = ((u - S.u0) / (S.u1 - S.u0)) * S.n, k = Math.min(S.n - 1, Math.max(0, Math.floor(f)));
 		// the foot comes down onto the next tread over the last part of this one, rather than all in one frame
 		const down = k < S.n - 1 ? smoothstep(0.6, 1, f - k) : 0;
+		// (on the Kailash journey a station can stand on a slope, its treads deeper: off the top onto the first tread gently too)
+		if (KAILASH && k === 0) return S.top - (S.rise * (smoothstep(-0.12, 0.3, f) + down)) / S.n;
 		return S.top - (S.rise * (k + 1 + down)) / S.n;
 	},
 	walkTo(get, cam, st0 = null) {

@@ -929,7 +929,7 @@ export class Roads {
 		for (const L of K_LINES) {
 			const c = ch.find((q) => q.shrine.key === L.to);
 			if (!c) continue;
-			const a = c.s0, b = near(L.ends[1][0], L.ends[1][1], c) + 4;
+			const a = c.s0, b = near(L.ends[1][0], L.ends[1][1], c) + (L.tail ?? 4);
 			let line = null, plan = null;
 			for (let pass = 0; pass < 2; pass++) {
 				const pts = railLine(route, world, a, b, alongside, plan ? (q) => plan.bump(q) : () => 0);
@@ -1808,7 +1808,8 @@ const LINES = [
 // the Delhi–Tanakpur Express run, by Moradabad and Bareilly (the drawn line keeps beside the road through Pilibhit).
 const K_LINES = [
 	{
-		to: "omparvat", stock: "icf", ends: [[77.23, 28.66, "दिल्ली जंक्शन", "DELHI JN"], [80.109, 29.074, "टनकपुर", "TANAKPUR"]],
+		// (the line ends at Tanakpur, at the foot of the hills, not carried on up into them)
+		to: "omparvat", stock: "icf", tail: -7, ends: [[77.23, 28.66, "दिल्ली जंक्शन", "DELHI JN"], [80.109, 29.074, "टनकपुर", "TANAKPUR"]],
 		halts: [[78.78, 28.84, "मुरादाबाद जंक्शन", "MORADABAD JN"], [79.43, 28.37, "बरेली जंक्शन", "BAREILLY JN"], [79.8, 28.63, "पीलीभीत जंक्शन", "PILIBHIT JN"]],
 	},
 ];

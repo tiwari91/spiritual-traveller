@@ -131,6 +131,11 @@ export function tibet(lon, lat) {
 // The road out of Delhi into the hills (before the gorge drawn above takes over) runs on a bench cut level across
 // the slope, its floor the ground along the way smoothed to a road's gradient, so nothing on it lies on its side.
 let BENCH = null;
+// Tanakpur lies on the plain at the very foot of the hills, where the Sharda comes out of them: the plain runs up to it
+function tanakpur(x, y, h) {
+	const dt = Math.hypot(x - P.tanakpur[0] * U, y - P.tanakpur[1] * U);
+	return dt < 6 ? lerp(h, Math.min(h, 4.2), smoothstep(6, 3, dt)) : h;
+}
 function bench(base) {
 	const pts = ROUTE[0].pts, out = [];
 	for (let i = 0; i < pts.length - 1; i++) {
@@ -150,8 +155,8 @@ function bench(base) {
 		out[i].f = s / c;
 	}
 	for (let i = 0; i < out.length; i++) if (out[i].fixed) out[i].f = f[i];
-	for (let i = 1; i < out.length; i++) out[i].f = clamp(out[i].f, out[i - 1].f - 0.12, out[i - 1].f + 0.12);
-	for (let i = out.length - 2; i >= 0; i--) out[i].f = clamp(out[i].f, out[i + 1].f - 0.12, out[i + 1].f + 0.12);
+	for (let i = 1; i < out.length; i++) out[i].f = clamp(out[i].f, out[i - 1].f - 0.2, out[i - 1].f + 0.2);
+	for (let i = out.length - 2; i >= 0; i--) out[i].f = clamp(out[i].f, out[i + 1].f - 0.2, out[i + 1].f + 0.2);
 	const grid = new Map();
 	for (const p of out) {
 		const key = Math.floor(p.x / 2) * 100003 + Math.floor(p.y / 2);
@@ -190,8 +195,10 @@ export function kHeight(lon, lat, h, base) {
 		const plateau = Math.max(pl, crest);
 		h = lerp(h, lerp(south, plateau, north), m);
 	}
+	h = tanakpur(x, y, h);
 	if (base && lat > 28.95 && lon < 80.5) {
-		BENCH ||= bench(base);
+		// (the bench follows the ground as drawn here, less only the bench itself)
+		BENCH ||= bench((lo, la) => tanakpur(lo * U, la * U, base(lo, la, true)));
 		let best = Infinity, fl = 0;
 		const cx = Math.floor(x / 2), cy = Math.floor(y / 2);
 		for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const p of BENCH.get((cx + i) * 100003 + (cy + j)) || []) {

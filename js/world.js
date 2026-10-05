@@ -242,7 +242,8 @@ export class World {
 				let h = heightAt(lon, lat, land);
 				// let the land fall away at the edges of the map
 				const e = Math.min(lon - this.lon0, this.lon1 - lon, lat - this.lat0, this.lat1 - lat);
-				if (land) h = lerp(-3, h, smoothstep(0, KAILASH ? 0.5 : 1.6, e));
+				// (the Kailash journey's map is cut out of the middle of the land: its edges fade into low plains, not the sea)
+				if (land) h = KAILASH ? lerp(Math.min(h, 1.0), h, smoothstep(0, 0.5, e)) : lerp(-3, h, smoothstep(0, 1.6, e));
 				this.h[j * nx + i] = h;
 			}
 		}
@@ -353,7 +354,8 @@ export class World {
 		this.mesh = mesh;
 
 		// Sea: a large plane just below the shoreline.
-		const sea = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000, 1, 1), new THREE.MeshStandardMaterial({ color: 0x12405f, roughness: 0.35, metalness: 0.15, transparent: true, opacity: 0.92 }));
+		// (beyond the Kailash journey's map lies more land, not sea: a plain the colour of the plains, lost in the haze)
+		const sea = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000, 1, 1), KAILASH ? haze(new THREE.MeshStandardMaterial({ color: 0x4e5a34, roughness: 1 })) : new THREE.MeshStandardMaterial({ color: 0x12405f, roughness: 0.35, metalness: 0.15, transparent: true, opacity: 0.92 }));
 		sea.rotation.x = -Math.PI / 2;
 		sea.position.set(0, -0.15, 0);
 		sea.receiveShadow = true;
