@@ -3151,6 +3151,10 @@ export class Sanctum {
 	}
 	// auto: walk through every ritual by itself, moving on once the traveller and pujari have finished
 	// the step's actions and there has been time to read it, and leave after the last one.
+	// whether a stop has rituals to go in for (the Kailash journey's stops that do not are left outside)
+	has(key) {
+		return !!BUILD[key];
+	}
 	enter(key, { auto = false } = {}) {
 		this.auto = auto;
 		if (this.active) this._teardown();

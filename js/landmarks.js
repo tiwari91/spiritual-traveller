@@ -9,6 +9,7 @@ import { fbm, rand } from "./util.js";
 import { TREE_STRIDE, Trees } from "./trees.js";
 import { haze, patch } from "./batch.js";
 import { groundDetail } from "./textures.js";
+import { K_BUILDERS } from "./kailash-landmarks.js";
 
 // World-space detail for mountains and hills: rock strata and scree on peaks, mottled scrub, red earth
 // and outcrops on the Tirumala hills. Keeps the vertex/material colour as the base.
@@ -1531,7 +1532,7 @@ export function buildLandmarks(world, scene, renderer, crowdFigure) {
 	for (const s of SHRINES) {
 		const w = toWorld(s.lon, s.lat);
 		const y = world.height(w.x, w.z);
-		const spec = BUILDERS[s.key]({ world, x: w.x, y, z: w.z, facing: s.facing });
+		const spec = (BUILDERS[s.key] || K_BUILDERS[s.key])({ world, x: w.x, y, z: w.z, facing: s.facing, shrine: s });
 		if (crowdFigure && spec.crowd) {
 			spec.crowd.forEach(([x, z, fy], i) => {
 				const f = crowdFigure(s.key.length * 100 + i * 7 + 3, s.key);
@@ -1564,6 +1565,8 @@ export function buildLandmarks(world, scene, renderer, crowdFigure) {
 		};
 		const decor = new THREE.Group();
 		scene.add(decor);
+		// world-placed pieces a stop brings with it (the Kailash journey's mountains, gompas and flags)
+		if (spec.world) spec.world(decor, { world, toW, toL, x: w.x, y, z: w.z });
 		for (const [lx, lz, r, h, seed] of spec.peaks) {
 			const p = toW(lx, lz);
 			const m = peak(r, h, seed, spec.snowLine);

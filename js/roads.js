@@ -4,7 +4,8 @@
 // stations and bridges. The road follows the route; the railway runs alongside it on the long legs.
 import * as THREE from "three";
 import { Batch, T, VCOL, beam, place } from "./batch.js";
-import { GAURIKUND, RIVERS, SHRINES, toGeo, toWorld } from "./geo.js";
+import { GAURIKUND, KAILASH, RIVERS, ROUTE, SHRINES, toGeo, toWorld } from "./geo.js";
+import { tibet } from "./kailash-world.js";
 import { clamp, lerp, rand, segDist, smoothstep } from "./util.js";
 import { parkedVehicle } from "./traffic.js";
 
@@ -16,6 +17,8 @@ const KIND = {
 	ghat: { paved: 7, shoulder: 1.2, lift: 0.05 },
 	hill: { paved: 5.5, shoulder: 1.2, lift: 0.05 },
 	trek: { paved: 2.6, shoulder: 0.3, lift: 0.04 },
+	// the parikrama path round Kailash and the way over the Lipulekh: a trodden track of grit and stones
+	trail: { paved: 1.8, shoulder: 0.5, lift: 0.035 },
 };
 const RAIL_OFFSET = 3.9; // world units to the right of the road
 const STATION_OFFSET = 6.5; // at a station, room for the platform, the building and its forecourt
@@ -35,6 +38,14 @@ export const RAIL = {
 
 // Which landscape a point is in.
 export function region(lon, lat) {
+	if (KAILASH) {
+		// the Tibetan plateau; the Byans valley up from Gunji; Kumaon (hill country like Garhwal's); the Terai
+		if (lat > 30.05 && lon > 80.9 && tibet(lon, lat) > 0.15) return "tibet";
+		if (lat > 30.08 && lon > 80.75) return "byans";
+		if (lat > 29.15 && lon > 79.95) return "garhwal";
+		if (lat > 28.8 && lon > 79.75) return "doon";
+		return "gangetic";
+	}
 	if (lat > 29.95 && lon > 78.25) return "garhwal";
 	if (lat > 29.6) return "doon";
 	// the Ahmednagar Deccan round Sangamner, Rahata and Shirdi: black soil, cane and onion, flat-roofed villages
@@ -47,11 +58,11 @@ export function region(lon, lat) {
 }
 function roadKind(lon, lat) {
 	const r = region(lon, lat);
-	if (r === "garhwal") return "hill";
+	if (r === "garhwal" || r === "byans") return "hill";
 	if ((lat > 18.85 && lon < 74.0) || Math.hypot(lon - 79.38, lat - 13.66) < 0.09) return "ghat";
 	return "nh";
 }
-const SOIL = { sahyadri: "#8a4a2c", deccan: "#9a7a52", nagar: "#8c7454", south: "#8e6a48", central: "#8c7656", gangetic: "#9b8a68", doon: "#7d7360", garhwal: "#7c776e" };
+const SOIL = { sahyadri: "#8a4a2c", deccan: "#9a7a52", nagar: "#8c7454", south: "#8e6a48", central: "#8c7656", gangetic: "#9b8a68", doon: "#7d7360", garhwal: "#7c776e", byans: "#7a7068", tibet: "#9a8a72" };
 
 const pick = (R, a) => a[Math.floor(R() * a.length)];
 
@@ -86,6 +97,28 @@ function roadTexture(kind, reg) {
 		g.fillStyle = SOIL[reg];
 		g.fillRect(0, 0, W, H);
 		speckle(g, W, H, R, 6000, 0.25, 0.1);
+		if (kind === "trail") {
+			// grit and small stones, two worn lines where the feet go, larger stones kicked to the sides
+			g.fillStyle = reg === "tibet" ? "#8e8070" : "#7e746a";
+			g.fillRect(sh * 0.5, 0, W - sh, H);
+			for (const f of [0.38, 0.62]) {
+				const gr = g.createLinearGradient(W * (f - 0.09), 0, W * (f + 0.09), 0);
+				gr.addColorStop(0, "rgba(0,0,0,0)");
+				gr.addColorStop(0.5, "rgba(60,50,40,0.22)");
+				gr.addColorStop(1, "rgba(0,0,0,0)");
+				g.fillStyle = gr;
+				g.fillRect(0, 0, W, H);
+			}
+			for (let i = 0; i < 700; i++) {
+				const x = R() < 0.5 ? R() * sh * 1.4 : W - R() * sh * 1.4, y = R() * H, r = 2 + R() * 5, v = 90 + R() * 70;
+				g.fillStyle = `rgb(${v},${v - 6},${v - 14})`;
+				g.beginPath();
+				g.ellipse(x, y, r, r * 0.7, R() * 3, 0, Math.PI * 2);
+				g.fill();
+			}
+			speckle(g, W, H, R, 9000, 0.28, 0.12);
+			return;
+		}
 		if (kind === "trek") {
 			// stone flags
 			g.fillStyle = "#77736c";
@@ -145,7 +178,11 @@ function roadTexture(kind, reg) {
 		g.fillStyle = "#e9e6dc";
 		g.fillRect(sh + lw, 0, lw, H);
 		g.fillRect(W - sh - 2 * lw, 0, lw, H);
-		if (kind === "ghat") {
+		if (reg === "tibet") {
+			// a Chinese national road: white edge lines, a dashed yellow centre line
+			g.fillStyle = "#e0b22a";
+			for (let y = 0; y < H; y += H / 3) g.fillRect(W / 2 - lw * 0.75, y, lw * 1.5, H / 6);
+		} else if (kind === "ghat") {
 			// no overtaking on the ghats: a solid yellow centre line
 			g.fillStyle = "#e3b62a";
 			g.fillRect(W / 2 - lw, 0, lw * 2, H);
@@ -664,6 +701,10 @@ export class Roads {
 		};
 		// legs by the shrine they end at, so nothing here depends on how many legs there are
 		const leg = (key) => ch.find((c) => c.shrine.key === key);
+		if (KAILASH) {
+			this.kailash(near);
+			return;
+		}
 		// where the traveller can change from one kind of transport to the next
 		this.at = {
 			mancharOut: near(73.93, 18.98, leg("shirdi")),
@@ -799,6 +840,152 @@ export class Roads {
 		for (const st of this.stations) this.station(st);
 	}
 
+	// ---------- the Kailash journey ----------
+	// Its roads, paths and railway come from the stretches each leg of kailash-geo.js lists: a road for every stretch
+	// ridden (by bus, jeep, the transport chip's choice, or the Tibet side's bus), a trodden path for every stretch
+	// walked (over the Lipulekh, and the parikrama), the railway from Delhi to Tanakpur for the Train choice, and at
+	// each stop where a road ends a gravel yard with a short path on to the stop.
+	kailash(near) {
+		const route = this.route, world = this.world, ch = route.chapters;
+		this.at = {};
+		this.rivers = riverLines();
+		// each leg's stretches, resolved to distances along the route
+		this.ways = ch.map((c, i) => {
+			const list = ROUTE[i].ways.map(([kind, pt, label, o], k) => ({ kind, label, shared: !!(o && o.shared), s: k === 0 ? c.s0 : near(pt[0], pt[1], c) }));
+			list.forEach((w, k) => (w.e = k + 1 < list.length ? list[k + 1].s : c.s1));
+			return list;
+		});
+		// from here on (the Tibet side) traffic keeps to the right
+		this.tibetFrom = Math.min(...this.ways.flat().filter((w) => w.kind === "tibet").map((w) => w.s)) - 0.5;
+		this.shrinePos = ch.map((c) => route.at(c.s1, {}));
+		this.clearR = ch.map((c) => K_CLEAR[c.shrine.key] ?? 2.6);
+		const footPath = (a, b, kind = "trail") => bridges(samplePath(route, world, Math.max(0, a - STEP * 17), Math.min(route.length, b + STEP * 17), 0, { kind }), this.rivers, world, 0.5).filter((p) => p.s >= a - 1e-3 && p.s <= b + 1e-3);
+		// where the road at the start of a leg begins and the one at its end stops: clear of each stop
+		const out = (i) => {
+			const c = ch[i];
+			let s = c.s0;
+			if (i > 0) while (s < c.s1 && Math.hypot(route.at(s, {}).x - this.shrinePos[i - 1].x, route.at(s, {}).z - this.shrinePos[i - 1].z) < this.clearR[i - 1] + 0.3) s += 0.05;
+			return s;
+		};
+		const inn = (i) => {
+			const c = ch[i];
+			let s = c.s1;
+			while (s > c.s0 && Math.hypot(route.at(s, {}).x - this.shrinePos[i].x, route.at(s, {}).z - this.shrinePos[i].z) < this.clearR[i] + 0.3) s -= 0.05;
+			return s;
+		};
+		this.legWalk = ch.map((c, i) => ({ out: out(i), in: inn(i) }));
+		this.roads = [];
+		this.treks = [];
+		this.walks = [];
+		this.stands = [];
+		const offStops = (p) => this.shrinePos.every((w, i) => Math.hypot(p.x - w.x, p.z - w.z) > this.clearR[i] - 0.4);
+		ch.forEach((c, i) => {
+			const W = this.ways[i], lw = this.legWalk[i];
+			W.forEach((w, k) => {
+				const a = Math.max(w.s, k === 0 ? lw.out : w.s), b = Math.min(w.e, k === W.length - 1 ? lw.in : w.e);
+				if (b - a < 0.6 || w.shared) return;
+				if (w.kind === "walk") {
+					// a parikrama leg's path runs from just past the last stop to just short of the next
+					const pa = k === 0 ? c.s0 + Math.min(2.2, this.clearR[i - 1] ?? 2.2) : a, pb = k === W.length - 1 ? c.s1 - 2.4 : b;
+					const path = footPath(pa, pb);
+					if (path.length > 2) this.treks.push(path);
+					return;
+				}
+				const pts = bridges(samplePath(route, world, Math.max(0.4, a), b, 0), this.rivers, world, 1.8);
+				for (const run of split(pts, offStops)) this.roads.push(run);
+			});
+			// where a leg's last stretch is ridden, the road stops at a yard and a path goes on to the stop
+			const last = W[W.length - 1];
+			if (last.kind !== "walk") {
+				const path = footPath(lw.in - 0.3, c.s1 - 2.0, "trail");
+				if (path.length > 2) {
+					this.walks.push(path);
+					this.stands.push({ s: lw.in, shrine: i });
+				}
+			}
+			// and where it sets out from a stop on wheels, a path out to the road
+			if (i > 0 && W[0].kind !== "walk" && lw.out - c.s0 > 1.2) {
+				const path = footPath(c.s0 + 1.6, lw.out + 0.5, "trail");
+				if (path.length > 2) {
+					this.walks.push(path);
+					this.stands.push({ s: lw.out, shrine: i, out: true });
+				}
+			}
+		});
+		this.trek = this.treks[0] || [];
+		// the railway for the Train choice: Delhi to Tanakpur
+		const alongside = [...this.roads, ...this.treks, ...this.walks];
+		const roadLines = alongside.map((pts) => ({ pts, w: (KIND[pts[0]?.kind || "nh"].paved + 2 * KIND[pts[0]?.kind || "nh"].shoulder) * M, over: true }));
+		const shrines = this.shrinePos;
+		const clear = (p) => shrines.every((w, i) => Math.hypot(p.x - w.x, p.z - w.z) > this.clearR[i] + 0.8);
+		this.rails = [];
+		for (const L of K_LINES) {
+			const c = ch.find((q) => q.shrine.key === L.to);
+			if (!c) continue;
+			const a = c.s0, b = near(L.ends[1][0], L.ends[1][1], c) + 4;
+			let line = null, plan = null;
+			for (let pass = 0; pass < 2; pass++) {
+				const pts = railLine(route, world, a, b, alongside, plan ? (q) => plan.bump(q) : () => 0);
+				line = split(pts, clear).sort((x, y) => y.length - x.length)[0];
+				if (!line) break;
+				arcLength(line);
+				bridges(line, [...this.rivers, ...roadLines], world, 0.9, 16);
+				if (!plan) plan = this.planStations(line, L);
+			}
+			if (!line) continue;
+			const first = plan.stops[0], end = plan.stops.at(-1);
+			const sa = aToS(line, sToA(line, first.s) - RAIL.platLen / 2 - 3.2), sb = aToS(line, sToA(line, end.s) + RAIL.platLen / 2 + 3.2);
+			line = line.filter((p) => p.s >= sa && p.s <= sb);
+			arcLength(line);
+			railProfile(line, world);
+			line.chapter = c.index;
+			line.stock = L.stock;
+			line.stops = plan.stops.map((st) => this.layoutStation(line, Object.assign({}, st, { a: sToA(line, st.s) })));
+			this.rails.push(line);
+		}
+		this.trains = {};
+		for (const r of this.rails) this.trains[r.chapter] = { rail: r, from: r.stops[0].sRoad, to: r.stops.at(-1).sRoad };
+		this.stations = this.rails.flatMap((r) => r.stops);
+		for (const p of this.roads) this.buildRoad(p);
+		for (const p of this.treks) this.buildRoad(p);
+		for (const p of this.walks) this.buildRoad(p);
+		for (const st of this.stands) this.yard(st);
+		for (const p of this.rails) this.buildRail(p);
+		for (const st of this.stations) this.station(st);
+	}
+	// The Kailash journey's stand where a road ends: a level yard of packed gravel, a jeep or two waiting on the
+	// Indian side, prayer flags on a pole on the Tibetan.
+	yard(st) {
+		const sr = st.out ? st.s + 2.2 : st.s - 2.2;
+		const r = Roads.lookup(this.roads, sr) || this.route.at(sr, {});
+		const l = Math.hypot(r.dx, r.dz) || 1;
+		const dx = r.dx / l, dz = r.dz / l, yaw = Math.atan2(dx, dz);
+		const sd = sr >= this.tibetFrom ? -1 : 1; // on the kerb side: the right in Tibet
+		const cx = r.x + dz * 1.9 * sd - dx * 0.5, cz = r.z - dx * 1.9 * sd - dz * 0.5;
+		st.x = cx;
+		st.z = cz;
+		const y = this.world.height(cx, cz);
+		const g = toGeo(cx, cz), tb = region(g.lon, g.lat) === "tibet";
+		const b = new Batch();
+		b.add(T.box, place(cx, y - 0.12, cz, yaw, 2.4, 0.16, 3.4), tb ? 0x8f8474 : 0x77736c);
+		const R = rand(st.shrine * 37 + 11);
+		if (tb) {
+			// a flag pole with strings of prayer flags run out to the ground
+			b.add(T.cyl, place(cx + Math.cos(yaw) * 0.9, y, cz - Math.sin(yaw) * 0.9, 0, 0.05, 1.6, 0.05), 0x6a4a2e);
+		}
+		this.group.add(b.build(VCOL));
+		if (!tb) {
+			for (let k = 0; k < 2; k++) {
+				const m = parkedVehicle("car", R).build(VCOL);
+				const u = -0.5 + k * 0.95;
+				m.position.set(cx + Math.cos(yaw) * u, y, cz - Math.sin(yaw) * u);
+				m.rotation.y = yaw + (R() < 0.5 ? 0 : Math.PI);
+				m.scale.setScalar(M);
+				this.group.add(m);
+			}
+		}
+	}
+
 	// ---------- queries ----------
 	static lookup(paths, s) {
 		for (const pts of paths) {
@@ -818,7 +1005,7 @@ export class Roads {
 	}
 	// A point on the road (lane in metres from the centre, positive to the right; India drives on the left).
 	road(s, lane = 0, out = {}) {
-		const p = Roads.lookup(this.roads, s) || Roads.lookup([this.trek], s) || Roads.lookup(this.walks, s);
+		const p = Roads.lookup(this.roads, s) || Roads.lookup(this.treks || [this.trek], s) || Roads.lookup(this.walks, s);
 		if (!p) return null;
 		const l = Math.hypot(p.dx, p.dz) || 1;
 		p.dx /= l;
@@ -833,7 +1020,7 @@ export class Roads {
 	deckAt(x, z) {
 		if (!this.decks) {
 			this.decks = [];
-			for (const pts of [this.trek, ...this.walks]) for (let i = 0; i < pts.length - 1; i++) if (pts[i].bridge > 0.01 || pts[i + 1].bridge > 0.01) this.decks.push([pts[i], pts[i + 1]]);
+			for (const pts of [...(this.treks || [this.trek]), ...this.walks]) for (let i = 0; i < pts.length - 1; i++) if (pts[i].bridge > 0.01 || pts[i + 1].bridge > 0.01) this.decks.push([pts[i], pts[i + 1]]);
 		}
 		// the path and the verge a pilgrim keeps to where a road has just ended beside it
 		const half = (KIND.trek.paved / 2 + KIND.trek.shoulder + 3.5) * M;
@@ -880,7 +1067,7 @@ export class Roads {
 	footDist(x, z) {
 		if (!this.footHash) {
 			this.footHash = new Map();
-			for (const pts of [this.trek, ...this.walks]) for (const p of pts) {
+			for (const pts of [...(this.treks || [this.trek]), ...this.walks]) for (const p of pts) {
 				const key = Math.floor(p.x / 4) * 100003 + Math.floor(p.z / 4);
 				let c = this.footHash.get(key);
 				if (!c) this.footHash.set(key, (c = []));
@@ -964,7 +1151,7 @@ export class Roads {
 				for (const sg of [-1, 1]) {
 					const q = side(p, sg * (outer - 0.06));
 					// a footbridge has a low stone parapet; a road bridge the painted concrete one
-					if (p.kind === "trek") b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.05, 0.2, STEP * 1.02), 0x8a8378);
+					if (p.kind === "trek" || p.kind === "trail") b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.05, 0.2, STEP * 1.02), 0x8a8378);
 					else b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.3, STEP * 1.02), i % 6 < 3 ? 0xe8e4da : 0x2a2a2a);
 				}
 				if (p.onDeck && i % 5 === 0) {
@@ -973,6 +1160,7 @@ export class Roads {
 				}
 				continue;
 			}
+			if (p.kind === "trail") continue;
 			if (p.kind === "trek") {
 				// an iron railing on the valley side of the trek
 				if (i % 3 === 0) {
@@ -1009,7 +1197,7 @@ export class Roads {
 				}
 			}
 			// electricity poles with sagging wires on the plains
-			if (p.kind === "nh" && i % 12 === 0) {
+			if (p.kind === "nh" && i % 12 === 0 && p.region !== "tibet") {
 				const q = side(p, -(outer + 0.4));
 				const y = world.height(q.x, q.z);
 				b.add(T.taper, place(q.x, y, q.z, yaw, 0.07, 2.5, 0.07), 0xb5b0a6);
@@ -1019,7 +1207,7 @@ export class Roads {
 				lastPole = top;
 			}
 			// a milestone on the left verge every so often
-			if (p.kind !== "trek" && p.s - lastMile > 22 && i > 4 && i < pts.length - 6) {
+			if (p.kind !== "trek" && p.kind !== "trail" && !(KAILASH && p.region === "tibet") && p.s - lastMile > 22 && i > 4 && i < pts.length - 6) {
 				lastMile = p.s;
 				this.milestone(p, side(p, -(outer - 0.15)), yaw);
 			}
@@ -1603,6 +1791,16 @@ const LINES = [
 		halts: [[78.49, 17.39, "सिकंदराबाद जंक्शन", "SECUNDERABAD JN"], [79.09, 21.15, "नागपुर", "NAGPUR"], [78.57, 25.45, "झाँसी जंक्शन", "JHANSI JN"], [77.21, 28.61, "नई दिल्ली", "NEW DELHI"]],
 	},
 ];
+// The Kailash journey's railway, for the Train choice: Delhi to Tanakpur, as the Purnagiri Jan Shatabdi (12036) and
+// the Delhi–Tanakpur Express run, by Moradabad and Bareilly (the drawn line keeps beside the road through Pilibhit).
+const K_LINES = [
+	{
+		to: "omparvat", stock: "icf", ends: [[77.23, 28.66, "दिल्ली जंक्शन", "DELHI JN"], [80.109, 29.074, "टनकपुर", "TANAKPUR"]],
+		halts: [[78.78, 28.84, "मुरादाबाद जंक्शन", "MORADABAD JN"], [79.43, 28.37, "बरेली जंक्शन", "BAREILLY JN"], [79.8, 28.63, "पीलीभीत जंक्शन", "PILIBHIT JN"]],
+	},
+];
+// How far round each Kailash stop the road stops (world units): the stops are camps and viewpoints, not towns.
+const K_CLEAR = { omparvat: 1.6, mansarovar: 2.6, yamdwar: 2.6 };
 // How far around each shrine the roads stop, at a bus stand, and the last stretch is on foot (world units).
 const CLEAR = { tirupati: 10.5, shirdi: 6.5 };
 // Where the pilgrim path and its stalls stop short of the temple, leaving its courtyard open (world units).

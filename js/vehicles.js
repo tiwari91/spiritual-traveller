@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { body, crowdOpts, mergeFigure, pose } from "./pilgrim.js";
 import { rand } from "./util.js";
 import { Batch } from "./batch.js";
+import { hull, sidePanel } from "./traffic.js";
 import { BOX, CYL, DISC, Kit, LAMPS, Outline, QUAD, SPH, archFlare, arc, at, carDressing, carSkin, lathe, longSlab, loft, planWidth, prep, rbox, section, stations, wheel } from "./carkit.js";
 
 const mat = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.6 }, o));
@@ -936,4 +937,132 @@ export function train(kind = "icf") {
 	const rake = [["GS", 1], ["SL", 3], ["SL", 4], ["3A", 1], ["SLR", 1]];
 	rake.forEach(([cls, n], i) => cars.push(coach(kind, cls, n, 100 + i * 17 + (kind === "lhb" ? 7 : 0))));
 	return cars;
+}
+
+// ---------- the yatra's coaches (the Kailash journey) ----------
+// A touring coach, in metres, facing +z: the long box with a rounded nose and a deep one-piece windscreen,
+// big sealed side windows (see-through, so the traveller can be seen in a window seat), the door at the front on
+// the kerb side, seats in pairs either side of the aisle with a few passengers in them, the luggage boot, a
+// banner across the front. look: { paint, band, band2, roof, door: +1 (left, India) or -1 (right, Tibet),
+// banner: a canvas texture or null }.
+function bannerTex(lines, bg, fg) {
+	return canvas(512, 96, (g, W, H) => {
+		g.fillStyle = bg;
+		g.fillRect(0, 0, W, H);
+		g.fillStyle = fg;
+		g.textAlign = "center";
+		g.textBaseline = "middle";
+		g.font = `600 ${lines.length > 1 ? 34 : 46}px "Tiro Devanagari Hindi", "Noto Sans Devanagari", Inter, sans-serif`;
+		lines.forEach((t, i) => g.fillText(t, W / 2, H * (lines.length > 1 ? 0.3 + i * 0.42 : 0.52), W - 20));
+	});
+}
+function coachBody(look) {
+	const g = new THREE.Group();
+	const k = new Kit({ see: true });
+	const hw = 1.25, zF = 5.6, zR = -5.6, af = 3.7, ar = -2.9, ra = 0.55, H = 3.45, black = 0x161618, floor = 1.05;
+	const ds = look.door ?? 1;
+	hull(k, [[zR, 0.45, 0.08], [ar - ra, 0.4, 0.02], ...arc(ar, 0.5, ra, Math.PI, 0, 10), [af - ra, 0.4, 0.02], ...arc(af, 0.5, ra, Math.PI, 0, 10), [af + ra, 0.4, 0.02], [zF, 0.45, 0.14], [zF + 0.06, 1.3, 0.2], [zF - 0.05, H - 0.2, 0.42], [zF - 0.55, H, 0.3], [zR + 0.25, H, 0.22], [zR, H - 0.35, 0.18]], hw, {
+		cf: 0.18, cr: 0.12, nLow: 14, nTop: 5, ym: 0.42, n: 14, step: 0.25, extra: [af - ra, af + ra, ar - ra, ar + ra],
+		classify: (z, j) => (j >= 12 ? "roof" : "body"), colours: { body: look.paint, roof: look.roof }, slots: { body: "paint", roof: "paint" },
+	});
+	for (const sx of [-1, 1]) {
+		const x = hw + 0.004;
+		// the window band, dark glass from the door back to the tail; the livery's stripes below it
+		sidePanel(k, sx, x, 2.45, -0.55, 9.4, 1.15, 0xffffff, "glass");
+		for (let z = -4.9; z <= 3.6; z += 1.4) k.box(sx * (x + 0.004), 2.45, z, 0.012, 1.18, 0.07, black, "matte");
+		k.box(sx * (x + 0.004), 1.62, -0.1, 0.014, 0.12, 10.6, look.band, "paint");
+		k.box(sx * (x + 0.004), 1.42, -0.1, 0.014, 0.06, 10.6, look.band2, "paint");
+		k.box(sx * (x + 0.006), 0.6, -0.4, 0.014, 0.05, 10.4, black, "matte");
+		// the boot doors under the floor
+		for (const z of [-1.9, -0.4, 1.1]) k.box(sx * (x + 0.005), 0.98, z, 0.01, 0.62, 1.3, 0xb8bcc0, "chrome");
+	}
+	// the door opening at the front on the kerb side, and the driver's window opposite
+	k.box(ds * (hw + 0.01), 1.6, 4.55, 0.012, 2.6, 1.0, 0x1a1a1c, "matte");
+	sidePanel(k, -ds, hw + 0.01, 2.3, 4.6, 0.95, 1.3, 0xffffff, "glass");
+	// the steps up inside the door, the floor, the seats and the people in them
+	for (let i = 0; i < 3; i++) k.rbox(ds * (hw - 0.3), 0.35 + i * 0.25, 4.55, 0.5, 0.06, 0.9, 0.01, 0x3a3a3c, "matte");
+	k.box(0, floor - 0.03, -0.3, 2.3, 0.06, 9.6, 0x2a2a2c, "matte");
+	const seatC = look.seat ?? 0x3a4a6a;
+	const rows = [];
+	for (let z = 3.3; z > -4.9; z -= 0.86) rows.push(z);
+	for (const z of rows) for (const sx of [-1, 1]) {
+		k.rbox(sx * 0.7, floor + 0.42, z, 0.9, 0.12, 0.48, 0.04, seatC, "matte");
+		k.rbox(sx * 0.7, floor + 0.85, z - 0.24, 0.9, 0.78, 0.1, 0.04, seatC, "matte", -0.12);
+		k.rbox(sx * 0.7, floor + 1.25, z - 0.29, 0.9, 0.12, 0.06, 0.02, 0xe8e4da, "matte", -0.12); // the white headrest cloth
+	}
+	// the dash, the steering wheel and the driver
+	k.rbox(0, floor + 0.65, zF - 0.45, 2.2, 0.5, 0.5, 0.06, black, "matte");
+	k.add(prep(new THREE.TorusGeometry(0.24, 0.025, 6, 20)), at(-ds * 0.62, floor + 0.95, zF - 0.85, -1.0, 0, 0), black, "matte");
+	// the front: the windscreen, the banner above it, the lamps, grille, bumper and plate
+	k.add(QUAD, at(0, 2.35, zF + 0.0, -0.1, 0, 0, 2.3, 1.75, 1), 0xffffff, "glass");
+	k.rbox(0, 1.05, zF + 0.1, 2.3, 0.55, 0.1, 0.05, black, "matte");
+	for (let i = 0; i < 4; i++) k.box(0, 0.88 + i * 0.1, zF + 0.16, 1.5, 0.025, 0.02, 0xc8ccd0, "chrome");
+	for (const sx of [-1, 1]) {
+		k.lamp(sx * 0.92, 1.05, zF + 0.16, 0.36, 0.16, "head");
+		k.lamp(sx * 1.0, 1.35, zR - 0.02, 0.14, 0.5, "tail", true);
+		k.box(sx * (hw + 0.25), 2.75, zF - 0.1, 0.45, 0.03, 0.03, black, "matte");
+		k.rbox(sx * (hw + 0.45), 2.45, zF + 0.0, 0.06, 0.5, 0.22, 0.02, black, "matte");
+	}
+	k.rbox(0, 0.55, zF + 0.16, 2.5, 0.22, 0.14, 0.04, 0x2a2a2c, "matte");
+	k.plate(look.plate || "bus3", 0, 0.58, zF + 0.24, 0.5, 0.11);
+	k.add(QUAD, at(0, 2.5, zR - 0.01, 0, Math.PI, 0, 2.1, 0.9, 1), 0xffffff, "glass");
+	k.rbox(0, 0.55, zR - 0.08, 2.5, 0.22, 0.12, 0.04, 0x2a2a2c, "matte");
+	k.plate(look.plate || "bus3", 0, 1.0, zR - 0.02, 0.5, 0.11, true);
+	for (const sx of [-1, 1]) for (const z of [af, ar]) archFlare(k, sx * (hw - 0.04), 0.5, z, ra - 0.02, 0.3, 0x121214, "matte");
+	g.add(k.build());
+	// a few passengers in their seats, wrapped up against the cold
+	const R = rand(look.seed ?? 5);
+	const taken = new Set();
+	for (let i = 0; i < 9; i++) {
+		const zi = 1 + Math.floor(R() * (rows.length - 1)), sx = R() < 0.5 ? -1 : 1, xi = R() < 0.5 ? 0.42 : 0.98;
+		const key = zi + "," + sx + "," + xi;
+		if (taken.has(key) || (zi === 0 && sx === ds)) continue;
+		taken.add(key);
+		const f = seatedFigure(300 + i * 13 + (look.seed ?? 0), { reach: 0.35, knee: 1.45 });
+		f.position.set(sx * xi, floor + 0.42 - 0.95 + 0.06, rows[zi] + 0.06);
+		g.add(f);
+	}
+	const driver = seatedFigure(look.seed ? 91 : 93);
+	driver.position.set(-ds * 0.62, floor + 0.42 - 0.95 + 0.08, zF - 1.1);
+	g.add(driver);
+	if (look.banner) {
+		const m = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.36), new THREE.MeshStandardMaterial({ map: look.banner, roughness: 0.6, emissive: 0x111111 }));
+		m.position.set(0, H - 0.32, zF - 0.02);
+		m.rotation.x = -0.32;
+		g.add(m);
+	}
+	// the folding door: two leaves that fold back into the doorway
+	const leaves = [];
+	for (const z of [4.32, 4.78]) {
+		const p = new THREE.Group();
+		p.position.set(ds * (hw + 0.005), 0, z);
+		const m = new THREE.Mesh(new THREE.BoxGeometry(0.03, 2.5, 0.46), mat(0x1a1d22, { roughness: 0.3, metalness: 0.4 }));
+		m.position.y = 1.6;
+		m.castShadow = true;
+		p.add(m);
+		g.add(p);
+		leaves.push(p);
+	}
+	const door = { z0: 4.1, z1: 5.0, k: 0, open(k) {
+		this.k = k;
+		leaves.forEach((p, i) => {
+			p.position.x = ds * (hw + 0.005 - 0.18 * k);
+			p.rotation.y = ds * (i ? -1 : 1) * 1.3 * k;
+		});
+	} };
+	const wheels = [];
+	for (const sx of [-1, 1]) for (const z of [af, ar]) wheels.push(roadWheel(g, sx * (hw - 0.17), 0.5, z, 0.5, 0.3, sx, "steel", 0xc8ccd0));
+	const seatX = ds * 0.98, seatZ = rows[0] + 0.06;
+	return { group: g, wheels, doors: { front: door }, radius: 0.5, len: zF - zR, door: ds > 0 ? "front" : null, doorR: ds < 0 ? "front" : null, seat: new THREE.Vector3(seatX, floor + 0.42 + 0.08, seatZ), driver, floor, tall: true,
+		hull: { x: hw, y0: 0.4, y1: H, z0: zR, z1: zF }, roof: H, waist: 1.5 };
+}
+// The yatra's coach from Delhi to Dharchula: white, with the saffron and green bands and the banner of the yatra.
+export function yatraBus() {
+	const c = coachBody({ paint: 0xf2f1ec, band: 0xe8741a, band2: 0x2f8a4a, roof: 0xe6e4dc, door: 1, plate: "bus3", seed: 3, banner: bannerTex(["कैलाश मानसरोवर यात्रा", "KAILASH MANSAROVAR YATRA"], "#f6efe0", "#8a2a10") });
+	return Object.assign(c, { kind: "bus" });
+}
+// The Chinese coach on the Tibet side: white with a blue band, the door on the right (China drives on the right).
+export function tibetBus() {
+	const c = coachBody({ paint: 0xf4f4f2, band: 0x2a5ab0, band2: 0x8ab4e0, roof: 0xe8e8e6, door: -1, plate: "bus2", seed: 7, seat: 0x6a2a2a, banner: bannerTex(["神山圣湖 · KAILASH MANASAROVAR"], "#1f3f7a", "#f4f0e0") });
+	return Object.assign(c, { kind: "coach" });
 }

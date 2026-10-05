@@ -292,6 +292,7 @@ const MIX = {
 	ghat: ["bus", "car", "truck", "car", "auto"],
 	hill: ["car", "bus", "car", "truck"],
 };
+const MIX_TIBET = ["car", "car", "bus"];
 const LEN = { truck: 7.6, bus: 10.6, auto: 2.6, tractor: 7.4, car: 4.2 };
 // half widths in metres, for keeping lanes apart
 const HALF = { truck: 1.25, bus: 1.3, auto: 0.7, tractor: 1.15, car: 0.85 };
@@ -323,7 +324,8 @@ export class Traffic {
 	}
 	spawn(c, s, ahead, kind) {
 		if (c.mesh) c.mesh.userData.used = false;
-		const types = MIX[kind] || MIX.nh;
+		// on the Tibet side of the Kailash journey: few vehicles, cars and buses (no autos, tractors or painted trucks)
+		const types = s >= this.roads.tibetFrom ? MIX_TIBET : MIX[kind] || MIX.nh;
 		let type = types[Math.floor(this.R() * types.length)], mesh = this.free(type);
 		if (!mesh) {
 			type = "car";
@@ -405,7 +407,8 @@ export class Traffic {
 			// to the left edge and swings out right to pass the traveller, who rides just left of centre
 			const right = Math.min(paved / 2 - half - 0.1, half + 0.35);
 			const left = -(paved / 2 - half - 0.1);
-			const lane = (c.dir < 0 ? right : left + (right - left) * (c.passing || 0)) * (scale / M);
+			// (on the Kailash journey's Tibet side everyone keeps to the right: the same lanes, mirrored)
+			const lane = (c.dir < 0 ? right : left + (right - left) * (c.passing || 0)) * (scale / M) * (c.s >= this.roads.tibetFrom ? -1 : 1);
 			// set the vehicle on its two axles, so a long bus follows the bend instead of cutting across it
 			const ax = len * 0.32 * scale;
 			const a = this.roads.road(c.s - ax * c.dir, lane, q0), b = this.roads.road(c.s + ax * c.dir, lane, q1);
@@ -551,3 +554,5 @@ export function parkedVehicle(type, R) {
 	k.count = k.parts.reduce((n, p) => n + p.geo.attributes.position.count, 0);
 	return k;
 }
+// for the coaches the traveller rides (vehicles.js)
+export { hull, sidePanel };

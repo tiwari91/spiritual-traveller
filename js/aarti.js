@@ -71,6 +71,19 @@ const PLACES = {
 	},
 };
 
+// The Kailash journey's stops: no temple door but an altar of stones (a puja platform at Om Parvat, the havan kund
+// on the shore at Mansarovar, a cairn under the flags on the parikrama), with the batch's puja led by an elder of the
+// yatris, wrapped up against the cold, the others round him in their jackets. The altar's front is at about z = 1.9.
+const ELDER = { skin: SKIN[2], top: 0x5a3a2e, dhoti: 0xe8e2d4, shawl: 0x8a1c1c, mark: "tripundra", beard: 0xcfcac2 };
+const K_PLACES = {
+	omparvat: { door: [0, 1.62], spot: [0, 1.95], stand: [-0.32, 1.86], incense: [0.32, 1.84], via: [[0.42, 2.35], [0.55, 2.8]], devotees: [[-0.55, 2.7], [1.3, 2.75], [-1.2, 3.3]], lamp: "pancha", priests: [{ skin: SKIN[1], top: 0xe8e0cc, shawl: 0xd8661c, mark: "tripundra", beard: 0x3a3430 }] },
+	mansarovar: { door: [0, 1.62], spot: [0, 1.95], stand: [-0.34, 1.86], incense: [0.34, 1.84], via: [[0.42, 2.35], [0.55, 2.8]], devotees: [[-0.6, 2.75], [1.25, 2.8], [-1.3, 3.2]], lamp: "pancha5", priests: [ELDER] },
+	yamdwar: { door: [0, 1.62], spot: [0, 1.95], stand: [-0.32, 1.86], incense: [0.32, 1.84], via: [[0.42, 2.35], [0.55, 2.8]], devotees: [[-0.55, 2.7], [1.3, 2.75], [0.1, 4.1]], lamp: "pancha", priests: [ELDER] },
+	dirapuk: { door: [0, 1.62], spot: [0, 1.95], stand: [-0.32, 1.86], incense: [0.32, 1.84], via: [[0.42, 2.35], [0.55, 2.8]], devotees: [[-0.6, 2.7], [1.3, 2.8], [-1.25, 3.35]], lamp: "kumbha", priests: [ELDER] },
+	dolmala: { door: [0, 1.62], spot: [0, 1.95], stand: [-0.32, 1.86], incense: [0.32, 1.84], via: [[0.42, 2.35], [0.55, 2.8]], devotees: [[-0.55, 2.7], [1.3, 2.75], [0.15, 4.1]], lamp: "pancha", priests: [ELDER] },
+	darchen: { door: [0, 1.62], spot: [0, 1.95], stand: [-0.32, 1.86], incense: [0.32, 1.84], via: [[0.42, 2.35], [0.55, 2.8]], devotees: [[-0.6, 2.7], [1.3, 2.8], [-1.25, 3.35]], lamp: "pancha5", priests: [ELDER] },
+};
+
 // ---------- figures ----------
 // A pujari from the shared body: white dhoti, a bare chest (or a vest), the sacred thread, a shawl and the forehead marks.
 function priest(o) {
@@ -318,7 +331,7 @@ export class Aarti {
 		this.stop();
 		const lm = this.landmarks[i];
 		if (!lm) return Promise.resolve(false);
-		const key = lm.shrine.key, L = PLACES[key];
+		const key = lm.shrine.key, L = PLACES[key] || K_PLACES[key];
 		this.lm = lm;
 		this.L = L;
 		this.sched = this.music ? this.music.aarti(key) : Object.assign({ id: -1 }, aartiSchedule(key));

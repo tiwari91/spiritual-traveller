@@ -26,6 +26,13 @@ export const TRACKS = {
 	kedarnath: { id: "sn1otVlvVrM", title: "Jai Shiva Omkara" },
 	badrinath: { id: "a3XaLpZSW14", title: "Narayana / For Your Love" },
 	// Shirdi: Krishna Das has no chant for Sai Baba, so the Samadhi Mandir's own (synthesised) aarti plays there
+	// the Kailash journey: Shiva at every stop, with the same two chants
+	omparvat: { id: "PTc8X37oJBE", title: "Om Namah Shivaya (Live! Songs With Lyrics)" },
+	mansarovar: { id: "sn1otVlvVrM", title: "Jai Shiva Omkara" },
+	yamdwar: { id: "PTc8X37oJBE", title: "Om Namah Shivaya (Live! Songs With Lyrics)" },
+	dirapuk: { id: "sn1otVlvVrM", title: "Jai Shiva Omkara" },
+	dolmala: { id: "PTc8X37oJBE", title: "Om Namah Shivaya (Live! Songs With Lyrics)" },
+	darchen: { id: "sn1otVlvVrM", title: "Jai Shiva Omkara" },
 };
 const watchUrl = (id) => "https://www.youtube.com/watch?v=" + id;
 const API_TIMEOUT = 12000; // the API script and the player's onReady

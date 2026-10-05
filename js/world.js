@@ -2,7 +2,9 @@
 import * as THREE from "three";
 import { haze, patch } from "./batch.js";
 import { groundDetail } from "./textures.js";
-import { INDIA, LANKA, NEIGHBOURS, RIVERS, SHRINES, toWorld, toGeo } from "./geo.js";
+import { INDIA, KAILASH, LANKA, NEIGHBOURS, RIVERS, SHRINES, toWorld, toGeo } from "./geo.js";
+import { LAKES } from "./kailash-geo.js";
+import { kColour, kGround, kHeight, lakeDist } from "./kailash-world.js";
 import { clamp, fbm, inPoly, lerp, polyDist, smoothstep } from "./util.js";
 
 // Main Himalayan crest as lat = f(lon).
@@ -59,16 +61,19 @@ export function heightAt(lon, lat, land) {
 	// Flat spots for the shrines and Pune.
 	// Around the Himalayan shrines the relief is softened, so from the temple you look up at a ring of
 	// peaks rather than into a wall (the map's vertical scale is exaggerated many times).
-	for (const s of SPOTS) {
+	// (the Kailash journey draws its own ground round its stops: kailash-world.js)
+	const spots = KAILASH ? [] : SPOTS;
+	for (const s of spots) {
 		if (!s.soften) continue;
 		const d = Math.hypot(lon - s.lon, lat - s.lat);
 		if (d < 1.0) h = s.h + (h - s.h) * lerp(0.15, 1, smoothstep(0.15, 1.0, d));
 	}
-	for (const s of SPOTS) {
+	for (const s of spots) {
 		const d = Math.hypot(lon - s.lon, (lat - s.lat));
 		const t = smoothstep(s.r + s.blend, s.r, d);
 		h = lerp(h, s.h, t);
 	}
+	if (KAILASH) h = kHeight(lon, lat, h);
 	return h;
 }
 
@@ -110,7 +115,7 @@ export function colourAt(lon, lat, h, coast, foreign) {
 	// shore sand and a little variation
 	base = mix3(base, C.shore, smoothstep(0.25, 0.0, coast) * 0.7, base);
 	// shrine surroundings: forest, hill scrub or alpine meadow rather than snow
-	for (const sp of SPOTS) {
+	for (const sp of KAILASH ? [] : SPOTS) {
 		if (!sp.tint) continue;
 		const t = smoothstep(sp.r + sp.blend * 0.8, sp.r * 0.6, Math.hypot(lon - sp.lon, lat - sp.lat));
 		if (t > 0) base = mix3(base, sp.tint, t * (0.8 + 0.2 * n), base);
@@ -155,7 +160,8 @@ export function groundAt(lon, lat, h) {
 	// green: monsoon ghats and the Himalayan foothills; the Deccan and Rayalaseema stay dry
 	let green = 0.4 + ghats * 0.5 + ganga * 0.25 + hills * 0.35 - deccan * 0.12 - thar * 0.4 + smoothstep(14, 26, h) * 0.1;
 	let dry = 0.4 + deccan * 0.35 + telangana * 0.15 + south * 0.05 + thar * 0.5 - ghats * 0.4 - ganga * 0.1 - hills * 0.3;
-	return [clamp(red, 0, 1), clamp(black, 0, 1), clamp(green, 0, 1), clamp(dry, 0, 1)];
+	const g = [clamp(red, 0, 1), clamp(black, 0, 1), clamp(green, 0, 1), clamp(dry, 0, 1)];
+	return KAILASH ? kGround(lon, lat, h, g) : g;
 }
 
 const GROUND_VS = `
@@ -209,6 +215,12 @@ export class World {
 		this.lat0 = 4.5;
 		this.lat1 = 38.5;
 		this.step = opts.step || 0.09; // degrees per vertex
+		if (KAILASH) {
+			// the Kailash journey needs only northern India and western Tibet, drawn much finer: the lakes, the
+			// passes and the valleys of the parikrama are walked on, so they have to be in the ground itself
+			Object.assign(this, { lon0: 76, lon1: 82.6, lat0: 27, lat1: 32.1 });
+			this.step = this.step > 0.1 ? 0.026 : 0.016;
+		}
 		this.nx = Math.round((this.lon1 - this.lon0) / this.step) + 1;
 		this.ny = Math.round((this.lat1 - this.lat0) / this.step) + 1;
 		this.h = new Float32Array(this.nx * this.ny);
@@ -227,7 +239,7 @@ export class World {
 				let h = heightAt(lon, lat, land);
 				// let the land fall away at the edges of the map
 				const e = Math.min(lon - this.lon0, this.lon1 - lon, lat - this.lat0, this.lat1 - lat);
-				if (land) h = lerp(-3, h, smoothstep(0, 1.6, e));
+				if (land) h = lerp(-3, h, smoothstep(0, KAILASH ? 0.5 : 1.6, e));
 				this.h[j * nx + i] = h;
 			}
 		}
@@ -289,7 +301,12 @@ export class World {
 						}
 					}
 				}
-				const c = colourAt(lon, lat, h, coast, this.land[k] === 2);
+				let c = colourAt(lon, lat, h, coast, !KAILASH && this.land[k] === 2);
+				if (KAILASH) {
+					// no line between India and its neighbours here: the ground is coloured by what it is
+					const sx = this.step * 40 * 2, gx = this.h[k + (i < nx - 1 ? 1 : 0)] - this.h[k - (i > 0 ? 1 : 0)], gz = this.h[k + (j < ny - 1 ? nx : 0)] - this.h[k - (j > 0 ? nx : 0)];
+					c = kColour(lon, lat, h, 1 - 1 / Math.hypot(gx / sx, gz / sx, 1), c);
+				}
 				gnd.set(groundAt(lon, lat, h), k * 4);
 				// design colours are sRGB; the renderer works in linear
 				col[k * 3] = Math.pow(c[0], 2.2);
@@ -371,6 +388,7 @@ export class World {
 			if (pts.length > 1) rg.add(river(pts, r.w * 0.9));
 		}
 		this.rivers = rg;
+		if (KAILASH) for (const L of LAKES) rg.add(lakeMesh(L, this));
 		return mesh;
 	}
 }
@@ -401,3 +419,67 @@ export function ribbon(pts, width, mat) {
 	return m;
 }
 
+
+// A lake's water (the Kailash journey): a flat sheet at its level reaching a little past the shore, where the shelving
+// ground covers it; deep blue in the middle, turquoise over the shallows, with wind ripples and the sun's glitter.
+const LAKE_FS = `
+uniform float uLakeT;
+varying vec3 vLkW;
+float lkH( vec2 p ) { return fract( sin( dot( p, vec2( 127.1, 311.7 ) ) ) * 43758.5453 ); }
+float lkN( vec2 p ) { vec2 i = floor( p ), f = fract( p ); vec2 u = f * f * ( 3.0 - 2.0 * f );
+	return mix( mix( lkH( i ), lkH( i + vec2( 1.0, 0.0 ) ), u.x ), mix( lkH( i + vec2( 0.0, 1.0 ) ), lkH( i + vec2( 1.0, 1.0 ) ), u.x ), u.y ); }
+`;
+function lakeMesh(L, world) {
+	const s = 0.012, pad = 0.03;
+	let lo0 = Infinity, lo1 = -Infinity, la0 = Infinity, la1 = -Infinity;
+	for (const [lo, la] of L.pts) (lo0 = Math.min(lo0, lo)), (lo1 = Math.max(lo1, lo)), (la0 = Math.min(la0, la)), (la1 = Math.max(la1, la));
+	lo0 -= pad; lo1 += pad; la0 -= pad; la1 += pad;
+	const nx = Math.ceil((lo1 - lo0) / s) + 1, ny = Math.ceil((la1 - la0) / s) + 1;
+	const pos = [], col = [], idx = [], id = new Int32Array(nx * ny).fill(-1), sd = new Float32Array(nx * ny);
+	for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) sd[j * nx + i] = lakeDist(L, lo0 + i * s, la0 + j * s);
+	const vert = (i, j) => {
+		const k = j * nx + i;
+		if (id[k] < 0) {
+			const w = toWorld(lo0 + i * s, la0 + j * s);
+			id[k] = pos.length / 3;
+			pos.push(w.x, L.level, w.z);
+			const t = smoothstep(0.2, 4.5, -sd[k]);
+			col.push(...[0, 1, 2].map((c) => Math.pow(lerp(L.shallow[c], L.deep[c], t), 2.2)));
+		}
+		return id[k];
+	};
+	for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+		const k = j * nx + i;
+		if (Math.min(sd[k], sd[k + 1], sd[k + nx], sd[k + nx + 1]) > 0.7) continue;
+		const a = vert(i, j), b = vert(i + 1, j), c = vert(i, j + 1), d = vert(i + 1, j + 1);
+		idx.push(a, c, b, b, c, d);
+	}
+	const g = new THREE.BufferGeometry();
+	g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+	g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+	g.setIndex(idx);
+	g.computeVertexNormals();
+	const mat = haze(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.12, metalness: 0.15 }));
+	const uT = { value: 0 };
+	patch(mat, "lake", (sh) => {
+		sh.uniforms.uLakeT = uT;
+		sh.vertexShader = "varying vec3 vLkW;\n" + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n\tvLkW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
+		sh.fragmentShader = LAKE_FS + sh.fragmentShader.replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+	{
+		vec2 p = vLkW.xz * 3.0;
+		float t = uLakeT;
+		float e = 0.06;
+		float h0 = lkN( p + vec2( t * 0.7, t * 0.4 ) ) + 0.5 * lkN( p * 2.3 - vec2( t * 1.1, -t * 0.6 ) );
+		float hx = lkN( p + vec2( e, 0.0 ) + vec2( t * 0.7, t * 0.4 ) ) + 0.5 * lkN( ( p + vec2( e, 0.0 ) ) * 2.3 - vec2( t * 1.1, -t * 0.6 ) );
+		float hz = lkN( p + vec2( 0.0, e ) + vec2( t * 0.7, t * 0.4 ) ) + 0.5 * lkN( ( p + vec2( 0.0, e ) ) * 2.3 - vec2( t * 1.1, -t * 0.6 ) );
+		vec3 wn = normalize( vec3( ( h0 - hx ) * 0.9, 1.0, ( h0 - hz ) * 0.9 ) );
+		normal = normalize( ( viewMatrix * vec4( wn, 0.0 ) ).xyz );
+	}`);
+	});
+	const m = new THREE.Mesh(g, mat);
+	m.receiveShadow = true;
+	m.name = "lake";
+	m.onBeforeRender = () => (uT.value = performance.now() / 1000 * 0.35);
+	m.userData.lake = L;
+	return m;
+}

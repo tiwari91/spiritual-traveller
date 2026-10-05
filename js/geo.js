@@ -1,6 +1,12 @@
 // Geography: a coarse outline of India, major rivers, cities, the shrines and the pilgrim route.
 // Coordinates are [longitude, latitude] in degrees. Projection: 1 degree = 40 world units,
 // x grows east from 82E, z grows south from 22N (so north is -z).
+import * as KJ from "./kailash-geo.js";
+
+// Which journey the page is: the five-shrine yatra (index.html) or the Kailash Mansarovar Yatra (kailash.html,
+// whose <html> carries data-journey="kailash"). Everything Kailash-only in the other modules hangs off this.
+export const JOURNEY = typeof document !== "undefined" && document.documentElement && document.documentElement.dataset.journey === "kailash" ? "kailash" : "yatra";
+export const KAILASH = JOURNEY === "kailash";
 export const SCALE = 40;
 export const ORIGIN = { lon: 82, lat: 22 };
 
@@ -38,7 +44,7 @@ export const NEIGHBOURS = [
 ];
 
 // Major rivers as polylines.
-export const RIVERS = [
+const YATRA_RIVERS = [
 	{ name: "Ganga", w: 1.6, pts: [[78.2, 30.1], [78.0, 29.2], [78.5, 27.6], [80.3, 26.5], [81.8, 25.4], [83.0, 25.3], [85.1, 25.6], [87.4, 25.2], [88.2, 24.5], [88.5, 23.0], [88.3, 21.7]] },
 	{ name: "Yamuna", w: 1.1, pts: [[78.4, 31.0], [77.3, 29.5], [77.2, 28.6], [78.0, 27.2], [79.9, 25.9], [81.8, 25.4]] },
 	{ name: "Godavari", w: 1.2, pts: [[73.8, 20.02], [74.5, 20.03], [75.5, 19.96], [75.62, 19.5], [77.3, 19.13], [79.6, 18.8], [80.8, 18.1], [81.8, 17.1], [82.3, 16.7]] },
@@ -53,7 +59,7 @@ export const RIVERS = [
 ];
 
 // Towns the route passes through, for labels and little lamp clusters.
-export const CITIES = [
+const YATRA_CITIES = [
 	{ name: "Pune", lon: 73.86, lat: 18.52, size: 3 },
 	{ name: "Solapur", lon: 75.91, lat: 17.68, size: 1 },
 	{ name: "Sangamner", lon: 74.21, lat: 19.57, size: 1 },
@@ -88,7 +94,7 @@ export const CITIES = [
 // The shrines, in the order of the yatra, with what the darshan card says. rest: where the traveller stands for
 // darshan in the shrine's local frame (x across, z out from the door), clear of the crowd; floor: the height there;
 // gate: points the traveller walks by on the way to it and back (round the outside of Tirumala's prakara wall).
-export const SHRINES = [
+const YATRA_SHRINES = [
 	{
 		key: "bhimashankar", name: "Bhimashankar", deva: "भीमाशंकर", lon: 73.535, lat: 19.072, facing: Math.PI / 2,
 		deity: "Shiva, as the Bhimashankar Jyotirlinga", kind: "Jyotirlinga",
@@ -148,7 +154,7 @@ export const SHRINES = [
 
 // Route waypoints, Pune to Badrinath. Each chapter ends at its shrine (ROUTE[i] ends at SHRINES[i]); secs is about
 // how long the leg takes at 1x, which sets the pace along it.
-export const ROUTE = [
+const YATRA_ROUTE = [
 	{ title: "Pune to the Sahyadri", secs: 28, kicker: "Dawn · by road", mode: "By road, 110 km", pts: [[73.86, 18.52], [73.95, 18.75], [73.93, 18.98], [73.75, 19.07], [73.535, 19.072]] },
 	// back down the Bhimashankar road to Manchar, then north on the Pune–Nashik highway (NH60) to Sangamner, Loni and Rahata
 	{ title: "Down the Sahyadri to Shirdi", secs: 40, kicker: "Late morning · by road", mode: "By road, about 180 km", pts: [[73.535, 19.072], [73.75, 19.07], [73.93, 18.98], [73.97, 19.12], [74.08, 19.19], [74.16, 19.4], [74.21, 19.57], [74.45, 19.59], [74.48, 19.71], [74.477, 19.766]] },
@@ -161,3 +167,14 @@ export const ROUTE = [
 ];
 // Gaurikund, where the road gives way to the 16 km footpath.
 export const GAURIKUND = [79.02, 30.62];
+
+// The journey's own stops, route, rivers and towns. The Kailash stops face away from the peak each looks at, so the
+// traveller standing in front of the "door" faces the mountain.
+if (KAILASH) for (const sh of KJ.SHRINES) {
+	const a = toWorld(sh.lon, sh.lat), b = toWorld(sh.look[0], sh.look[1]);
+	sh.facing = Math.atan2(a.x - b.x, a.z - b.z);
+}
+export const SHRINES = KAILASH ? KJ.SHRINES : YATRA_SHRINES;
+export const ROUTE = KAILASH ? KJ.ROUTE : YATRA_ROUTE;
+export const RIVERS = KAILASH ? KJ.RIVERS : YATRA_RIVERS;
+export const CITIES = KAILASH ? KJ.CITIES : YATRA_CITIES;

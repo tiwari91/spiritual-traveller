@@ -7,7 +7,8 @@
 import * as THREE from "three";
 import { M, RAIL, aToS, railAt, railHead, sToA, wireAt } from "./roads.js";
 import { surfaceAt } from "./traffic.js";
-import { STOCK, SEATED, autorickshaw, jeep, motorbike, taxi, train } from "./vehicles.js";
+import { STOCK, SEATED, autorickshaw, jeep, motorbike, taxi, tibetBus, train, yatraBus } from "./vehicles.js";
+import { KAILASH } from "./geo.js";
 import * as P from "./pilgrim.js";
 import { clamp, lerp, rand, smoothstep } from "./util.js";
 
@@ -381,6 +382,8 @@ export class Journey {
 	constructor(o) {
 		Object.assign(this, o);
 		this.v = { bike: motorbike(), car: taxi(), jeep: jeep(), auto: autorickshaw() };
+		// the Kailash journey's coaches: the yatra's bus out of Delhi, the Chinese bus on the Tibet side
+		if (KAILASH) Object.assign(this.v, { bus: yatraBus(), coach: tibetBus() });
 		for (const v of Object.values(this.v)) {
 			v.group.visible = false;
 			v.group.rotation.order = "YXZ";
@@ -466,16 +469,21 @@ export class Journey {
 		};
 		return lerp(at(i), at(i + 1), f);
 	}
+	// which side of the road everyone keeps to at s: 1 the left, as in India; -1 the right, as in China (the Kailash
+	// journey's Tibet side), where the coach's door is on the right too
+	keep(s) {
+		return KAILASH && s >= this.roads.tibetFrom ? -1 : 1;
+	}
 	walkLane(s) {
-		return -(this.half(s) + 0.6);
+		return -(this.half(s) + 0.6) * this.keep(s);
 	}
 	myLane(kind, s) {
 		const r = this.roads.road(s, 0, _rp), narrow = r && r.kind === "hill";
-		return kind === "bike" ? (narrow ? -1.1 : -0.6) : narrow ? -1.55 : -1.15;
+		return (kind === "bike" ? (narrow ? -1.1 : -0.6) : narrow ? -1.55 : -1.15) * this.keep(s);
 	}
 	kerbLane(kind, s) {
 		const v = this.v[kind];
-		return this.walkLane(s) + (kind === "bike" ? 0.55 : v.hull.x + 0.45);
+		return this.walkLane(s) + (kind === "bike" ? 0.55 : v.hull.x + 0.45) * this.keep(s);
 	}
 	station(T) {
 		const r = this.rake;
@@ -629,7 +637,7 @@ export class Journey {
 }
 
 // ---------- getting on and off ----------
-const veh = (m) => m === "car" || m === "jeep" || m === "auto" || m === "bike";
+const veh = (m) => m === "car" || m === "jeep" || m === "auto" || m === "bike" || m === "bus" || m === "coach";
 const sit = (v) => Object.assign({}, SEATED, { bob: v.seat.y - 0.95 });
 const V3 = (p, y) => new THREE.Vector3(p.x, y ?? p.y, p.z);
 Object.assign(Journey.prototype, {
@@ -749,7 +757,7 @@ Object.assign(Journey.prototype, {
 	},
 	// out of a car, jeep or auto: the door opens, the traveller slides out, the door shuts and it drives on
 	epAlight(T, kind, toStation) {
-		const v = this.v[kind], st = toStation ? this.station(T) : null, side = st ? -1 : 1;
+		const v = this.v[kind], st = toStation ? this.station(T) : null, side = st ? -1 : this.keep(T.s);
 		const lane = st ? st.laneRoad : this.kerbLane(kind, T.s), yW = st ? 1 : 0, yF = st ? st.forecourt : 0;
 		const door = v.door ? v.doors[side > 0 ? v.door : v.doorR] : null;
 		const dz = door ? (door.z0 + door.z1) / 2 : v.seat.z, hw = v.hull.x;
@@ -758,6 +766,8 @@ Object.assign(Journey.prototype, {
 		const L = (x, z) => this.local(v, x, 0, z);
 		const sx = Math.abs(v.seat.x), seat = [v.seat.x, v.seat.z], slide = [side * sx, v.seat.z], inn = [side * (hw - 0.28), dz], out = [side * (hw + 0.42), dz];
 		const yawV = () => v.group.rotation.y;
+		// a coach: its floor is up a few steps, and nobody ducks through its door
+		const fl = v.floor || 0, D = v.tall ? mix(STAND, DUCK, 0.25) : DUCK, up = (p, k = 1) => (fl && (p.y += fl * k), p);
 		let outW = null;
 		const cs = T.to === "walk" ? -1 : side; // at a bus stand, from the road side, clear of the parked buses
 		const cam = () => (st ? this.frame(L(out[0], out[1]), yawV() + 0.9, 1, 4.6, 0.26) : this.roadCam(L(out[0], out[1]), yawV()));
@@ -768,13 +778,13 @@ Object.assign(Journey.prototype, {
 				put();
 				door && door.open(1);
 				const a = side < 0 ? (k < 0.5 ? [lerp(seat[0], slide[0], k * 2), seat[1]] : [lerp(slide[0], inn[0], k * 2 - 1), lerp(slide[1], inn[1], k * 2 - 1)]) : [lerp(seat[0], inn[0], k), lerp(seat[1], inn[1], k)];
-				this.tvSet(L(a[0], a[1]), (side * Math.PI) / 2 * smoothstep(0, 0.6, k), "idle", mix(sit(v), DUCK, smoothstep(0, 1, k)), 1, { quat: v.group.quaternion, staff: false });
+				this.tvSet(up(L(a[0], a[1])), (side * Math.PI) / 2 * smoothstep(0, 0.6, k), "idle", mix(sit(v), D, smoothstep(0, 1, k)), 1, { quat: v.group.quaternion, staff: false });
 				cam();
 			} },
 			{ d: 1.0, f: (k) => {
 				put();
 				door && door.open(1);
-				this.tvSet(L(lerp(inn[0], out[0], k), dz), (side * Math.PI) / 2, k < 0.9 ? "walk" : "idle", mix(DUCK, STAND, smoothstep(0.1, 1, k)), 1, { quat: v.group.quaternion, staff: k > 0.5 });
+				this.tvSet(up(L(lerp(inn[0], out[0], k), dz), 1 - smoothstep(0.1, 0.9, k)), (side * Math.PI) / 2, k < 0.9 ? "walk" : "idle", mix(D, STAND, smoothstep(0.1, 1, k)), 1, { quat: v.group.quaternion, staff: k > 0.5 });
 				cam();
 			} },
 			{ d: 0.6, start: () => (put(), (outW = L(out[0], out[1]))), f: (k) => {
@@ -795,7 +805,7 @@ Object.assign(Journey.prototype, {
 	},
 	// into a car, jeep or auto: it pulls up (or stands waiting), the door opens, in, sit, the door shuts
 	epBoard(T, kind, st) {
-		const v = this.v[kind], side = st ? -1 : 1;
+		const v = this.v[kind], side = st ? -1 : this.keep(T.s);
 		const lane = st ? st.laneRoad : this.kerbLane(kind, T.s), yW = st ? 1 : 0, yF = st ? st.forecourt : 0;
 		const door = v.door ? v.doors[side > 0 ? v.door : v.doorR] : null;
 		const dz = door ? (door.z0 + door.z1) / 2 : v.seat.z, hw = v.hull.x;
@@ -805,6 +815,7 @@ Object.assign(Journey.prototype, {
 		const sx = Math.abs(v.seat.x), seat = [v.seat.x, v.seat.z], slide = [side * sx, v.seat.z], inn = [side * (hw - 0.28), dz], out = [side * (hw + 0.42), dz];
 		const yawV = () => v.group.rotation.y;
 		const cam = () => (st ? this.frame(L(out[0], out[1]), yawV() + 0.9, 1, 4.6, 0.26) : this.roadCam(L(out[0], out[1]), yawV()));
+		const fl = v.floor || 0, D = v.tall ? mix(STAND, DUCK, 0.25) : DUCK, up = (p, k = 1) => (fl && (p.y += fl * k), p);
 		let P0 = null, prevS = sv - 9;
 		const steps = [];
 		if (!st) steps.push({ d: 2.6, start: () => (P0 = this.traveller.group.position.clone()), f: (k) => {
@@ -838,14 +849,15 @@ Object.assign(Journey.prototype, {
 				// and up off the ground into the car
 				const q = L(lerp(out[0], inn[0], k), dz), lo = L(out[0], out[1]);
 				if (!st) q.y += (surfaceAt(this.roads, lo.x, lo.z) - lo.y) * (1 - smoothstep(0, 0.5, k));
-				this.tvSet(q, (-side * Math.PI) / 2, "idle", mix(STAND, DUCK, smoothstep(0, 0.8, k)), 1, { quat: v.group.quaternion, staff: k < 0.6 });
+				up(q, smoothstep(0.1, 0.9, k));
+				this.tvSet(q, (-side * Math.PI) / 2, "idle", mix(STAND, D, smoothstep(0, 0.8, k)), 1, { quat: v.group.quaternion, staff: k < 0.6 });
 				cam();
 			} },
 			{ d: side < 0 ? 1.4 : 1.0, f: (k) => {
 				put();
 				door && door.open(1);
 				const a = side < 0 ? (k < 0.5 ? [lerp(inn[0], slide[0], k * 2), lerp(inn[1], slide[1], k * 2)] : [lerp(slide[0], seat[0], k * 2 - 1), seat[1]]) : [lerp(inn[0], seat[0], k), lerp(inn[1], seat[1], k)];
-				this.tvSet(L(a[0], a[1]), ((-side * Math.PI) / 2) * (1 - smoothstep(0.3, 1, k)), "idle", mix(DUCK, sit(v), smoothstep(0, 1, k)), 1, { quat: v.group.quaternion, staff: false });
+				this.tvSet(up(L(a[0], a[1])), ((-side * Math.PI) / 2) * (1 - smoothstep(0.3, 1, k)), "idle", mix(D, sit(v), smoothstep(0, 1, k)), 1, { quat: v.group.quaternion, staff: false });
 				cam();
 			} },
 			{ d: door ? 0.6 : 0.2, f: (k) => (put(), door && door.open(1 - k), this.seated(v), cam()) },

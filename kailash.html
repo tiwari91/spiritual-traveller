@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en" data-journey="kailash">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kailash Mansarovar · Spiritual Traveller</title>
+<meta name="description" content="The Kailash Mansarovar Yatra in 3D in the browser: from Delhi up the Kali to the Lipulekh Pass, over into Tibet, a snan in Mansarovar and the parikrama of Kailash on foot.">
+<meta name="theme-color" content="#0a1430">
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&family=Tiro+Devanagari+Hindi&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/sanctum.css">
+<link rel="stylesheet" href="css/map3d.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="scene" aria-label="3D map of the Kailash Mansarovar Yatra"></canvas>
+
+<div id="loader" class="loader" role="status">
+	<img src="assets/logo.svg" alt="" width="64" height="64">
+	<div class="loader-name">Spiritual Traveller</div>
+	<div class="loader-msg" id="loader-msg">Lighting the lamp</div>
+</div>
+
+<section id="intro" class="intro" aria-labelledby="intro-title">
+	<div class="intro-inner">
+		<div class="kicker">The Kailash Mansarovar Yatra · by the Lipulekh</div>
+		<h1 id="intro-title">Kailash Mansarovar</h1>
+		<p class="lede">Set out from Delhi, where the yatra assembles, by road into the Kumaon hills and up the gorge of the Kali to the last camp under Om Parvat. Cross the Lipulekh Pass into Tibet on foot, take the yatra's bus round Mansarovar for the snan, and walk the three days round Kailash, over the Dolma La.</p>
+		<ol class="route-list">
+			<li><span class="dot"></span><b>Om Parvat</b><span>ॐ in the snow above Nabhidhang, the last camp in India</span></li>
+			<li><span class="dot"></span><b>Mansarovar</b><span>The snan in the sacred lake, 4,590 m</span></li>
+			<li><span class="dot"></span><b>Yam Dwar</b><span>The gate of the parikrama, under Tarboche's flags</span></li>
+			<li><span class="dot"></span><b>Dirapuk</b><span>The north face of Kailash</span></li>
+			<li><span class="dot"></span><b>Dolma La</b><span>The pass, about 5,630 m</span></li>
+			<li><span class="dot"></span><b>Darchen</b><span>The parikrama complete</span></li>
+		</ol>
+		<button id="start" class="primary" disabled>Begin the yatra</button>
+		<p class="hint" id="hint">Space to pause or continue · 1 to 6 to go to a stop · drag to look around</p>
+		<p class="hint"><a href="./">The five-shrine yatra from Pune</a></p>
+	</div>
+</section>
+
+<div id="hud" class="hud">
+	<header class="top">
+		<div class="brand">
+			<img src="assets/logo.svg" alt="" class="logo" width="34" height="34">
+			<div class="brand-text">
+				<div class="name">Spiritual Traveller</div>
+				<div class="where" id="where">Delhi</div>
+			</div>
+		</div>
+		<nav class="icons">
+			<button class="ic" id="btn-chapters" aria-label="Stops" title="Stops" aria-expanded="false">
+				<svg viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0C18.5 15.4 12 21 12 21z"/><circle cx="12" cy="10" r="2.4"/></svg>
+			</button>
+			<button class="ic" id="btn-sound" aria-label="Temple sounds" title="Temple sounds (M)" aria-pressed="false">
+				<svg viewBox="0 0 24 24" class="on"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+				<svg viewBox="0 0 24 24" class="off"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+			</button>
+			<button class="ic" id="btn-zin" aria-label="Zoom in" title="Zoom in (scroll, pinch or ])"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20M10.5 7.5v6M7.5 10.5h6"/></svg></button>
+			<button class="ic" id="btn-zout" aria-label="Zoom out" title="Zoom out (scroll, pinch or [)"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20M7.5 10.5h6"/></svg></button>
+			<button class="ic" id="btn-help" aria-label="Controls" title="Controls (?)">
+				<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.8"/><circle cx="12" cy="17" r="0.6" fill="currentColor"/></svg>
+			</button>
+		</nav>
+	</header>
+	<div id="chapters" class="menu panel" hidden>
+		<div class="menu-title">Go to a stop</div>
+		<ul id="chapter-list"></ul>
+		<button class="menu-restart" id="btn-restart">Start again from Delhi</button>
+	</div>
+
+	<div id="card" class="card" aria-live="polite"><div class="card-kicker" id="card-kicker"></div><div class="card-title" id="card-title"></div><div class="card-line" id="card-line"></div></div>
+	<div id="toast" class="toast" aria-live="polite"></div>
+	<div id="labels" class="labels" aria-hidden="true"></div>
+
+	<aside id="darshan" class="darshan panel" aria-live="polite" aria-labelledby="d-name">
+		<div class="d-scroll">
+			<div class="d-kicker" id="d-kicker">Darshan</div>
+			<h2 id="d-name">Kedarnath</h2>
+			<div class="d-deva" id="d-deva" lang="hi"></div>
+			<div class="d-deity" id="d-deity"></div>
+			<div class="mantra"><div class="m-deva" id="d-mantra" lang="sa"></div><div class="m-latin" id="d-mantra-latin"></div></div>
+			<button class="enter" id="enter">Go inside again <span>the rituals play by themselves (E)</span></button>
+			<dl class="facts">
+				<div><dt>Where</dt><dd id="d-state"></dd></div>
+				<div><dt>Altitude</dt><dd id="d-alt"></dd></div>
+				<div><dt>Best season</dt><dd id="d-season"></dd></div>
+				<div><dt>Getting there</dt><dd id="d-access"></dd></div>
+			</dl>
+			<p class="d-note" id="d-note"></p>
+		</div>
+		<div class="d-foot">
+			<div class="d-greet" id="d-greet"></div>
+			<button id="continue" class="primary">Continue the yatra</button>
+		</div>
+	</aside>
+
+	<div class="bottom">
+		<div class="map panel" id="map-wrap"><canvas id="minimap" width="240" height="240" aria-label="Route map, Delhi to Kailash"></canvas><div class="map-meta" id="map-meta">0 km</div></div>
+		<div class="center panel">
+			<div class="progress" id="progress" aria-label="Journey progress">
+				<div class="track"><div class="fill" id="fill"></div></div>
+				<div class="nodes" id="nodes"></div>
+			</div>
+			<div class="controls">
+				<button class="chip" id="btn-play" title="Pause or continue (Space)" aria-label="Pause">
+					<svg viewBox="0 0 24 24" class="pause"><path d="M8 5.5v13M16 5.5v13"/></svg>
+					<svg viewBox="0 0 24 24" class="play"><path d="M7 5l12 7-12 7z"/></svg>
+				</button>
+				<button class="chip" id="btn-speed" title="Travel speed (+ / -)"><span id="speed-label">1×</span></button>
+				<button class="chip" id="btn-time" title="Time of day (T)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></svg><span id="time-label">Auto</span></button>
+				<button class="chip" id="btn-transport" title="How to travel (V)"><svg viewBox="0 0 24 24"><circle cx="6" cy="16.5" r="3"/><circle cx="18" cy="16.5" r="3"/><path d="M6 16.5l4-7h5l3 7M10 9.5L8.5 6.5H6.5M15 9.5l1-3h2"/></svg><span id="transport-label">Mixed</span></button>
+				<button class="chip" id="btn-weather" title="Weather (W)"><svg viewBox="0 0 24 24"><path d="M7 17h10a4 4 0 0 0 .4-8A5.5 5.5 0 0 0 7 10.5 3.3 3.3 0 0 0 7 17z"/></svg><span id="weather-label">Auto</span></button>
+				<button class="chip" id="btn-aarti-music" title="Aarti music: Krishna Das / Temple (synth)" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></svg><span>Krishna Das</span></button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div id="help" class="dialog" hidden role="dialog" aria-modal="true" aria-labelledby="help-title">
+	<div class="dialog-card panel">
+		<h2 id="help-title">Controls</h2>
+		<table>
+			<tr><th>Pause or continue, next darshan</th><td>Space or Enter</td></tr>
+			<tr><th>Go to a stop</th><td>1 to 6, or the pin menu</td></tr>
+			<tr><th>Faster or slower</th><td>+ and −</td></tr>
+			<tr><th>Look around</th><td>Drag, or arrow keys</td></tr>
+			<tr><th>Zoom</th><td>Scroll, pinch, the magnifier buttons, or [ and ]</td></tr>
+			<tr><th>Reset the view</th><td>C or double-click</td></tr>
+			<tr><th>Time of day / weather</th><td>T / W</td></tr>
+			<tr><th>Out of Delhi: the yatra's bus, train, bike or car</th><td>V</td></tr>
+			<tr><th>The rituals at a stop</th><td>E</td></tr>
+			<tr><th>3D satellite map</th><td>G, or the minimap</td></tr>
+			<tr><th>Temple sounds</th><td>M</td></tr>
+			<tr><th>Aarti music: Krishna Das / Temple (synth)</th><td><button class="chip" id="help-aarti-music" type="button"><svg viewBox="0 0 24 24"><path d="M9 17.5V6l10-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></svg><span>Krishna Das</span></button></td></tr>
+			<tr><th>Hide the panels</th><td>H</td></tr>
+		</table>
+		<h3 class="help-h">Music</h3>
+		<p class="small">Aarti music by <a href="https://www.krishnadas.com" target="_blank" rel="noopener">Krishna Das</a>, played from his <a href="https://www.youtube.com/@KrishnaDasMusic" target="_blank" rel="noopener">official YouTube channel</a>; all rights belong to Krishna Das and his label. Visit <a href="https://www.krishnadas.com" target="_blank" rel="noopener">krishnadas.com</a>.</p>
+		<ul class="small help-tracks">
+			<li>Om Parvat, Yam Dwar, Dolma La: <a href="https://www.youtube.com/watch?v=PTc8X37oJBE" target="_blank" rel="noopener">Om Namah Shivaya (Live! Songs With Lyrics)</a></li>
+			<li>Mansarovar, Dirapuk, Darchen: <a href="https://www.youtube.com/watch?v=sn1otVlvVrM" target="_blank" rel="noopener">Jai Shiva Omkara</a></li>
+		</ul>
+		<p class="small">Choose "Temple" on the note chip (here, or in the controls bar on a wider screen) for the original temple music, synthesised in the page (no recordings); it also plays whenever the video cannot load.</p>
+		<p class="small">The map is stylised, with exaggerated relief and no lines between countries. Kailash and its parikrama are drawn about four times larger than life and set north of their true place so the circuit can be walked round the mountain; distances are approximate. Itineraries, permits and access change each year: check the Ministry of External Affairs (kmy.gov.in) before travelling.</p>
+		<button class="primary" id="help-close">Close</button>
+	</div>
+</div>
+
+<div id="finale" class="dialog" hidden role="dialog" aria-modal="true" aria-labelledby="finale-title">
+	<div class="dialog-card panel finale-card">
+		<div class="kicker">Yatra complete</div>
+		<h2 id="finale-title">The parikrama complete</h2>
+		<ul class="finale-list" id="finale-list"></ul>
+		<p class="small" id="finale-km"></p>
+		<div class="finale-actions"><button class="primary" id="finale-again">Begin again</button><button class="ghost" id="finale-close">Stay a while</button></div>
+	</div>
+</div>
+
+<noscript><p class="noscript">The Kailash Mansarovar Yatra needs JavaScript and WebGL.</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
