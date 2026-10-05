@@ -874,6 +874,27 @@ export class Roads {
 		}
 		return d;
 	}
+	// Distance from x, z to the middle of the nearest path on foot (the trek, a temple's pilgrim path), Infinity
+	// if none is near: the follow camera walks a body length or two to one side of the traveller, so a tree's
+	// crown has to stand that much further off than the path's own edge.
+	footDist(x, z) {
+		if (!this.footHash) {
+			this.footHash = new Map();
+			for (const pts of [this.trek, ...this.walks]) for (const p of pts) {
+				const key = Math.floor(p.x / 4) * 100003 + Math.floor(p.z / 4);
+				let c = this.footHash.get(key);
+				if (!c) this.footHash.set(key, (c = []));
+				c.push(p.x, p.z);
+			}
+		}
+		let d = Infinity;
+		const cx = Math.floor(x / 4), cz = Math.floor(z / 4);
+		for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+			const cell = this.footHash.get((cx + i) * 100003 + (cz + j));
+			if (cell) for (let k = 0; k < cell.length; k += 2) d = Math.min(d, Math.hypot(cell[k] - x, cell[k + 1] - z));
+		}
+		return d;
+	}
 	index() {
 		this.hash = new Map();
 		const put = (x, z, half) => {

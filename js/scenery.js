@@ -505,6 +505,8 @@ export class Scenery {
 				const s = sc * (0.75 + R() * 0.4);
 				// the whole crown keeps clear of the road, the line and its wires, not just the trunk
 				if (!painted && this.roads.clearance(x, z) < this.trees.radius(ki) * s * 1.05 + 0.15) return 0;
+				// and a little more off a path on foot, so the camera following a pilgrim along it is not in the leaves
+				if (this.roads.footDist(x, z) < this.trees.radius(ki) * s + 1.9) return 0;
 				const v = 0.82 + R() * 0.3;
 				const y = world.height(x, z);
 				trees.push(x, y - 0.03, z, R() * 6.3, s, s * (0.88 + R() * 0.24), ki, v * tint[0], v * tint[1] * (0.95 + R() * 0.1), v * tint[2], painted ? 1 : 0);

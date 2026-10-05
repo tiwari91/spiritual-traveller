@@ -10,6 +10,7 @@ import { WINDOW_GLOW } from "./vehicles.js";
 import { Journey } from "./boarding.js";
 import { M, Roads } from "./roads.js";
 import { Scenery } from "./scenery.js";
+import { TREE_STRIDE } from "./trees.js";
 import { Traffic, roadSurface, surfaceAt } from "./traffic.js";
 import { Sanctum } from "./sanctum.js";
 import { Music } from "./music.js";
@@ -75,6 +76,7 @@ async function init() {
 	msg.textContent = "Building the temples";
 	await nextFrame();
 	landmarks = buildLandmarks(world, scene, renderer, crowdFigure);
+	clearForests();
 	line = routeLine(route);
 	scene.add(line);
 	traveller = new Traveller();
@@ -385,6 +387,25 @@ function cameraGoal() {
 		g.dist = jc.dist * (innerWidth < innerHeight ? 1.35 : 1);
 	}
 	return g;
+}
+// The shrine forests (Bhimashankar's, the Tirumala hills) keep back from the way on foot to and from each door,
+// so the camera following a pilgrim along it is not in among the leaves.
+function clearForests() {
+	const T = scenery.trees, pts = [];
+	route.chapters.forEach((c, i) => {
+		for (let s = Math.max(c.s0, c.s1 - 30); s <= c.s1; s += 0.1) pts.push(route.at(s, {}));
+		const n = route.chapters[i + 1];
+		if (n) for (let s = n.s0; s <= Math.min(n.s1, n.s0 + 30); s += 0.1) pts.push(route.at(s, {}));
+	});
+	for (const [id, set] of [...T.sets]) {
+		if (!String(id).startsWith("forest")) continue;
+		const d = set.data, keep = [];
+		for (let i = 0; i < set.n; i++) {
+			const o = i * TREE_STRIDE, x = d[o], z = d[o + 2], room = T.radius(d[o + 6]) * d[o + 4] + 2.2;
+			if (!pts.some((p) => Math.abs(p.x - x) < room && Math.abs(p.z - z) < room && Math.hypot(p.x - x, p.z - z) < room)) keep.push(...d.subarray(o, o + TREE_STRIDE));
+		}
+		if (keep.length < set.n * TREE_STRIDE) T.add(id, new Float32Array(keep), keep.length / TREE_STRIDE);
+	}
 }
 const occRay = new THREE.Raycaster(), occDir = new THREE.Vector3();
 // Distance from the traveller towards the camera to the first solid thing in the way, or null.
