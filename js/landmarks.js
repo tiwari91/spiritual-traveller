@@ -1089,6 +1089,14 @@ function saiMurti(marble, cloth, shawl, silver, dark) {
 	mesh(new THREE.SphereGeometry(0.1, 20, 14), marble, 0, 1.16, 0.01, m).scale.set(0.95, 1.08, 1);
 	mesh(new THREE.SphereGeometry(0.075, 14, 10), marble, 0, 1.1, 0.04, m).scale.set(1, 1.1, 0.85);
 	for (const x of [-0.033, 0.033]) mesh(new THREE.SphereGeometry(0.011, 8, 6), dark, x, 1.165, 0.092, m);
+	// carved in the marble, a shade greyer: brows, the nose, the moustache over the short beard
+	const grey = marble.clone();
+	grey.color.multiplyScalar(0.86);
+	grey.emissiveIntensity = (marble.emissiveIntensity || 0) * 0.7;
+	for (const x of [-1, 1]) mesh(box(0.034, 0.008, 0.012), grey, x * 0.034, 1.186, 0.09, m).rotation.z = -x * 0.18;
+	mesh(new THREE.ConeGeometry(0.012, 0.032, 6), marble, 0, 1.142, 0.1, m).rotation.x = -1.35;
+	for (const x of [-1, 1]) mesh(box(0.034, 0.009, 0.014), grey, x * 0.02, 1.118, 0.096, m).rotation.z = x * 0.35;
+	mesh(new THREE.SphereGeometry(0.06, 12, 8, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.4), grey, 0, 1.12, 0.045, m).scale.set(1, 1.15, 0.9);
 	// the saffron cloth tied over the head, knotted at the side and hanging behind
 	mesh(new THREE.SphereGeometry(0.113, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.43), cloth, 0, 1.165, 0.0, m).scale.set(1, 1.05, 1.02);
 	mesh(box(0.17, 0.26, 0.035), cloth, 0, 1.05, -0.1, m).rotation.x = -0.15;
@@ -1102,6 +1110,9 @@ function saiMurti(marble, cloth, shawl, silver, dark) {
 	mesh(new THREE.CylinderGeometry(0.205, 0.255, 0.3, 22, 1, true), shawl, 0, 0.86, -0.02, m).scale.z = 0.85;
 	mesh(new THREE.SphereGeometry(0.21, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), shawl, 0, 0.99, -0.02, m).scale.set(1.18, 0.55, 0.85);
 	mesh(box(0.09, 0.26, 0.03), marble, 0, 0.86, 0.2, m).rotation.x = -0.12;
+	// the kafni's folds: soft ridges down the front of the robe and over the lap
+	for (const x of [-0.11, -0.05, 0.05, 0.11]) mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.34, 6), marble, x, 0.74, 0.135 - Math.abs(x) * 0.25, m).rotation.x = -0.18;
+	for (const x of [-0.14, 0, 0.14]) mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.3, 6), marble, x, 0.55, 0.2, m).rotation.x = Math.PI / 2 - 0.25;
 	const rim = mesh(new THREE.TorusGeometry(0.248, 0.012, 6, 28), GOLD, 0, 0.705, -0.02, m);
 	rim.rotation.x = Math.PI / 2;
 	rim.scale.y = 0.85;
