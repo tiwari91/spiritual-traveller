@@ -1,7 +1,7 @@
 // Headless browser check for Spiritual Traveller.
 // Usage: node tests/check.mjs            (writes screenshots to tests/shots/)
 // Env:   CHROME_BIN=/path/to/chrome-headless-shell   PW_REQUIRE=/path/to/a/package.json that has playwright
-//        ONLY=basic|scenarios|phone|kbasic|kscenarios|kphone   run some parts (default: all; the k parts are the
+//        ONLY=basic|scenarios|phone|kleh|kbasic|kscenarios|kphone   run some parts (default: all; the k parts are the
 //                                       Kailash Mansarovar journey, kailash.html)
 //        MODES=mixed,train,bike,car     LEGS=0,1,2,3,4   which journeys the scenarios ride (default: all)
 // The scenarios ride every leg in every way of travelling, end to end, with tests/monitor.js watching each frame,
@@ -79,6 +79,7 @@ try {
 		await scenarios({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, "phone");
 		await sheets("phone");
 	}
+	if (part("kleh")) await kailashLeh();
 	if (part("kbasic")) await kailashBasic();
 	if (part("kscenarios")) {
 		await scenarios({ width: 1280, height: 760 }, "kailash-desk", KPAGE);
@@ -350,8 +351,38 @@ async function sheets(tag) {
 }
 
 // ---------- the Kailash Mansarovar journey (kailash.html) ----------
+// The way from Leh: the stops and route in order, every point inside Ladakh or western Tibet, and the choice of way
+// remembered across loads.
+async function kailashLeh() {
+	const geo = await import(new URL("../js/kailash-geo.js", import.meta.url).href);
+	const { ctx, page } = await open({}, "?noenter=1&route=leh", KPAGE);
+	await wait(page, 1500);
+	const d = await page.evaluate(() => import("./js/kailash-geo.js").then((m) => ({ choice: m.ROUTE_CHOICE, keys: m.SHRINES.map((s) => s.key), legs: m.ROUTE.map((r) => r.pts), stops: m.SHRINES.map((s) => [s.lon, s.lat]) })));
+	ok("Leh: the way from Leh is chosen", d.choice === "leh");
+	ok("Leh: stops in order", d.keys.join() === "hemis,chumathang,hanle,demchok,mansarovar,yamdwar,dirapuk,dolmala,darchen", d.keys.join());
+	ok("Leh: the route starts in Leh", Math.hypot(d.legs[0][0][0] - 77.585, d.legs[0][0][1] - 34.164) < 0.01);
+	ok("Leh: each leg ends at its stop", d.legs.every((pts, i) => Math.hypot(pts.at(-1)[0] - d.stops[i][0], pts.at(-1)[1] - d.stops[i][1]) < 0.02));
+	ok("Leh: each leg starts where the last ended", d.legs.every((pts, i) => !i || Math.hypot(pts[0][0] - d.legs[i - 1].at(-1)[0], pts[0][1] - d.legs[i - 1].at(-1)[1]) < 0.02));
+	const ladakh = d.legs.slice(0, 4).flat(), tib = d.legs.slice(4).flat();
+	ok("Leh: the Ladakh legs lie in Ladakh", ladakh.every(([lo, la]) => lo > 77.3 && lo < 79.5 && la > 32.6 && la < 34.4));
+	ok("Leh: the Tibet legs lie in Ngari", tib.every(([lo, la]) => lo > 79.4 && lo < 81.8 && la > 30.4 && la < 32.8));
+	ok("Leh: the way climbs south-east, Leh to Demchok", d.stops.slice(0, 4).every((p, i) => !i || p[0] > d.stops[i - 1][0]));
+	ok("Leh: geo module defaults to Leh", geo.ROUTE_CHOICE === "leh" || geo.ROUTE_CHOICE === "lipulekh");
+	// the choice is remembered without the address saying so, and changing it reloads on the other way
+	await page.goto(BASE + KPAGE + "?noenter=1");
+	await wait(page, 1200);
+	ok("Leh: the choice persists", await page.evaluate(() => document.documentElement.dataset.route === "leh" && document.querySelector('.route-choice [data-route="leh"]').getAttribute("aria-checked") === "true"));
+	await page.click('.route-choice [data-route="lipulekh"]');
+	await page.waitForURL(/route=lipulekh/);
+	await wait(page, 1200);
+	await page.goto(BASE + KPAGE + "?noenter=1");
+	await wait(page, 1200);
+	ok("Leh: choosing the Lipulekh is remembered", await page.evaluate(() => document.documentElement.dataset.route === "lipulekh" && !document.querySelector('[data-for="lipulekh"]').hidden));
+	await page.evaluate(() => localStorage.setItem("kailashRoute", "leh"));
+	await ctx.close();
+}
 async function kailashBasic() {
-	const { ctx, page, errors } = await open({}, "?noenter=1", KPAGE);
+	const { ctx, page, errors } = await open({}, "?noenter=1&route=lipulekh", KPAGE);
 	await wait(page, 1500);
 	await shot(page, "k01-intro");
 	ok("Kailash: the page is the Kailash journey", await page.evaluate(() => document.documentElement.dataset.journey === "kailash" && document.getElementById("intro-title").textContent === "Kailash Mansarovar"));
