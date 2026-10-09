@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { VCOL } from "./batch.js";
 import { BOX, CYL, Kit, Outline, QUAD, SPH, arc, archFlare, at, carBody, loft, longSlab, planWidth, prep, section, stations, wheel } from "./carkit.js";
 import { autoBody } from "./vehicles.js";
-import { KAILASH } from "./geo.js";
+import { KAILASH, toGeo } from "./geo.js";
 import { LEH as LEH_ROUTE } from "./kailash-geo.js";
 const LEH = KAILASH && LEH_ROUTE;
 import { M } from "./roads.js";
@@ -416,6 +416,70 @@ export class Traffic {
 	// on: whether traffic should show; scale: world units per metre; me: the traveller's half width (m)
 	// me: { x, z, r } the traveller's footprint (world units); nothing may ever overlap it
 	update(dt, s, pace, on, scale, me = null) {
+		this.move(dt, s, pace, on, scale, me);
+		if (LEH) this.dust(dt, s, pace, on, scale, me);
+	}
+	// On the broken and gravel road past Chumathang every wheel throws up dust: tan puffs that swell, rise a
+	// little and thin away behind each vehicle, and behind the traveller's own bike or jeep.
+	dust(dt, s, pace, on, scale, me) {
+		if (!this.puffs) {
+			this.puffs = [];
+			const geo = new THREE.IcosahedronGeometry(1, 1);
+			for (let i = 0; i < 90; i++) {
+				const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0xc9b48e, transparent: true, opacity: 0, depthWrite: false }));
+				m.visible = false;
+				m.renderOrder = 2;
+				this.group.add(m);
+				this.puffs.push({ m, t: 1, life: 1, vx: 0, vz: 0 });
+			}
+			this.nextPuff = 0;
+		}
+		const world = this.roads.world, R = Math.random;
+		const rough = (x, z) => s < this.roads.tibetFrom && toGeo(x, z).lon >= 78.25;
+		const emit = (x, z, bx, bz, k) => {
+			if (R() > k * dt * 9 || !rough(x, z)) return;
+			const q = this.puffs[this.nextPuff];
+			this.nextPuff = (this.nextPuff + 1) % this.puffs.length;
+			q.t = 0;
+			q.life = 1.6 + R() * 1.2;
+			q.size = (0.5 + R() * 0.4) * scale;
+			q.vx = bx * 0.4 * scale + (R() - 0.5) * 0.3 * scale;
+			q.vz = bz * 0.4 * scale + (R() - 0.5) * 0.3 * scale;
+			const px = x + (R() - 0.5) * 0.4 * scale, pz = z + (R() - 0.5) * 0.4 * scale;
+			q.m.position.set(px, world.height(px, pz) + 0.3 * scale, pz);
+			q.m.visible = true;
+		};
+		if (on) {
+			for (const c of this.cars) {
+				const m = c.mesh;
+				if (!c.live || !m || !m.visible) continue;
+				const bx = -Math.sin(m.rotation.y), bz = -Math.cos(m.rotation.y), h = (LEN[c.type] / 2) * scale;
+				emit(m.position.x + bx * h, m.position.z + bz * h, bx, bz, c.type === "biker" ? 0.6 : 1);
+			}
+			// behind the traveller's own wheels, by the way they have just come; small, not to fog the camera behind
+			if (me && pace > 0 && this.lastMe) {
+				const dx = me.x - this.lastMe.x, dz = me.z - this.lastMe.z, l = Math.hypot(dx, dz);
+				if (l > 1e-5) emit(me.x - (dx / l) * 0.5 * scale, me.z - (dz / l) * 0.5 * scale, -dx / l, -dz / l, 0.5);
+			}
+			if (me) this.lastMe = { x: me.x, z: me.z };
+		}
+		for (const q of this.puffs) {
+			if (q.t >= q.life) continue;
+			q.t += dt;
+			const f = Math.min(1, q.t / q.life);
+			if (f >= 1) {
+				q.m.visible = false;
+				continue;
+			}
+			q.m.position.x += q.vx * dt;
+			q.m.position.z += q.vz * dt;
+			q.m.position.y += 0.25 * scale * dt;
+			const r = q.size * (1 + f * 1.6);
+			q.m.scale.set(r, r * 0.6, r);
+			q.m.material.opacity = 0.3 * Math.min(1, f * 6) * (1 - f);
+		}
+	}
+	move(dt, s, pace, on, scale, me = null) {
 		this.frame = (this.frame || 0) + 1;
 		if (!on) {
 			for (const c of this.cars) if (c.mesh) c.mesh.visible = false;
