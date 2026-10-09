@@ -379,11 +379,12 @@ export function* kailashCountry(sc, ctx, reg) {
 		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * (4.5 + R() * 16), {});
 		if (!inTibet(c.x, c.z) || !tallOk(c.x, c.z, 1.5)) continue;
 		const n = sheep ? 12 + Math.floor(R() * 14) : 4 + Math.floor(R() * 7);
+		// (the herder stands at the edge of the herd, never where an animal is)
+		const hx = c.x + (sheep ? 1.9 : 2.4), hz = c.z - 0.6;
 		for (let q = 0; q < n; q++) {
 			const x = c.x + (R() - 0.5) * (sheep ? 3 : 4), z = c.z + (R() - 0.5) * (sheep ? 3 : 4);
-			if (okAt(x, z, 0.1)) addAnimal(b, sheep ? "sheep" : "yak", R, x, world.height(x, z), z, R() * 6.3);
+			if (okAt(x, z, 0.1) && Math.hypot(x - hx, z - hz) > (sheep ? 0.4 : 0.75)) addAnimal(b, sheep ? "sheep" : "yak", R, x, world.height(x, z), z, R() * 6.3);
 		}
-		const hx = c.x + 1.2, hz = c.z - 0.6;
 		if (okAt(hx, hz, 0.1)) addPerson(b, R, hx, world.height(hx, hz), hz, R() * 6.3, "tibetan");
 		if (R() < 0.6) {
 			const tx = c.x - 2.2, tz = c.z + 1.4;
