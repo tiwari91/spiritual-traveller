@@ -984,6 +984,15 @@ function loop(now) {
 	landmarks.forEach((l, i) => (l.root.visible = app.state !== "darshan" || app.at === i));
 	for (const l of landmarks) {
 		l.steam.forEach((sp, i) => {
+			const u = sp.userData;
+			if (u.base) {
+				// a wisp off a hot spring: it rises, spreads and thins out, leaning on the breeze
+				const ph = (app.t * 0.18 + u.ph) % 1, k = Math.sin(ph * Math.PI);
+				sp.position.set(u.base[0] + ph * u.drift + Math.sin(app.t * 0.7 + i) * 0.05, u.base[1] + 0.1 + ph * u.rise, u.base[2] + Math.cos(app.t * 0.5 + i) * 0.05);
+				sp.material.opacity = u.peak * k * (1 - ph * 0.4);
+				sp.scale.setScalar(u.size * (0.6 + ph * 1.8));
+				return;
+			}
 			const ph = (app.t * 0.25 + i / l.steam.length) % 1;
 			sp.position.y = 0.3 + ph * 1.4;
 			sp.material.opacity = 0.22 * Math.sin(ph * Math.PI);

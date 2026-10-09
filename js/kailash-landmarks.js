@@ -980,6 +980,24 @@ function darchen(ctx) {
 	return { g, peaks: [], crowd, world };
 }
 
+// A soft puff for steam: no bright core, the edge feathered right out to nothing.
+let _steamTex;
+function steamTexture() {
+	if (_steamTex) return _steamTex;
+	const c = document.createElement("canvas");
+	c.width = c.height = 64;
+	const x = c.getContext("2d"), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+	gr.addColorStop(0, "rgba(255,255,255,0.75)");
+	gr.addColorStop(0.4, "rgba(255,255,255,0.45)");
+	gr.addColorStop(0.75, "rgba(255,255,255,0.12)");
+	gr.addColorStop(1, "rgba(255,255,255,0)");
+	x.fillStyle = gr;
+	x.fillRect(0, 0, 64, 64);
+	_steamTex = new THREE.CanvasTexture(c);
+	_steamTex.colorSpace = THREE.SRGBColorSpace;
+	return _steamTex;
+}
+
 // The stops on the way from Leh: a level spot with chortens, a flag pole and a few Ladakhi houses; at Hemis and
 // Hanle the gompa on its rock nearby (decor), at Chumathang the steaming springs, at Demchok the Border Roads board.
 // (Hemis builds the gompas of the Indus near Leh too: Thiksey, Shey, and the old palace over Leh)
@@ -1001,7 +1019,20 @@ function ladakhStop(key, seed) {
 		rocks(b, F, 12, 1.4, 4.4, R, 0x8a7460);
 		if (key === "chumathang") {
 			// steam off the hot pools by the river
-			for (let i = 0; i < 7; i++) b.add(T.ball, place(-1.2 + R() * 2.4, F.ground(0, 2.4) + 0.1 + R() * 0.5, 2.0 + R() * 1.2, 0, 0.5 + R() * 0.4, 0.3 + R() * 0.3, 0.5 + R() * 0.4), 0xeef2f4);
+			// (thin wisps, soft-edged and see-through, rising, spreading and fading; main.js drifts them)
+			const steam = [];
+			for (let p = 0; p < 3; p++) {
+				const px = -0.9 + p * 0.9 + (R() - 0.5) * 0.3, pz = 2.1 + R() * 1.0, py = F.ground(px, pz) + 0.05;
+				b.add(T.ball, place(px, py - 0.04, pz, R() * 3, 0.3 + R() * 0.1, 0.02, 0.22 + R() * 0.08), 0x6f9c96); // the warm pool, milky green
+				for (let i = 0; i < 4; i++) {
+					const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: steamTexture(), color: 0xf2f5f7, transparent: true, opacity: 0, depthWrite: false, fog: true }));
+					sp.userData = { base: [px + (R() - 0.5) * 0.25, py, pz + (R() - 0.5) * 0.25], rise: 0.9 + R() * 0.5, size: 0.4 + R() * 0.2, peak: 0.26 + R() * 0.1, drift: 0.25 + R() * 0.2, ph: R() };
+					sp.renderOrder = 2;
+					g.add(sp);
+					steam.push(sp);
+				}
+			}
+			g.userData.steam = steam;
 		}
 		if (key === "demchok") {
 			// the yellow Border Roads board
