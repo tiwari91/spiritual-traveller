@@ -1209,12 +1209,16 @@ export class Roads {
 			const yaw = Math.atan2(p.dx, p.dz);
 			if (p.bridge > 0.5) {
 				// concrete parapets, and piers down to the river bed
+				// (each piece tilted to the deck's slope and stretched along it, so up the ramps the rail runs
+				// smoothly with even gaps instead of stepping up in level blocks)
+				const pa = pts[i - 1] || p, pb = pts[i + 1] || p;
+				const run = Math.hypot(pb.x - pa.x, pb.z - pa.z) || 1e-6, pitch = -Math.atan2(pb.y - pa.y, run), len = STEP / Math.cos(pitch);
 				for (const sg of [-1, 1]) {
 					const q = side(p, sg * (outer - 0.06));
 					// a footbridge has a low stone parapet; a road bridge the painted concrete one
-					if (p.kind === "trek" || p.kind === "trail") b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.05, 0.2, STEP * 1.02), 0x8a8378);
-					else if (KAILASH) b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.24, STEP * 0.8), i % 2 ? 0xe2b21e : 0xf1efe8); // BRO blocks, yellow and white
-					else b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.3, STEP * 1.02), i % 6 < 3 ? 0xe8e4da : 0x2a2a2a);
+					if (p.kind === "trek" || p.kind === "trail") b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.05, 0.2, len * 1.04, pitch), 0x8a8378);
+					else if (KAILASH) b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.24, len * 0.8, pitch), i % 2 ? 0xe2b21e : 0xf1efe8); // BRO blocks, yellow and white
+					else b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.3, len * 1.04, pitch), i % 6 < 3 ? 0xe8e4da : 0x2a2a2a);
 				}
 				if (p.onDeck && i % 5 === 0) {
 					const g = world.height(p.x, p.z) - 0.5;
