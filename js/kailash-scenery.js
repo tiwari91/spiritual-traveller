@@ -151,6 +151,8 @@ function tent(b, x, y, z, yaw) {
 function house(b, x, y, z, yaw, w, d, R, floors = 1) {
 	const h = (2.8 + (floors - 1) * 2.6) * M;
 	b.add(T.box, place(x, y - 0.05, z, yaw, w * M, h + 0.05, d * M), WHITE);
+	// a footing of rough grey stone, sunk into the slope, so that no corner stands clear of the ground
+	b.add(T.box, place(x, y - 1.6 * M, z, yaw, w * M + 0.02, 1.62 * M, d * M + 0.02), 0x8a8478);
 	b.add(T.box, place(x, y + h, z, yaw, w * M + 0.03, 0.22 * M, d * M + 0.03), 0x5a1a16);
 	b.add(T.box, place(x, y + h + 0.22 * M, z, yaw, w * M + 0.04, 0.05 * M, d * M + 0.04), 0x2a2420);
 	const fx = Math.sin(yaw), fz = Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
@@ -352,7 +354,7 @@ export function* kailashCountry(sc, ctx, reg) {
 			const x = w.x + Math.cos(a) * d, z = w.z + Math.sin(a) * d;
 			if (!tallOk(x, z, 1.0)) continue;
 			const yaw = Math.round((a + Math.PI) / (Math.PI / 2)) * (Math.PI / 2) + (R() - 0.5) * 0.2, hw = 6 + R() * 6, hd = 5 + R() * 4, fl = R() < 0.25 ? 2 : 1;
-			const y = seat(world, x, z, (Math.max(hw, hd) * M) / 2);
+			const y = seat(world, x, z, (Math.hypot(hw, hd) * M) / 2);
 			if (y === null) continue;
 			house(b, x, y, z, yaw, hw, hd, R, fl);
 			ctx.claimCircle(x, z, 1.2);

@@ -89,8 +89,15 @@ function speckle(g, W, H, R, n, dark = 0.18, light = 0.08) {
 }
 // The cross-section of a road across u, one tile of its length down v.
 const _roadTex = {};
-function roadTexture(kind, reg) {
-	const key = kind + reg;
+// From Leh the one road changes as it goes: BRO tarmac up the Indus to Upshi and beyond, then patched and
+// broken past Chumathang and Nyoma, then loose gravel the last stretch to Demchok; China's new road in Ngari.
+function ladakhSurface(p) {
+	if (!LEH || p.region !== "tibet") return "";
+	const g = toGeo(p.x, p.z);
+	return g.lon < 78.25 ? "bro" : g.lon < 79.05 ? "patchy" : g.lon < 79.6 ? "gravel" : "";
+}
+function roadTexture(kind, reg, surf = "") {
+	const key = kind + reg + surf;
 	if (_roadTex[key]) return _roadTex[key];
 	const k = KIND[kind];
 	const total = k.paved + 2 * k.shoulder;
@@ -139,6 +146,26 @@ function roadTexture(kind, reg) {
 			speckle(g, W, H, R, 3000);
 			return;
 		}
+		if (surf === "gravel") {
+			// loose grey-brown gravel graded flat, two darker ruts where the wheels run, stones thrown to the edges
+			g.fillStyle = "#8f8270";
+			g.fillRect(sh * 0.6, 0, W - 1.2 * sh, H);
+			for (const f of [0.32, 0.68]) {
+				const gr = g.createLinearGradient(W * (f - 0.07), 0, W * (f + 0.07), 0);
+				gr.addColorStop(0, "rgba(40,30,20,0)");
+				gr.addColorStop(0.5, "rgba(40,30,20,0.28)");
+				gr.addColorStop(1, "rgba(40,30,20,0)");
+				g.fillStyle = gr;
+				g.fillRect(0, 0, W, H);
+			}
+			speckle(g, W, H, R, 14000, 0.35, 0.2);
+			for (let i = 0; i < 160; i++) {
+				const v = 90 + R() * 90, x = R() < 0.5 ? sh * 0.6 + R() * 20 : W - sh * 0.6 - R() * 20;
+				g.fillStyle = `rgb(${v},${v * 0.95},${v * 0.88})`;
+				g.fillRect(x, R() * H, 2 + R() * 4, 2 + R() * 3);
+			}
+			return;
+		}
 		// asphalt, darker where the wheels run
 		const base = kind === "hill" ? 74 : 62;
 		g.fillStyle = `rgb(${base},${base},${base + 3})`;
@@ -152,6 +179,24 @@ function roadTexture(kind, reg) {
 			g.fillRect(sh, 0, W - 2 * sh, H);
 		}
 		speckle(g, W, H, R, 9000, 0.2, 0.12);
+		if (surf === "patchy") {
+			// the tarmac broken up by frost and snowmelt: raw gravel showing through in ragged patches, potholes
+			for (let i = 0; i < 9; i++) {
+				const cx = sh + R() * (W - 2 * sh), cy = R() * H, rx = 14 + R() * 40, ry = 18 + R() * 60;
+				g.fillStyle = "#8a7d6a";
+				g.beginPath();
+				for (let a = 0; a < 6.28; a += 0.5) {
+					const k = 0.7 + R() * 0.5;
+					g.lineTo(cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k);
+				}
+				g.fill();
+				g.fillStyle = "rgba(30,26,22,0.55)";
+				g.beginPath();
+				g.ellipse(cx + (R() - 0.5) * rx, cy + (R() - 0.5) * ry, 4 + R() * 6, 3 + R() * 5, 0, 0, 6.28);
+				g.fill();
+			}
+			speckle(g, W, H, R, 3000, 0.3, 0.15);
+		}
 		// patches and cracks
 		for (let i = 0; i < (kind === "hill" ? 14 : 5); i++) {
 			const v = base + (R() - 0.5) * 30;
@@ -181,7 +226,7 @@ function roadTexture(kind, reg) {
 		g.fillStyle = "#e9e6dc";
 		g.fillRect(sh + lw, 0, lw, H);
 		g.fillRect(W - sh - 2 * lw, 0, lw, H);
-		if (reg === "tibet") {
+		if (reg === "tibet" && !surf) {
 			// a Chinese national road: white edge lines, a dashed yellow centre line
 			g.fillStyle = "#e0b22a";
 			for (let y = 0; y < H; y += H / 3) g.fillRect(W / 2 - lw * 0.75, y, lw * 1.5, H / 6);
@@ -1134,11 +1179,11 @@ export class Roads {
 		// one mesh per run of the same kind of road through the same landscape
 		let start = 0;
 		for (let i = 1; i <= pts.length; i++) {
-			if (i < pts.length && pts[i].kind === pts[start].kind && pts[i].region === pts[start].region) continue;
+			if (i < pts.length && pts[i].kind === pts[start].kind && pts[i].region === pts[start].region && ladakhSurface(pts[i]) === ladakhSurface(pts[start])) continue;
 			const run = pts.slice(start, Math.min(i + 1, pts.length));
 			if (run.length > 1) {
 				const k = KIND[run[0].kind];
-				const tex = roadTexture(run[0].kind, run[0].region);
+				const tex = roadTexture(run[0].kind, run[0].region, run[0].kind === "trail" || run[0].kind === "trek" ? "" : ladakhSurface(run[0]));
 				const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: run[0].kind === "trek" ? 0.95 : 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
 				const m = new THREE.Mesh(ribbon(run, (k.paved + 2 * k.shoulder) * M, this.world, k.lift, tex.userData.len), mat);
 				m.receiveShadow = true;
