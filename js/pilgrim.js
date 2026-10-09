@@ -956,7 +956,8 @@ function body(opts) {
 		bag.rotation.set(0.04, 0.75, 0.06);
 		const a = V(-0.205, 0.03, 0.15), b = V(-0.205, 0.03, -0.02);
 		const pts = [a, onBody(surf, V(-0.17, 0.32, 0.3), clothOff + 0.01), onBody(surf, V(-0.14, 0.565, 0.0), clothOff + 0.014), onBody(surf, V(-0.17, 0.32, -0.3), clothOff + 0.01), b];
-		part(ribbon(pts, { nt: sg(26, 10), sec: lod ? [-1, -0.72, -0.66, 0.66, 0.72, 1] : [-1, 1], w: () => 0.03, th: 0.004, up: (p) => (p.y < 0.1 ? V(-1, 0, 0) : up(p)), col: (t, s) => (Math.abs(s) > 0.7 ? st[1] : null) }), M.bag, 0, 0, 0, torso);
+		J.bag = [bag];
+		J.bag.push(part(ribbon(pts, { nt: sg(26, 10), sec: lod ? [-1, -0.72, -0.66, 0.66, 0.72, 1] : [-1, 1], w: () => 0.03, th: 0.004, up: (p) => (p.y < 0.1 ? V(-1, 0, 0) : up(p)), col: (t, s) => (Math.abs(s) > 0.7 ? st[1] : null) }), M.bag, 0, 0, 0, torso));
 	}
 	if (opts.staff) {
 		// the staff is held in the left hand (the +x arm, "R" in the skeleton), its foot near the ground: the right
@@ -1733,7 +1734,7 @@ export function reach(J, S, target, p = {}, pt = PALM) {
 export class Traveller {
 	// warm: dressed for the high passes (the Kailash journey): long sleeves, a maroon woollen shawl and a woollen cap
 	constructor({ warm = false } = {}) {
-		this.J = body(Object.assign({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 }, warm ? { top: 0x2e2b2a, bottom: 0x4f4c3c, sleeve: 1, sash: 0xe2761b, shawl: 0xd8661a, head: "cap", headColor: 0x6a1a22, capBand: 0xe2761b } : {}));
+		this.J = body(Object.assign({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 }, warm ? { top: 0x2e2b2a, bottom: 0x3b3a33, pyjama: true, sleeve: 1, sash: 0xe2761b, shawl: 0xd8661a, head: "cap", headColor: 0x6a1a22, capBand: 0xe2761b } : {}));
 		if (warm) this.gear();
 		this.group = new THREE.Group();
 		this.model = this.J.root;
@@ -1854,6 +1855,8 @@ export class Traveller {
 		const riding = this.w.ride > 0.5;
 		if (J.staff) J.staff.visible = !riding;
 		if (J.diya) J.diya.visible = !riding;
+		// the jhola goes into the saddle bags for the ride: on the hip it cut through the thigh
+		if (J.bag) for (const m of J.bag) m.visible = !riding;
 		if (this.ride) this.ride.visible = riding;
 		// keep the staff upright in the world rather than swinging with the forearm
 		if (J.staff) {

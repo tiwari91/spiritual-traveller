@@ -31,7 +31,7 @@ function walker(seed) {
 // A pack yak whose legs swing as it walks: the body without legs, and four legs on pivots at the hips.
 function walkingYak() {
 	const g = new THREE.Group();
-	const col = 0x2a2420;
+	const col = 0x5c3c26;
 	const bodyGeo = yak(col, "stand", true, false);
 	const m = new THREE.Mesh(bodyGeo, FIG);
 	m.castShadow = true;

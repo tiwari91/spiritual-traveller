@@ -177,14 +177,16 @@ function dog(col, pose) {
 // pack yak carries a load roped on either side, a red tassel in its ear.
 export function yak(col, pose, pack = false, legs = true) {
 	const p = new Parts();
-	const c = new THREE.Color(col), hair = c.clone().multiplyScalar(0.8), white = 0xe8e2d6, horn = 0xcfc4ae, hoof = 0x1a1612;
+	const c = new THREE.Color(col), hair = c.clone().multiplyScalar(0.78), sheen = c.clone().lerp(new THREE.Color(0x8a6a4e), 0.45), white = 0xe8e2d6, horn = 0xcfc4ae, hoof = 0x1a1612;
 	const lie = pose === "lie", graze = pose === "graze";
 	const by = lie ? 0.6 : 1.12;
 	p.blob(0, by, 0, 0.42, 0.44, 0.92, c);
 	p.blob(0, by + 0.12, 0.48, 0.4, 0.5, 0.42, c);
-	p.blob(0, by + 0.5, 0.42, 0.24, 0.22, 0.3, hair); // the hump
+	p.blob(0, by + 0.5, 0.42, 0.24, 0.22, 0.3, sheen); // the hump, the sun on its hair
+	p.blob(0, by + 0.34, -0.1, 0.28, 0.14, 0.7, sheen); // and along the back
 	p.blob(0, by + 0.02, -0.55, 0.4, 0.42, 0.42, c);
-	if (col === 0x2a2420) p.blob(0.12, by + 0.1, 0.2, 0.3, 0.32, 0.55, white); // a white patch
+	const pied = col === 0x5c3c26 || col === 0x35261c;
+	if (pied) p.blob(0.22, by + 0.08, 0.15, 0.26, 0.3, 0.45, white); // a white patch on the flank
 	// the long hair hanging from the flanks and belly to the knees
 	for (const z of [-0.6, -0.25, 0.1, 0.45]) for (const sx of [-1, 1]) p.blob(sx * 0.32, by - 0.32, z, 0.14, lie ? 0.22 : 0.38, 0.24, hair, 0, 0, sx * 0.15);
 	p.blob(0, by - 0.38, 0, 0.3, lie ? 0.2 : 0.32, 0.75, hair);
@@ -192,6 +194,7 @@ export function yak(col, pose, pack = false, legs = true) {
 	p.limb(V(0, by + 0.1, 0.8), head, 0.22, 0.16, c);
 	p.blob(head.x, head.y, head.z, 0.15, 0.17, 0.26, c, graze ? 1.2 : 0.7);
 	p.blob(0, head.y - (graze ? 0.22 : 0.12), head.z + (graze ? 0.12 : 0.2), 0.1, 0.09, 0.09, 0x2a2420);
+	if (pied || col === 0x6a4a30) p.blob(0, head.y + 0.05, head.z + 0.12, 0.11, 0.12, 0.12, white); // a white blaze on the face
 	p.blob(0, head.y - 0.18, head.z - 0.05, 0.12, 0.2, 0.12, hair); // the beard of hair under the chin
 	for (const sx of [-1, 1]) {
 		const a = V(sx * 0.1, head.y + 0.12, head.z - 0.12), b = V(sx * 0.3, head.y + 0.18, head.z - 0.12), e = V(sx * 0.32, head.y + 0.38, head.z - 0.2);
@@ -245,7 +248,7 @@ export function animal(kind, R) {
 		key = `goat${col}${gp}`;
 		make = () => goat(col, gp);
 	} else if (kind === "yak" || kind === "packyak") {
-		const col = [0x1e1a17, 0x2a2420, 0x3a2e26, 0x1e1a17][Math.floor(R() * 4)];
+		const col = [0x4a3020, 0x5c3c26, 0x35261c, 0x6a4a30][Math.floor(R() * 4)];
 		const yp = kind === "packyak" ? "stand" : pose;
 		key = `${kind}${col}${yp}`;
 		make = () => yak(col, yp, kind === "packyak");
