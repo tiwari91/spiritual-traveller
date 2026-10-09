@@ -3,7 +3,7 @@
 // it with Gurla Mandhata, Mansarovar and Rakshas Tal sunk in it, the Barkha plain, and the Kailash range with the
 // valleys of the parikrama cut round the mountain. Heights are in world units, as the rest of the map's (its
 // relief exaggerated many times, and softened here so that the passes can be walked).
-import { KAILASH, KORA, LAKES, P, RIVERS, ROUTE, SHRINES } from "./kailash-geo.js";
+import { KAILASH, KORA, LAKES, LEH, LIPU_ROUTE, P, RIVERS, ROUTE, SHRINES } from "./kailash-geo.js";
 import { clamp, fbm, inPoly, lerp, smoothstep } from "./util.js";
 
 const U = 40; // world units to the degree
@@ -24,16 +24,25 @@ const WAYS = [
 	{ ...KORA_V, pts: withFloors(KORA.west, [48.6, 48.9, 49.2, 49.5, 49.8, 50.1, 50.4]) },
 	{ ...KORA_V, pts: withFloors(KORA.north, [50.4, 51.2, 52.3, 53.3, 54.0]) },
 	{ ...KORA_V, pts: withFloors(KORA.east, [54.0, 53.0, 52.0, 51.0, 50.2, 49.6, 49.2, 48.9, 48.5, 48.3, 48.2]) },
+	// from Leh: the Indus valley up to Upshi and through its gorge to Chumathang, the open Changthang by Nyoma and Hanle,
+	// Demchok, and the Tibet side up the Indus to Ali and down by Gartok to the Sutlej and Darchen (floors from the
+	// altitudes, on the plateau's scale: about 46.5 at Mansarovar's 4,590 m, 0.6 a hundred metres)
+	...(LEH ? [
+		{ w: 1.6, k: 0.75, e: 1.12, pts: [[P.leh[0], P.leh[1], 40.0], [77.61, 34.12, 39.6], [P.shey[0], P.shey[1], 39.2], [P.thiksey[0], P.thiksey[1], 39.2], [77.7, 34.0, 39.3], [P.karu[0], P.karu[1], 39.4], [77.722, 33.922, 39.8], [P.hemis[0], P.hemis[1], 40.6]] },
+		{ ...GORGE, w: 1.1, k: 1.2, pts: [[P.karu[0], P.karu[1], 39.4], [P.upshi[0], P.upshi[1], 39.4], [77.95, 33.7, 40.3], [P.kiari[0], P.kiari[1], 41.5], [78.22, 33.43, 42.2], [P.chumathang[0], P.chumathang[1], 42.7]] },
+		{ w: 2.4, k: 0.45, e: 1.1, pts: [[P.chumathang[0], P.chumathang[1], 42.7], [P.mahe[0], P.mahe[1], 43.3], [78.56, 33.24, 43.7], [P.nyoma[0], P.nyoma[1], 44.0], [78.82, 33.12, 44.1], [P.loma[0], P.loma[1], 44.2], [78.99, 32.92, 44.5], [P.hanle[0], P.hanle[1], 44.8], [79.1, 32.78, 44.7], [79.27, 32.73, 44.4], [P.demchok[0], P.demchok[1], 44.2]] },
+		{ w: 2.0, k: 0.5, e: 1.1, pts: [[P.demchok[0], P.demchok[1], 44.2], [79.56, 32.63, 44.4], [P.tashigang[0], P.tashigang[1], 44.5], [79.9, 32.5, 44.6], [P.ali[0], P.ali[1], 44.6], [80.12, 32.2, 45.2], [80.25, 31.95, 45.8], [P.gartok[0], P.gartok[1], 46.0], [80.6, 31.45, 46.3], [P.sutlej[0], P.sutlej[1], 46.6], [81.03, 31.01, 47.2], [81.17, 30.955, 47.8], [P.pastDarchen[0], P.pastDarchen[1], 48.2]] },
+	] : []),
 ];
 // the road round the lake: leg 2 from the isthmus to Qugu and leg 3 from Qugu back to it, nearly level
 function lakeRing() {
-	const L2 = ROUTE[1].pts, L3 = ROUTE[2].pts;
+	const L2 = LIPU_ROUTE[1].pts, L3 = LIPU_ROUTE[2].pts;
 	const i2 = L2.findIndex((p) => p[0] > 81.3 && p[1] > 30.55), i3 = L3.findIndex((p) => p === P.chiu);
 	return [...L2.slice(i2), ...L3.slice(1, i3 + 1)].map((p) => [p[0], p[1], p === P.chiu ? 47.25 : 46.95]);
 }
 // from Chiu across the Barkha plain past Darchen to Tarboche, rising gently
 function toDarchen() {
-	const L3 = ROUTE[2].pts, i = L3.indexOf(P.chiu), pts = L3.slice(i);
+	const L3 = LIPU_ROUTE[2].pts, i = L3.indexOf(P.chiu), pts = L3.slice(i);
 	return pts.map((p, k) => [p[0], p[1], lerp(47.25, 48.6, k / (pts.length - 1))]);
 }
 function withFloors(pts, f) {
@@ -67,7 +76,7 @@ function nearestWay(x, y, list = SEGS, reach = 14) {
 	return { d: best, floor, s: sg };
 }
 // The rivers of the region, cut a little below the way beside them so the water lies in the valley bottom.
-const RIVER_WAYS = RIVERS.filter((r) => r.pts.some(([lo, la]) => lo > 80.35 && la > 29.7)).map((r) => ({
+const RIVER_WAYS = RIVERS.filter((r) => r.pts.some(([lo, la]) => (lo > 80.35 && la > 29.7) || (LEH && la > 31))).map((r) => ({
 	w: 0.35, k: 2.6, e: 1.0,
 	pts: r.pts.map(([lo, la]) => {
 		const n = nearestWay(lo * U, la * U, SEGS, 30);
@@ -121,8 +130,18 @@ export { OM_DIR };
 const STOPS = SHRINES.map((s) => ({ x: s.lon * U, y: s.lat * U, r0: (s.shelf || [1.9, 3.4])[0], r1: (s.shelf || [1.9, 3.4])[1] }));
 // How much of the map here is the region drawn by this module (1 inside, easing to 0 at its edges).
 export function kRegion(lon, lat) {
+	if (LEH) return Math.max(ladakh(lon, lat), smoothstep(80.12, 80.42, lon) * smoothstep(82.3, 82.0, lon) * smoothstep(29.5, 29.75, lat) * smoothstep(31.95, 31.75, lat));
 	return smoothstep(80.12, 80.42, lon) * smoothstep(82.3, 82.0, lon) * smoothstep(29.5, 29.75, lat) * smoothstep(31.95, 31.75, lat);
 }
+// The Ladakh and Ngari country of the way from Leh (1 inside, easing out at its edges), and how far a point is into
+// it from the Kailash country proper (1 west of about 80.5 E or north of about 32 N).
+function ladakh(lon, lat) {
+	return smoothstep(76.6, 77.0, lon) * smoothstep(81.8, 81.4, lon) * smoothstep(30.95, 31.25, lat) * smoothstep(35.0, 34.6, lat);
+}
+function ladW(lon, lat) {
+	return LEH ? clamp(smoothstep(80.95, 80.45, lon) + smoothstep(31.7, 32.1, lat), 0, 1) * ladakh(lon, lat) : 0;
+}
+export { ladW };
 // How much of a point is on the Tibetan side of the crest (0 south of it, 1 a little north).
 export function tibet(lon, lat) {
 	return smoothstep(-0.02, 0.1, lat - crestLat(lon));
@@ -190,13 +209,19 @@ export function kHeight(lon, lat, h, base) {
 		pl += 4.2 * Math.pow(Math.max(0, 1 - dk / 8.6), 1.25);
 		// lesser ranges across the plateau
 		pl += smoothstep(0.55, 0.85, fbm(lon * 3.2 + 11, lat * 3.2 + 3, 3)) * 7 * ridged(lon * 9, lat * 9, 3);
+		// Ladakh and Ngari: bare brown ranges either side of the Indus, snow on the high crests, the ways cut below
+		const lw = ladW(lon, lat);
+		if (lw > 0) {
+			const lr = ridged(lon * 6 + 4, lat * 6 + 1, 4);
+			pl = lerp(pl, 47.5 + lr * 10.5 + (fbm(lon * 14, lat * 14, 2) - 0.5) * 1.2, lw);
+		}
 		const north = tibet(lon, lat);
 		const south = Math.max(h, crest);
 		const plateau = Math.max(pl, crest);
 		h = lerp(h, lerp(south, plateau, north), m);
 	}
 	h = tanakpur(x, y, h);
-	if (base && lat > 28.95 && lon < 80.5) {
+	if (base && !LEH && lat > 28.95 && lon < 80.5) {
 		// (the bench follows the ground as drawn here, less only the bench itself)
 		BENCH ||= bench((lo, la) => tanakpur(lo * U, la * U, base(lo, la, true)));
 		let best = Infinity, fl = 0;
@@ -287,6 +312,12 @@ export function kColour(lon, lat, h, slope, c) {
 	let cliff = mix3(C.scree, C.red, redRock);
 	cliff = mix3(cliff, [cliff[0] * 0.72, cliff[1] * 0.68, cliff[2] * 0.66], bandy * smoothstep(0.35, 0.7, strata) * 0.75);
 	cliff = mix3(cliff, [0.68, 0.5, 0.36], bandy * smoothstep(0.7, 0.3, strata) * redRock * 0.35);
+	// Ladakh: ochre and khaki desert, purple-brown and grey rock
+	const lw = ladW(lon, lat);
+	if (lw > 0) {
+		t = mix3(t, mix3([0.66, 0.53, 0.37], [0.58, 0.5, 0.4], n), lw * 0.7);
+		cliff = mix3(cliff, mix3([0.5, 0.38, 0.33], [0.46, 0.42, 0.4], n2), lw * 0.6);
+	}
 	t = mix3(t, cliff, rocky);
 	t = mix3(t, C.dark, smoothstep(0.6, 0.9, slope) * 0.35);
 	const snowLine = 55.2 + n * 2.4 - slope * 2.5;

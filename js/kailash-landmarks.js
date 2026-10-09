@@ -980,4 +980,49 @@ function darchen(ctx) {
 	return { g, peaks: [], crowd, world };
 }
 
-export const K_BUILDERS = { narayan, kalapani, omparvat, mansarovar, yamdwar, dirapuk, dolmala, darchen };
+// The stops on the way from Leh: a level spot with chortens, a flag pole and a few Ladakhi houses; at Hemis and
+// Hanle the gompa on its rock nearby (decor), at Chumathang the steaming springs, at Demchok the Border Roads board.
+// (Hemis builds the gompas of the Indus near Leh too: Thiksey, Shey, and the old palace over Leh)
+const LADAKH_GOMPA = { hemis: [[77.692, 33.897, 1.25], [77.669, 34.061, 1.2], [77.638, 34.077, 0.7], [77.586, 34.168, 1.0]], hanle: [[78.982, 32.802, 1.1]] };
+function ladakhStop(key, seed) {
+	return (ctx) => {
+		const g = new THREE.Group(), b = new Batch(), F = frame(ctx), R = rand(seed);
+		for (let i = 0; i < 6; i++) {
+			const w = 0.7 + R() * 0.6, d = 0.55 + R() * 0.35, h = R() < 0.3 ? 0.62 : 0.4;
+			const sp = F.spot(F.ring(2.4, 4.4, 40, seed + i * 7), Math.max(w, d) * 0.62);
+			if (sp) tibetHouse(b, sp[0], F.ground(sp[0], sp[1]), sp[1], w, d, h, Math.atan2(-sp[0], -sp[1]) + Math.PI + (R() - 0.5) * 0.3, { band: RED, door: true });
+		}
+		for (let i = 0; i < 3; i++) {
+			const ch = F.spot(F.ring(1.4, 3.2, 24, seed + 50 + i * 3), 0.4);
+			if (ch) chorten(b, ch[0], F.ground(ch[0], ch[1]), ch[1], 0.6 + R() * 0.3);
+		}
+		const fp = poleSpot(F, F.ring(1.6, 3.6, 40, seed + 90), 1.05);
+		if (fp) flagPole(b, F, fp[0], fp[1], 1.6, 0.9, 12, seed % 17);
+		rocks(b, F, 12, 1.4, 4.4, R, 0x8a7460);
+		if (key === "chumathang") {
+			// steam off the hot pools by the river
+			for (let i = 0; i < 7; i++) b.add(T.ball, place(-1.2 + R() * 2.4, F.ground(0, 2.4) + 0.1 + R() * 0.5, 2.0 + R() * 1.2, 0, 0.5 + R() * 0.4, 0.3 + R() * 0.3, 0.5 + R() * 0.4), 0xeef2f4);
+		}
+		if (key === "demchok") {
+			// the yellow Border Roads board
+			const y = F.ground(1.4, 1.6);
+			for (const sx of [1.15, 1.65]) b.add(T.box, place(sx, y, 1.6, 0, 0.04, 0.6, 0.04), 0x2a2a2a);
+			b.add(T.box, place(1.4, y + 0.5, 1.6, 0, 0.62, 0.34, 0.03), 0xf2c200);
+			b.add(T.box, place(1.4, y + 0.58, 1.62, 0, 0.48, 0.05, 0.03), 0x1a1a1a);
+			b.add(T.box, place(1.4, y + 0.46, 1.62, 0, 0.4, 0.04, 0.03), 0x1a1a1a);
+		}
+		const crowd = crowdAt(F, 5, seed + 3);
+		finish(b, g);
+		const gp = LADAKH_GOMPA[key];
+		const world = gp ? (decor, h) => {
+			for (const [lo, la, sc] of gp) {
+				const sp = clearSpot(lo, la, 3.0);
+				decor.add(gompa(h.world, sp.x, sp.z, R() * 6.3, sc, seed + 11));
+			}
+		} : null;
+		return { g, peaks: [], crowd, world };
+	};
+}
+const hemis = ladakhStop("hemis", 701), chumathang = ladakhStop("chumathang", 733), hanle = ladakhStop("hanle", 761), demchok = ladakhStop("demchok", 787);
+
+export const K_BUILDERS = { narayan, kalapani, omparvat, mansarovar, yamdwar, dirapuk, dolmala, darchen, hemis, chumathang, hanle, demchok };

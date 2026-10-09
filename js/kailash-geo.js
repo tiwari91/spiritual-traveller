@@ -17,6 +17,26 @@
 // old path) and Om Parvat is set back from the camp so it can be seen whole. The camps at Qugu and Chiu, Hor, Tarboche,
 // Dirapuk, Dolma La, Gauri Kund and Zuthulphuk are placed by description, not from surveyed coordinates.
 
+// Which way the journey goes: "leh" (from Leh up the Indus, by the old trade and pilgrim road through Demchok into
+// Ngari) or "lipulekh" (the official MEA route). Chosen on the start screen; a ?route= in the address wins, then the
+// last choice remembered; Leh by default.
+export const ROUTES = ["leh", "lipulekh"];
+export const ROUTE_CHOICE = (() => {
+	try {
+		const q = new URLSearchParams(location.search).get("route");
+		if (ROUTES.includes(q)) {
+			localStorage.setItem("kailashRoute", q);
+			return q;
+		}
+		const m = localStorage.getItem("kailashRoute");
+		if (ROUTES.includes(m)) return m;
+	} catch (e) {
+		/* no storage: the default */
+	}
+	return "leh";
+})();
+export const LEH = ROUTE_CHOICE === "leh";
+
 // The drawn centre of Kailash, and a point at a bearing (degrees from north, clockwise) and distance (world units,
 // 40 to the degree) from it.
 export const KAILASH = [81.3, 31.25];
@@ -73,7 +93,7 @@ export const LAKES = [
 // Rivers of the journey: the Kali (Mahakali) from its source at Kalapani down past Dharchula to Tanakpur, the
 // Karnali (Map Chu) past Taklakot, the Ganga Chhu from Mansarovar into Rakshas Tal, the Lha Chu and the
 // Lham Chu Khir round Kailash, and the plains rivers on the way out of Delhi.
-export const RIVERS = [
+const LIPU_RIVERS = [
 	{ name: "Yamuna", w: 1.1, pts: [[77.6, 30.4], [77.3, 29.5], [77.24, 28.62], [77.6, 27.9]] },
 	{ name: "Ganga", w: 1.5, pts: [[78.16, 29.95], [78.05, 29.3], [78.3, 28.5], [78.6, 27.7]] },
 	{ name: "Ramganga", w: 0.7, pts: [[79.25, 29.75], [78.96, 29.2], [78.8, 28.9], [79.35, 28.33], [79.6, 27.8]] },
@@ -86,7 +106,7 @@ export const RIVERS = [
 ];
 
 // Towns and camps, for labels and lamp clusters.
-export const CITIES = [
+const LIPU_CITIES = [
 	{ name: "Delhi", lon: 77.21, lat: 28.61, size: 3 },
 	{ name: "Moradabad", lon: 78.78, lat: 28.84, size: 2 },
 	{ name: "Bareilly", lon: 79.43, lat: 28.37, size: 2 },
@@ -107,7 +127,7 @@ export const CITIES = [
 // look: the peak (or the lake) the stop faces, from which geo.js sets its facing; view: the darshan camera, looking
 // up from behind the traveller to the mountain (lift above the ground, pitch, distance); petals: false where no
 // flowers are thrown; shelf: the stop's level ground (kailash-world.js).
-export const SHRINES = [
+export const LIPU_SHRINES = [
 	{
 		key: "narayan", name: "Narayan Ashram", deva: "नारायण आश्रम", lon: P.narayan[0], lat: P.narayan[1], look: [80.62, 29.995],
 		deity: "Narayana; the ashram of Narayan Swami on the hillside above the Kali", kind: "Ashram · Sosa, above Tawaghat",
@@ -201,7 +221,7 @@ export const SHRINES = [
 // Each leg ends at its stop (ROUTE[i] ends at SHRINES[i]). secs sets the pace at 1x; ways lists how each stretch
 // is travelled, from the named point it starts at: "bus" (the yatra's coach), "jeep", "walk" or "choice" (the
 // transport chip: bus, train, bike or car), "tibet" (the Chinese bus on the Tibet side).
-export const ROUTE = [
+export const LIPU_ROUTE = [
 	{
 		title: "Delhi to the Kumaon Himalaya", secs: 104, overnight: true, kicker: "From Delhi · by road", mode: "By road and jeep",
 		pts: [P.delhi, [77.7, 28.72], P.moradabad, P.rampur, P.bareilly, P.pilibhit, P.khatima, P.tanakpur, [80.13, 29.2], P.champawat, P.lohaghat, [80.16, 29.49], P.pithoragarh, P.ogla, P.jauljibi, [80.47, 29.8], P.dharchula, P.tawaghat, P.sosa, P.narayan],
@@ -233,7 +253,7 @@ export const ROUTE = [
 ];
 
 // Places passed on the way, announced as the traveller goes by: [lon, lat, text].
-export const PASSING = [
+const LIPU_PASSING = [
 	[80.109, 29.074, "Tanakpur: the first night out of Delhi"],
 	[80.22, 29.58, "Pithoragarh, under the Panchachuli snows"],
 	[80.543, 29.8485, "Dharchula on the Kali, Nepal across the river"],
@@ -250,3 +270,140 @@ export const PASSING = [
 	[P.gauriKund[0], P.gauriKund[1], "Gauri Kund, where Parvati bathed"],
 	[P.zuthulphuk[0], P.zuthulphuk[1], "Zuthulphuk: Milarepa's cave, the last night"],
 ];
+
+// ---------- From Leh, Ladakh ----------
+// The old trade and pilgrim way from Ladakh into Ngari: from Leh up the Indus past Thiksey to Hemis, on up the river
+// by Upshi and Kiari to the hot springs at Chumathang, into the Changthang plateau by Mahe and Nyoma, up the Hanle
+// river to Hanle, east to Demchok, the last Indian village, and over into Tibet: up the Indus (the Sengge Zangbo)
+// past Tashigang to Shiquanhe (Ali), south by Gartok down to the Sutlej, and on to Darchen, round the north and east
+// shores of Mansarovar to Qugu for the snan, and from there the parikrama as on the Lipulekh route. The crossing at
+// Demchok is closed to pilgrims today (Indian yatris go by the Lipulekh or the Nathu La); the journey takes it as it
+// once was taken. Places are from published coordinates to within a few kilometres; Kiari, Mahe, Loma and Tashigang
+// are placed by description along the river.
+Object.assign(P, {
+	leh: [77.585, 34.164], shey: [77.635, 34.072], thiksey: [77.667, 34.056], karu: [77.733, 33.935], hemis: [77.703, 33.912],
+	upshi: [77.818, 33.829], kiari: [78.12, 33.53], chumathang: [78.33, 33.36], mahe: [78.47, 33.28], nyoma: [78.65, 33.19],
+	loma: [78.98, 33.05], hanle: [78.969, 32.794], demchok: [79.44, 32.70], tashigang: [79.69, 32.55], ali: [80.10, 32.50],
+	gartok: [80.35, 31.75], sutlej: [80.85, 31.2],
+});
+const LEH_STOPS = [
+	{
+		key: "hemis", name: "Hemis", deva: "हेमिस", lon: P.hemis[0], lat: P.hemis[1], look: [77.69, 33.89],
+		deity: "Padmasambhava (Guru Rinpoche), at the great Drukpa monastery of Ladakh", kind: "Gompa · above the Indus",
+		state: "Leh district, Ladakh, in a side valley south of the Indus, about 40 km from Leh",
+		altitude: "about 3,600 m (Leh itself about 3,500 m)",
+		season: "May to September, when the road over from Manali and the passes are open; the Hemis festival falls in June or July.",
+		access: "From Leh up the Indus past Shey and Thiksey to Karu, then across the river and up the side valley. Leh has flights from Delhi.",
+		note: "Re-founded in 1672 under King Sengge Namgyal, Hemis is the largest and richest monastery in Ladakh. At its festival, on the tenth day of the fifth Tibetan month, the monks dance the cham in masks in the courtyard for the birth of Guru Rinpoche, and every twelfth year a great thangka of him is unrolled.",
+		mantra: "ॐ मणि पद्मे हूँ", mantraLatin: "Om Mani Padme Hum", greeting: "Julley",
+		hour: 10.2, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [4.4, 6.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 }, petals: false,
+	},
+	{
+		key: "chumathang", name: "Chumathang", deva: "चुमाथांग", lon: P.chumathang[0], lat: P.chumathang[1], look: [78.345, 33.375],
+		deity: "The hot springs beside the Indus", kind: "Hot springs · the upper Indus",
+		state: "Nyoma subdivision, Leh district, Ladakh, about 140 km up the Indus from Leh",
+		altitude: "about 3,950 m",
+		season: "May to October.",
+		access: "Up the Indus from Upshi on the road to Nyoma and Hanle (an Inner Line Permit is needed for the Changthang).",
+		note: "Steam rises from the sulphur springs on the river bank, and people come to bathe in them for aches and the skin. Below the village the Indus runs green and fast between bare brown mountains; above it, the valley opens into the Changthang.",
+		mantra: "ॐ मणि पद्मे हूँ", mantraLatin: "Om Mani Padme Hum", greeting: "Julley",
+		hour: 13.4, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [4.4, 6.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 }, petals: false,
+	},
+	{
+		key: "hanle", name: "Hanle", deva: "हानले", lon: P.hanle[0], lat: P.hanle[1], look: [78.964, 32.779],
+		deity: "The Drukpa gompa of Hanle on its hill, and the observatory under the darkest sky in India", kind: "Gompa · observatory · Changthang",
+		state: "The Hanle valley in the Changthang, Leh district, Ladakh, inside the Changthang Wildlife Sanctuary",
+		altitude: "about 4,300 m in the valley; the observatory on Mt Saraswati about 4,500 m",
+		season: "May to October; the sky is clearest in autumn.",
+		access: "From Nyoma up the Indus to Loma and south up the Hanle river (an Inner Line Permit is needed).",
+		note: "The 17th-century monastery, built under Sengge Namgyal, stands on a hill over the marshes where Changpa nomads graze yaks and pashmina goats. On the ridge opposite, the Indian Astronomical Observatory's Himalayan Chandra Telescope has watched the sky since 2001; Hanle became India's first dark-sky reserve in 2022.",
+		mantra: "ॐ मणि पद्मे हूँ", mantraLatin: "Om Mani Padme Hum", greeting: "Julley",
+		hour: 17.6, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [4.4, 6.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 }, petals: false,
+	},
+	{
+		key: "demchok", name: "Demchok", deva: "डेमचोक", lon: P.demchok[0], lat: P.demchok[1], look: [79.62, 32.6],
+		deity: "The last Indian village on the Indus, Tibet across the stream", kind: "The line · into Ngari",
+		state: "Nyoma subdivision, Leh district, Ladakh, on the Indus at the border with Tibet (the line here is disputed)",
+		altitude: "about 4,200 m",
+		season: "Summer.",
+		access: "Closed to pilgrims: no yatra crosses here today. Indian yatris go to Kailash by the Lipulekh (Uttarakhand) or the Nathu La (Sikkim). The journey follows the old trade road on into Tibet.",
+		note: "For centuries Ladakhi traders and pilgrims went this way up the Indus to the fair at Gartok and on to Kailash, the river's own source country. Tibetan Demchok lies across the stream; from here the Indus is the Sengge Zangbo, the Lion River.",
+		mantra: "ॐ मणि पद्मे हूँ", mantraLatin: "Om Mani Padme Hum", greeting: "Julley",
+		hour: 9.0, weather: "clear", rest: [0.35, 3.3], floor: 0.04, shelf: [4.4, 6.6], view: { lift: 1.9, pitch: 0.06, dist: 6.6 }, petals: false,
+	},
+];
+const byKey = (k) => LIPU_SHRINES.find((s) => s.key === k);
+const LEH_SHARED = [
+	{ ...byKey("mansarovar"), access: "From Demchok up the Indus past Shiquanhe (Ali), south by Gartok to the Sutlej and Darchen, then round the northern and eastern shores of the lake by Chiu and Hor to Qugu. (The official yatra comes over the Lipulekh to Taklakot.)" },
+	byKey("yamdwar"), byKey("dirapuk"), byKey("dolmala"),
+	{ ...byKey("darchen"), access: "From Dolma La down past Gauri Kund into the Lham Chu Khir valley, a night at Zuthulphuk (Milarepa's cave), then about 12 km back to Darchen." },
+];
+const LEH_ROUTE = [
+	{
+		title: "Leh, up the Indus to Hemis", secs: 46, kicker: "From Leh · by road", mode: "By road",
+		pts: [P.leh, [77.61, 34.12], P.shey, P.thiksey, [77.7, 34.0], P.karu, [77.722, 33.922], P.hemis],
+		ways: [["jeep", P.leh, "By jeep up the Indus"]],
+	},
+	{
+		title: "Up the Indus to Chumathang", secs: 62, kicker: "The Indus gorge · by road", mode: "By road",
+		pts: [P.hemis, [77.722, 33.922], P.karu, P.upshi, [77.95, 33.7], P.kiari, [78.22, 33.43], P.chumathang],
+		ways: [["jeep", P.hemis, "By jeep up the Indus"]],
+	},
+	{
+		title: "Into the Changthang to Hanle", secs: 64, overnight: true, kicker: "The Changthang · by road", mode: "By road",
+		pts: [P.chumathang, P.mahe, [78.56, 33.24], P.nyoma, [78.82, 33.12], P.loma, [78.99, 32.92], P.hanle],
+		ways: [["jeep", P.chumathang, "By jeep into the Changthang"]],
+	},
+	{
+		title: "Hanle to Demchok", secs: 40, kicker: "To the line · by road", mode: "By road",
+		pts: [P.hanle, [79.1, 32.78], [79.27, 32.73], P.demchok],
+		ways: [["jeep", P.hanle, "By jeep to Demchok"]],
+	},
+	{
+		title: "Up the Sengge Zangbo to Mansarovar", secs: 130, overnight: true, kicker: "Into Tibet · Ngari", mode: "By road",
+		pts: [P.demchok, [79.56, 32.63], P.tashigang, [79.9, 32.5], P.ali, [80.12, 32.2], [80.25, 31.95], P.gartok, [80.6, 31.45], P.sutlej, [81.03, 31.01], [81.17, 30.955], P.pastDarchen, [81.3, 30.935], [81.33, 30.87], [81.35, 30.8], P.chiu, [81.420, 30.816], [81.517, 30.819], [81.587, 30.797], P.hor, [81.636, 30.684], [81.615, 30.587], [81.554, 30.526], [81.468, 30.507], P.qugu],
+		ways: [["tibet", P.demchok, "By bus up the Sengge Zangbo"], ["tibet", P.ali, "By bus south by Gartok"], ["tibet", P.sutlej, "By bus to Darchen"], ["tibet", P.pastDarchen, "By bus across the Barkha plain", { shared: true }], ["tibet", P.chiu, "By bus round the lake"]],
+	},
+	...LIPU_ROUTE.slice(4),
+];
+const LEH_PASSING = [
+	[77.585, 34.164, "Leh: the palace and the Shanti Stupa above the town"],
+	[77.635, 34.072, "Shey, the old palace of the Ladakhi kings"],
+	[77.667, 34.056, "Thiksey Gompa, tier on tier up its hill"],
+	[77.818, 33.829, "Upshi: the Manali road turns off south"],
+	[78.65, 33.19, "Nyoma, on the Changthang plateau"],
+	[78.98, 33.05, "Loma: the Hanle river meets the Indus"],
+	[79.44, 32.7, "Demchok: this crossing is closed to pilgrims today; the game travels the old road"],
+	[79.69, 32.55, "Tashigang, the first Tibetan village up the Indus"],
+	[80.1, 32.5, "Shiquanhe (Ali), the town of Ngari, on the Indus"],
+	[80.35, 31.75, "Gartok, where Ladakhi traders came to the summer fair"],
+	[80.85, 31.2, "The Sutlej valley: the first sight of Kailash"],
+	[81.268, 30.962, "Darchen, under the south face"],
+	[81.373, 30.758, "Chiu Gompa on its rock above the lake"],
+	[81.6, 30.735, "Hor, on the eastern shore"],
+	...LIPU_PASSING.slice(12),
+];
+const LEH_CITIES = [
+	{ name: "Leh", lon: 77.585, lat: 34.164, size: 2 },
+	{ name: "Nyoma", lon: 78.65, lat: 33.19, size: 1 },
+	{ name: "Hanle", lon: 78.969, lat: 32.794, size: 1 },
+	{ name: "Shiquanhe (Ali)", lon: 80.1, lat: 32.5, size: 1 },
+	{ name: "Darchen", lon: 81.287, lat: 30.976, size: 1 },
+];
+const INDUS = [
+	{ name: "Indus", w: 0.7, pts: [[77.45, 34.22], [77.6, 34.11], [77.69, 34.02], [77.74, 33.93], [77.83, 33.82], [77.97, 33.68], [78.13, 33.52], [78.24, 33.42], [78.33, 33.35], [78.48, 33.27], [78.66, 33.18], [78.83, 33.11], [78.99, 33.06], [79.15, 32.95], [79.3, 32.84], [79.43, 32.73], [79.56, 32.64], [79.7, 32.56], [79.9, 32.51], [80.12, 32.51], [80.28, 32.3], [80.45, 32.05]] },
+	{ name: "Hanle", w: 0.3, pts: [[78.95, 32.72], [78.975, 32.8], [79.0, 32.92], [78.99, 33.05]] },
+	{ name: "Sutlej", w: 0.4, pts: [[81.15, 31.0], [80.95, 31.12], [80.75, 31.2], [80.5, 31.3]] },
+];
+
+// Altitude anchors in metres along each way, for the altitude readout and the profile under the progress bar.
+const ALT_LIPU = [[P.delhi, 216], [P.tanakpur, 260], [P.champawat, 1610], [P.pithoragarh, 1650], [P.jauljibi, 650], [P.dharchula, 915], [P.narayan, 2734], [P.budhi, 2740], [P.gunji, 3200], [P.kalapani, 3600], [P.nabhidhang, 4250], [P.lipulekh, 5100], [P.taklakot, 3900], [P.gurlaLa, 4800], [P.chiu, 4600], [P.qugu, 4600], [P.darchen, 4670], [P.tarboche, 4750], [P.dirapuk, 4900], [P.dolmaLa, 5630], [P.gauriKund, 5450], [P.zuthulphuk, 4790], [P.darchenEnd, 4670]];
+const ALT_LEH = [[P.leh, 3500], [P.thiksey, 3300], [P.karu, 3400], [P.hemis, 3600], [P.upshi, 3400], [P.kiari, 3750], [P.chumathang, 3950], [P.nyoma, 4180], [P.loma, 4200], [P.hanle, 4300], [P.demchok, 4200], [P.tashigang, 4250], [P.ali, 4280], [P.gartok, 4450], [P.sutlej, 4500], [P.pastDarchen, 4650], [P.chiu, 4600], [P.qugu, 4600], [P.darchen, 4670], [P.tarboche, 4750], [P.dirapuk, 4900], [P.dolmaLa, 5630], [P.gauriKund, 5450], [P.zuthulphuk, 4790], [P.darchenEnd, 4670]];
+
+export const SHRINES = LEH ? [...LEH_STOPS, ...LEH_SHARED] : LIPU_SHRINES;
+export const ROUTE = LEH ? LEH_ROUTE : LIPU_ROUTE;
+export const PASSING = LEH ? LEH_PASSING : LIPU_PASSING;
+export const CITIES = LEH ? LEH_CITIES : LIPU_CITIES;
+export const RIVERS = LEH ? [...INDUS, ...LIPU_RIVERS.filter((r) => r.pts.some(([lo, la]) => lo > 80.8 && la > 30.2))] : LIPU_RIVERS;
+export const ALTS = LEH ? ALT_LEH : ALT_LIPU;
+export const START_NAME = LEH ? "Leh" : "Delhi";

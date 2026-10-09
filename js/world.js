@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { haze, patch } from "./batch.js";
 import { groundDetail } from "./textures.js";
 import { INDIA, KAILASH, LANKA, NEIGHBOURS, RIVERS, SHRINES, toWorld, toGeo } from "./geo.js";
-import { LAKES } from "./kailash-geo.js";
+import { LAKES, LEH } from "./kailash-geo.js";
 import { kColour, kGround, kHeight, lakeDist } from "./kailash-world.js";
 import { clamp, fbm, inPoly, lerp, polyDist, smoothstep } from "./util.js";
 
@@ -221,7 +221,8 @@ export class World {
 		if (KAILASH) {
 			// the Kailash journey needs only northern India and western Tibet, drawn much finer: the lakes, the
 			// passes and the valleys of the parikrama are walked on, so they have to be in the ground itself
-			Object.assign(this, { lon0: 75, lon1: 82.6, lat0: 26.6, lat1: 32.1 });
+			// (from Leh: Ladakh and Ngari down to the lakes instead of the plains)
+			Object.assign(this, LEH ? { lon0: 76.6, lon1: 82.6, lat0: 29.8, lat1: 35.0 } : { lon0: 75, lon1: 82.6, lat0: 26.6, lat1: 32.1 });
 			this.step = this.step > 0.1 ? 0.026 : 0.016;
 		}
 		this.nx = Math.round((this.lon1 - this.lon0) / this.step) + 1;

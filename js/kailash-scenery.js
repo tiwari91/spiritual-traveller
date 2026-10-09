@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { T, beam, place } from "./batch.js";
 import { addAnimal, addPerson } from "./life.js";
-import { LAKES, P } from "./kailash-geo.js";
+import { LAKES, LEH, P } from "./kailash-geo.js";
 import { lakeDist } from "./kailash-world.js";
 import { toGeo, toWorld } from "./geo.js";
 import { region } from "./roads.js";
@@ -344,7 +344,7 @@ export function* kailashCountry(sc, ctx, reg) {
 	}
 	yield;
 	// the towns: Taklakot (Purang) on its terraces above the Karnali, and Darchen under Kailash
-	for (const [pt, n] of [[P.taklakot, 18], [P.darchen, 10]]) {
+	for (const [pt, n] of [[P.taklakot, 18], [P.darchen, 10], ...(LEH ? [[P.leh, 26], [P.shey, 6], [P.nyoma, 8], [P.hanle, 7], [P.ali, 18], [P.chumathang, 5]] : [])]) {
 		if (!near(pt, 5)) continue;
 		const w = toWorld(pt[0], pt[1]);
 		for (let k = 0; k < n; k++) {
@@ -358,4 +358,23 @@ export function* kailashCountry(sc, ctx, reg) {
 			ctx.claimCircle(x, z, 1.2);
 		}
 	}
+	if (LEH) yield* ladakhExtras(sc, ctx, okAt);
+
+}
+
+// From Leh: the yellow Border Roads boards (Project Himank) by the road through Ladakh, now and then, well clear of
+// the way. (The gompas are the stops' own, kailash-landmarks.js.)
+function* ladakhExtras(sc, ctx, okAt) {
+	const { R, s0, s1, world, b } = ctx;
+	const f0 = ctx.frame(s0, 0, {}), g = toGeo(f0.x, f0.z);
+	if (g.lon < 79.45 && g.lat > 32.6) for (let i = 0; i < 2; i++) {
+		const c = ctx.frame(s0 + R() * (s1 - s0), (R() < 0.5 ? -1 : 1) * 1.4, {});
+		if (!okAt(c.x, c.z, 0.25) || sc.roads.clearance(c.x, c.z) < 0.5) continue;
+		const y = world.height(c.x, c.z), yaw = R() * 6.3;
+		for (const sd of [-0.09, 0.09]) b.add(T.box, place(c.x + Math.cos(yaw) * sd, y, c.z - Math.sin(yaw) * sd, yaw, 0.02, 0.32, 0.02), 0x2a2a2a);
+		b.add(T.box, place(c.x, y + 0.26, c.z, yaw, 0.26, 0.16, 0.015), 0xf2c200);
+		b.add(T.box, place(c.x, y + 0.31, c.z, yaw, 0.2, 0.025, 0.018), 0x1a1a1a);
+		b.add(T.box, place(c.x, y + 0.25, c.z, yaw, 0.17, 0.02, 0.018), 0x1a1a1a);
+	}
+	yield;
 }

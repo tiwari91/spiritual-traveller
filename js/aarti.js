@@ -334,6 +334,8 @@ export class Aarti {
 		const lm = this.landmarks[i];
 		if (!lm) return Promise.resolve(false);
 		const key = lm.shrine.key, L = PLACES[key] || K_PLACES[key];
+		// (the stops in Ladakh have no aarti: the gompas keep their own prayers)
+		if (!L) return Promise.resolve(false);
 		this.lm = lm;
 		this.L = L;
 		this.sched = this.music ? this.music.aarti(key) : Object.assign({ id: -1 }, aartiSchedule(key));

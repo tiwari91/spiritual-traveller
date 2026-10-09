@@ -19,7 +19,7 @@ import { KDMusic } from "./kdmusic.js";
 import { MapView } from "./map3d.js";
 import { Audio } from "./audio.js";
 import { CITIES, INDIA, KAILASH, LANKA, ROUTE, SHRINES, toGeo, toWorld } from "./geo.js";
-import { LAKES, PASSING, RIVERS as K_RIVERS } from "./kailash-geo.js";
+import { ALTS, LAKES, LEH, PASSING, RIVERS as K_RIVERS, START_NAME } from "./kailash-geo.js";
 import { Companions } from "./kailash-companion.js";
 import { kRegion, tibet } from "./kailash-world.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
@@ -39,7 +39,7 @@ const N = SHRINES.length;
 // How each stretch is travelled, and what the HUD calls it.
 const MODES = { walk: "On foot", bike: "By motorbike", train: "By train", jeep: "By jeep", car: "By taxi", auto: "By autorickshaw", bus: "By bus", coach: "By bus" };
 // Where the journey starts: Pune for the five shrines, Delhi (where the MEA assembles each batch) for Kailash.
-const START = KAILASH ? "Delhi" : "Pune";
+const START = KAILASH ? START_NAME : "Pune";
 // the transport chip is remembered for each journey on its own
 const TRANSPORT_KEY = KAILASH ? "transportKailash" : "transport";
 // the darshan card's button back into the rituals (at Kailash they are out of doors, at the lake, the pass, the camp)
@@ -332,7 +332,8 @@ function showFinale() {
 		ul.appendChild(li);
 	}
 	$("finale-km").textContent = KAILASH
-		? `About ${Math.round(route.km(route.length) / 10) * 10} km along the drawn line from Delhi, up the Kali to the Lipulekh, round Mansarovar and round Kailash on foot. Om Namah Shivaya. Jai Mansarovar. Bam Bam Bhole. Jai Kailashpati.`
+		? LEH ? `About ${Math.round(route.km(route.length) / 10) * 10} km along the drawn line from Leh, up the Indus through the Changthang and into Ngari, round Mansarovar and round Kailash on foot. Julley. Om Namah Shivaya. Jai Mansarovar. Bam Bam Bhole.`
+		: `About ${Math.round(route.km(route.length) / 10) * 10} km along the drawn line from Delhi, up the Kali to the Lipulekh, round Mansarovar and round Kailash on foot. Om Namah Shivaya. Jai Mansarovar. Bam Bam Bhole. Jai Kailashpati.`
 		: `About ${Math.round(route.km(route.length) / 10) * 10} km along the drawn line from Pune, through the Sahyadri, the Deccan and the Gangetic plain to the Garhwal Himalaya. Har Har Mahadev. Om Sai Ram. Govinda, Govinda. Jai Badri Vishal.`;
 	$("finale").hidden = false;
 	$("finale-again").focus();
@@ -361,11 +362,12 @@ function cameraGoal() {
 	const g = { target: new THREE.Vector3(), yaw: 0, pitch: 0.8, dist: 80 };
 	if (KAILASH && (app.state === "intro" || app.state === "loading" || app.state === "finale")) {
 		// over the Kumaon Himalaya, Tibet beyond: Delhi to the south-west, Kailash and the lakes to the north-east
-		const c = toWorld(80.6, 30.1);
+		// (from Leh: over Ladakh and Ngari, the Indus running south-east to Tibet and Kailash beyond)
+		const c = LEH ? toWorld(79.4, 32.4) : toWorld(80.6, 30.1);
 		g.target.set(c.x, 30, c.z);
 		g.yaw = 0.35 + Math.sin(app.t * 0.05) * 0.25 + (app.state === "finale" ? app.t * 0.03 : 0);
 		g.pitch = 0.62;
-		g.dist = innerWidth < innerHeight ? 330 : 230;
+		g.dist = (innerWidth < innerHeight ? 330 : 230) * (LEH ? 1.45 : 1);
 		return g;
 	}
 	if (app.state === "intro" || app.state === "loading") {
@@ -1085,7 +1087,7 @@ function kModeText() {
 	if (app.mode === "train") return "By train to Tanakpur";
 	if (app.mode === "auto") return "By auto to Delhi Junction";
 	if (app.mode === "coach") return way.label || "By the yatra's bus";
-	if (way.kind === "jeep") return choice === "Bike" ? "By motorbike up the Kali" : choice === "Car" ? "By car up the Kali" : way.label;
+	if (way.kind === "jeep") return choice === "Bike" ? (LEH ? way.label.replace("By jeep", "By motorbike") : "By motorbike up the Kali") : choice === "Car" ? (LEH ? way.label.replace("By jeep", "By car") : "By car up the Kali") : way.label;
 	if (app.mode === "bus") return "By the yatra's bus";
 	if (way.kind === "tibet" && way.label) return way.label.replace("By bus", app.mode === "car" ? "By car" : "By motorbike");
 	if (app.mode === "bike") return "By motorbike";
@@ -1314,7 +1316,13 @@ function buildUI() {
 	};
 	mk(0, START, "start", restart);
 	SHRINES.forEach((s, i) => mk(((i + 1) / N) * 100, s.name, "shrine", () => jump(i)));
-	if (KAILASH) installScrub();
+	if (KAILASH) {
+		installScrub();
+		altitudeProfile();
+		$("btn-restart").textContent = `Start again from ${START}`;
+		$("where").textContent = START;
+		$("btn-skip")?.addEventListener("click", () => app.state === "travel" && jump(app.leg));
+	}
 	if (coarse) $("hint").textContent = `Drag to look around · pinch to zoom · tap a ${KAILASH ? "stop" : "shrine"} on the progress bar to go there`;
 	// minimap base
 	drawMapBase();
@@ -1393,7 +1401,9 @@ function cycleTransport() {
 	app.transport = (app.transport + 1) % TRANSPORT.length;
 	$("transport-label").textContent = TRANSPORT[app.transport];
 	store.set(TRANSPORT_KEY, app.transport);
-	const say = KAILASH
+	const say = KAILASH && LEH
+		? ["The jeeps up the Indus to Demchok, the bus in Tibet, the parikrama on foot", "No railway in Ladakh: the jeeps up the Indus, the bus in Tibet, the parikrama on foot", "By motorbike from Leh, on across Tibet; the parikrama on foot", "By car from Leh, on across Tibet; the parikrama on foot"]
+		: KAILASH
 		? ["The yatra's way: the bus from Delhi, jeeps up the Kali, on foot over the Lipulekh, the Chinese bus in Tibet", "By train from Delhi to Tanakpur, then jeeps; the Tibet side by bus, the parikrama on foot", "By motorbike to Nabhidhang; the Tibet side by bus, the parikrama on foot", "By car to Nabhidhang; the Tibet side by bus, the parikrama on foot"]
 		: ["The usual way: motorbike, taxi, train and jeep, on foot to Kedarnath", "By train wherever the line goes, taxis and jeeps for the rest", "By motorbike the whole way, on foot to Kedarnath", "By car the whole way, on foot to Kedarnath"];
 	toast(say[app.transport]);
@@ -1563,14 +1573,67 @@ function updateHud() {
 	}
 	const we = $("where");
 	if (we.textContent !== where) we.textContent = where;
-	$("map-meta").textContent = `≈ ${Math.round(route.km(app.state === "intro" ? 0 : app.s)).toLocaleString("en-IN")} km`;
+	const sNow = app.state === "intro" ? 0 : app.s, km = Math.round(route.km(sNow)).toLocaleString("en-IN");
+	if (KAILASH) {
+		// the altitude here, and the next stop and how far to it
+		const alt = `${(Math.round(altAt(sNow) / 10) * 10).toLocaleString("en-IN")} m`;
+		const nx = app.state === "travel" ? route.chapters[app.leg] : null;
+		const meta = nx ? `${alt} · ${Math.max(0, Math.round(route.km(nx.s1) - route.km(sNow)))} km to ${nx.shrine.name}` : `≈ ${km} km · ${alt}`;
+		if ($("map-meta").textContent !== meta) $("map-meta").textContent = meta;
+		const sk = $("btn-skip");
+		if (sk) {
+			sk.hidden = app.state !== "travel";
+			if (nx) sk.querySelector("span").textContent = `Skip to ${nx.shrine.name}`;
+		}
+	} else $("map-meta").textContent = `≈ ${km} km`;
 	drawMap();
 }
 
+// ---------- altitude ----------
+// The altitude along the way (metres), from the anchors in kailash-geo.js placed on the route in order.
+let ALT_S = null;
+function altAt(s) {
+	if (!ALT_S) {
+		ALT_S = [];
+		let from = 0;
+		for (const [pt, m] of ALTS) {
+			const w = toWorld(pt[0], pt[1]);
+			let bs = from, bd = Infinity;
+			for (const p of route.pts) if (p.s >= from) {
+				const d = (p.x - w.x) ** 2 + (p.z - w.z) ** 2;
+				if (d < bd) (bd = d), (bs = p.s);
+			}
+			ALT_S.push([bs, m]);
+			from = bs;
+		}
+	}
+	const A = ALT_S;
+	if (s <= A[0][0]) return A[0][1];
+	for (let i = 0; i < A.length - 1; i++) if (s <= A[i + 1][0]) return lerp(A[i][1], A[i + 1][1], smoothstep(A[i][0], A[i + 1][0] + 1e-6, s));
+	return A[A.length - 1][1];
+}
+// The altitude profile drawn faintly behind the progress bar (each leg its equal share of the bar, as the bar is).
+function altitudeProfile() {
+	const host = $("progress");
+	if (!host || $("alt-profile")) return;
+	const lo = 0, hi = 6000, n = 240, pts = [];
+	for (let i = 0; i <= n; i++) {
+		const f = (i / n) * SHRINES.length, leg = Math.min(SHRINES.length - 1, Math.floor(f)), c = route.chapters[leg];
+		const s = c.s0 + (c.s1 - c.s0) * clamp(f - leg, 0, 1);
+		pts.push(`${((i / n) * 100).toFixed(2)},${(24 - ((altAt(s) - lo) / (hi - lo)) * 24).toFixed(2)}`);
+	}
+	const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	svg.id = "alt-profile";
+	svg.setAttribute("viewBox", "0 0 100 24");
+	svg.setAttribute("preserveAspectRatio", "none");
+	svg.setAttribute("aria-hidden", "true");
+	svg.innerHTML = `<polygon points="0,24 ${pts.join(" ")} 100,24"/><polyline points="${pts.join(" ")}"/>`;
+	host.prepend(svg);
+}
 // ---------- minimap ----------
 // the Kailash journey's minimap shows northern India and western Tibet: land and water only, no lines between
 // countries (the Kalapani and Lipulekh area is disputed)
-const MAP = KAILASH ? { lon0: 76.7, lon1: 82.3, lat0: 26.9, lat1: 32.5 } : { lon0: 67, lon1: 98, lat0: 6, lat1: 37 };
+const MAP = KAILASH && LEH ? { lon0: 76.9, lon1: 82.1, lat0: 29.8, lat1: 35.0 } : KAILASH ? { lon0: 76.7, lon1: 82.3, lat0: 26.9, lat1: 32.5 } : { lon0: 67, lon1: 98, lat0: 6, lat1: 37 };
 let mapBase;
 function mapXY(lon, lat, W) {
 	return [((lon - MAP.lon0) / (MAP.lon1 - MAP.lon0)) * W, ((MAP.lat1 - lat) / (MAP.lat1 - MAP.lat0)) * W];
@@ -1745,6 +1808,7 @@ function installInput() {
 		else if (k === "c" || k === "C") resetView();
 		else if (k === "?") $("help").hidden = false;
 		else if (k === "Escape") { closeMenu(); $("finale").hidden = true; }
+		else if ((k === "n" || k === "N") && KAILASH && app.state === "travel") jump(app.leg);
 		else if (k === "ArrowLeft") (e.shiftKey && KAILASH ? panBy(-40, 0) : (rig.userYaw += 0.12), userTook());
 		else if (k === "ArrowRight") (e.shiftKey && KAILASH ? panBy(40, 0) : (rig.userYaw -= 0.12), userTook());
 		else if (k === "ArrowUp") (e.shiftKey && KAILASH ? panBy(0, -40) : (rig.userPitch = clamp(rig.userPitch + 0.08, -1.2, 1.2)), userTook());

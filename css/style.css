@@ -234,3 +234,14 @@ body.hide-hud .hud { opacity: 0 !important; }
 @media (prefers-reduced-motion: reduce) {
 	.loader img { animation: none; }
 }
+/* Kailash: the choice of way on the start screen, the closed-crossing note, the altitude profile behind the bar */
+.route-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 18px; }
+.route-choice button { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: inherit; cursor: pointer; display: grid; gap: 3px; }
+.route-choice button b { font-family: var(--display); font-size: 20px; font-weight: 600; }
+.route-choice button small { color: var(--muted); font-size: 12.5px; }
+.route-choice button[aria-checked="true"] { border-color: var(--saffron); background: rgba(255, 154, 51, 0.12); box-shadow: 0 0 0 1px var(--saffron) inset; }
+.route-choice button:hover { background: rgba(255, 255, 255, 0.08); }
+.closed-note { font-size: 13px; color: var(--muted); border-left: 2px solid var(--saffron); padding-left: 10px; margin: -6px 0 16px; }
+#alt-profile { position: absolute; left: 10px; right: 10px; top: -18px; width: calc(100% - 20px); height: 26px; pointer-events: none; overflow: visible; }
+#alt-profile polygon { fill: rgba(243, 217, 160, 0.1); }
+#alt-profile polyline { fill: none; stroke: rgba(243, 217, 160, 0.45); stroke-width: 1; vector-effect: non-scaling-stroke; }

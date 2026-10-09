@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { Batch, T, VCOL, beam, place } from "./batch.js";
 import { GAURIKUND, KAILASH, RIVERS, ROUTE, SHRINES, toGeo, toWorld } from "./geo.js";
+import { LEH } from "./kailash-geo.js";
 import { tibet } from "./kailash-world.js";
 import { clamp, lerp, rand, segDist, smoothstep } from "./util.js";
 import { parkedVehicle } from "./traffic.js";
@@ -41,6 +42,8 @@ export function region(lon, lat) {
 	if (KAILASH) {
 		// the Tibetan plateau; the Byans valley up from Gunji; Kumaon (hill country like Garhwal's); the Terai
 		if (lat > 30.05 && lon > 80.9 && tibet(lon, lat) > 0.15) return "tibet";
+		// (from Leh: Ladakh and Ngari, the same high cold desert of chortens, flags and stone)
+		if (LEH && lat > 31.0 && lon < 81.0) return "tibet";
 		if (lat > 30.08 && lon > 80.75) return "byans";
 		if (lat > 29.15 && lon > 79.95) return "garhwal";
 		if (lat > 28.8 && lon > 79.75) return "doon";
