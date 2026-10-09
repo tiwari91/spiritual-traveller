@@ -138,6 +138,49 @@ export function cairn(b, world, x, z, s, R, strings = 3) {
 		prayerFlags(b, top, new THREE.Vector3(ex, world.height(ex, ez) + 0.04, ez), 0.08, 0, R);
 	}
 }
+// A roadside dhaba on the Ladakh road, a "Maggi point": a low whitewashed room with a blue door and a tin roof
+// weighed down with stones, its painted board on two poles, plastic chairs and a table out front, and beside it
+// the big parachute tents where the bikers and the drivers eat and sleep.
+function dhaba(b, x, y, z, yaw, R) {
+	const c = Math.cos(yaw), sn = Math.sin(yaw);
+	const at = (u, v) => [x + c * u + sn * v, z - sn * u + c * v];
+	b.add(T.box, place(x, y - 0.05, z, yaw, 4.2 * M, 2.4 * M, 3.0 * M), 0xece6da);
+	b.add(T.box, place(x, y + 2.35 * M, z, yaw, 4.6 * M, 0.12 * M, 3.4 * M), 0x9aa0a4); // the tin roof
+	for (let k = 0; k < 4; k++) {
+		const [sx, sz] = at((R() - 0.5) * 3.6 * M, (R() - 0.5) * 2.6 * M);
+		b.add(T.ball, place(sx, y + 2.5 * M, sz, R() * 6, 0.35 * M, 0.25 * M, 0.3 * M), 0x7a7268);
+	}
+	const [dx, dz] = at(0.6 * M, 1.52 * M);
+	b.add(T.box, place(dx, y, dz, yaw, 0.9 * M, 1.9 * M, 0.05 * M), 0x2a5ab8); // the door
+	const [wx, wz] = at(-1.1 * M, 1.52 * M);
+	b.add(T.box, place(wx, y + 1.0 * M, wz, yaw, 1.0 * M, 0.7 * M, 0.05 * M), 0x2a5ab8);
+	b.add(T.box, place(x, y + 2.2 * M, z, yaw, 4.25 * M, 0.18 * M, 3.05 * M), 0x2a5ab8); // the blue band under the eaves
+	// the board on its poles, yellow with a red band
+	for (const u of [-1.2, 1.2]) {
+		const [px, pz] = at(u * M, 3.2 * M);
+		b.add(T.box, place(px, y, pz, yaw, 0.08 * M, 2.6 * M, 0.08 * M), 0x5a4434);
+	}
+	const [bx, bz] = at(0, 3.2 * M);
+	b.add(T.box, place(bx, y + 1.9 * M, bz, yaw, 2.8 * M, 0.7 * M, 0.06 * M), 0xf0c419);
+	b.add(T.box, place(bx, y + 2.05 * M, bz, yaw, 2.82 * M, 0.2 * M, 0.07 * M), 0xc8261c);
+	// a table and chairs out front
+	const [tx, tz] = at(-0.4 * M, 2.4 * M);
+	b.add(T.box, place(tx, y, tz, yaw, 1.0 * M, 0.75 * M, 0.7 * M), 0xf1eee6);
+	for (const u of [-0.8, 0.8]) {
+		const [cx, cz] = at(-0.4 * M + u * M, 2.4 * M);
+		b.add(T.box, place(cx, y, cz, yaw, 0.45 * M, 0.45 * M, 0.45 * M), pick(R, [0xc8261c, 0xf1eee6, 0x2a8a4a]));
+		b.add(T.box, place(cx + c * u * 0.2 * M, y + 0.45 * M, cz - sn * u * 0.2 * M, yaw, 0.08 * M, 0.45 * M, 0.45 * M), 0xc8261c);
+	}
+	// the parachute tents
+	for (const u of [3.8, 7.0]) {
+		const [px, pz] = at(u * M, (R() - 0.3) * 2 * M);
+		const r = (2.6 + R() * 0.8) * M, col = pick(R, [0xe0582a, 0x2a6ab8, 0xf0c419, 0x4a6a3a, 0xc8261c]);
+		b.add(T.ball, place(px, y, pz, R() * 6, r * 2, 2.6 * M, r * 2), col);
+		b.add(T.ball, place(px, y + 0.05 * M, pz, R() * 6, r * 2.05, 1.2 * M, r * 2.05), pick(R, [0xf1eee6, 0xf0c419, 0x2a6ab8]));
+		b.add(T.box, place(px, y, pz, 0, 0.06 * M, 3.2 * M, 0.06 * M), 0x8a8278); // the centre pole
+	}
+}
+
 // A drokpa's black tent of yak hair, low and wide, smoke-hole along the ridge.
 function tent(b, x, y, z, yaw) {
 	b.add(T.pyramid, place(x, y - 0.02, z, yaw, 1.6 * M * 2, 1.7 * M, 1.1 * M * 2), 0x1e1a16);
@@ -272,6 +315,31 @@ export function* kailashCountry(sc, ctx, reg) {
 		if (inTibet(c.x, c.z) && tallOk(c.x, c.z, 0.6)) {
 			chorten(b, c.x, world.height(c.x, c.z), c.z, 1.0 + R() * 0.6, R() * 6);
 			ctx.claimCircle(c.x, c.z, 0.6);
+		}
+	}
+	yield;
+	// a dhaba and its parachute tents by the road at the stops up the Indus and in the Changthang
+	if (LEH) for (const pt of [P.upshi, P.kiari, P.chumathang, P.mahe, P.nyoma, P.loma, P.hanle]) {
+		if (!pt || !near(pt, 1.2)) continue;
+		const w = toWorld(pt[0], pt[1]);
+		let best = s0, bd = Infinity;
+		for (let s = s0; s <= s1; s += 0.25) {
+			const p = sc.route.at(s, {});
+			const d = Math.hypot(p.x - w.x, p.z - w.z);
+			if (d < bd) (bd = d), (best = s);
+		}
+		if (bd > 0.6 || best <= s0 + 0.01 || best >= s1 - 0.01) continue; // the chunk the stop is in, only
+		// (beside a village the dhaba may stand among its houses, but never on the road, the river or another thing)
+		let done = false;
+		for (const off of [3.0, 3.8, 4.8, 6.0]) for (const ds of [0.8, -0.8, 1.8, -1.8]) for (const side of [1, -1]) {
+			if (done) break;
+			const c = ctx.frame(best + ds, side * off, {});
+			if (sc.roads.clearance(c.x, c.z) < 1.0 || ctx.taken(c.x, c.z, 1.3) || !clearOfLakes(c.x, c.z, 1)) continue;
+			const y = seat(world, c.x, c.z, 1.2, 0.45);
+			if (y === null) continue;
+			dhaba(b, c.x, y, c.z, Math.atan2(c.dx, c.dz) + (side > 0 ? -Math.PI / 2 : Math.PI / 2), R);
+			ctx.claimCircle(c.x, c.z, 1.6);
+			done = true;
 		}
 	}
 	yield;
