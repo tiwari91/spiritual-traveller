@@ -367,9 +367,13 @@ export class World {
 		// silty river water that catches the sun, on pale sandbanks
 		const rmat = haze(new THREE.MeshStandardMaterial({ color: 0x3e6a6c, roughness: 0.14, metalness: 0.05, emissive: 0x0a2228, emissiveIntensity: 0.25 }));
 		const bank = haze(new THREE.MeshStandardMaterial({ color: 0xa8956e, roughness: 1, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
+		const glint = KAILASH ? glintMaterial() : null;
+		this.glint = glint;
 		const river = (pts, w) => {
 			const g = new THREE.Group();
 			g.add(ribbon(pts.map((p) => p.clone().setY(p.y - 0.03)), w * 1.55, bank), ribbon(pts, w, rmat));
+			// on the Kailash journey the sun glints on the running water, drifting downstream (main.js moves it)
+			if (KAILASH) g.add(ribbon(pts.map((p) => p.clone().setY(p.y + 0.012)), w * 0.85, glint));
 			return g;
 		};
 		for (const r of RIVERS) {
@@ -400,13 +404,34 @@ export class World {
 	}
 }
 
+// Sun glints for running water: scattered bright flecks on a transparent sheet, added over the river.
+function glintMaterial() {
+	const c = document.createElement("canvas");
+	c.width = c.height = 128;
+	const g = c.getContext("2d");
+	let seed = 7;
+	const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+	for (let i = 0; i < 110; i++) {
+		const a = 0.35 + r() * 0.65;
+		g.fillStyle = `rgba(255,252,236,${a})`;
+		g.fillRect(r() * 128, r() * 128, 1 + r() * 3, 1);
+	}
+	const t = new THREE.CanvasTexture(c);
+	t.wrapS = t.wrapT = THREE.RepeatWrapping;
+	t.repeat.set(1, 0.5);
+	return new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 1, fog: true });
+}
+
 // A flat ribbon mesh along a 3D polyline.
 export function ribbon(pts, width, mat) {
 	const n = pts.length;
-	const pos = new Float32Array(n * 2 * 3);
+	const pos = new Float32Array(n * 2 * 3), uv = new Float32Array(n * 2 * 2);
 	const idx = [];
 	const up = new THREE.Vector3(0, 1, 0);
+	let run = 0;
 	for (let i = 0; i < n; i++) {
+		if (i) run += pts[i].distanceTo(pts[i - 1]);
+		uv.set([0, run / width, 1, run / width], i * 4);
 		const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
 		const dir = new THREE.Vector3().subVectors(b, a).setY(0).normalize();
 		const side = new THREE.Vector3().crossVectors(up, dir).multiplyScalar(width / 2);
@@ -419,6 +444,7 @@ export function ribbon(pts, width, mat) {
 	}
 	const g = new THREE.BufferGeometry();
 	g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+	g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
 	g.setIndex(idx);
 	g.computeVertexNormals();
 	const m = new THREE.Mesh(g, mat);

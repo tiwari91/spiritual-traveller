@@ -977,6 +977,7 @@ function loop(now) {
 	beaconMaterial().uniforms.uOpacity.value = clamp((rig.dist - 25) / 140, 0, 1) * 0.5;
 	const wscale = clamp(rig.dist / 25, 1, 4);
 	weather.update(dt, focus, wx.rain, wx.snow, wscale);
+	if (world.glint) world.glint.map.offset.y += dt * 0.35; // the glints run down the river
 	const lm = app.state === "darshan" ? landmarks[app.at] : null;
 	petals.update(dt, lm ? lm.pos : focus, !!lm && app.darshanT > 1 && lm.shrine.petals !== false);
 	// in darshan only the shrine at hand is drawn, so no other temple peeks over a ridge
