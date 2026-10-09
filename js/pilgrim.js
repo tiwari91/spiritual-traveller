@@ -1733,7 +1733,8 @@ export function reach(J, S, target, p = {}, pt = PALM) {
 export class Traveller {
 	// warm: dressed for the high passes (the Kailash journey): long sleeves, a maroon woollen shawl and a woollen cap
 	constructor({ warm = false } = {}) {
-		this.J = body(Object.assign({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 }, warm ? { top: 0xd8661a, sleeve: 1, sash: 0x6a1a22, shawl: 0x6a1a22, head: "cap", headColor: 0xe2761b, capBand: 0x6a1a22 } : {}));
+		this.J = body(Object.assign({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 }, warm ? { top: 0x2e2b2a, bottom: 0x4f4c3c, sleeve: 1, sash: 0xe2761b, shawl: 0xd8661a, head: "cap", headColor: 0x6a1a22, capBand: 0xe2761b } : {}));
+		if (warm) this.gear();
 		this.group = new THREE.Group();
 		this.model = this.J.root;
 		this.model.scale.setScalar(0.28);
@@ -1748,6 +1749,50 @@ export class Traveller {
 		this.blend = 0; // 0 walking, 1 at darshan
 		this.yaw = 0;
 		this.lag = 0;
+	}
+	// Dressed for the long ride to Kailash: trekking boots and woollen gloves always; on the motorbike an
+	// open-face helmet in cream with a maroon stripe, the goggles pushed up on it and dark glasses.
+	gear() {
+		const J = this.J, M = (c, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.75 }, o));
+		const leather = M(0x3a2618, { roughness: 0.6 }), sole = M(0x1a1714, { roughness: 0.9 }), glove = M(0x2a2624, { roughness: 0.85 });
+		for (const S of ["L", "R"]) {
+			const a = J["ankle" + S];
+			if (a) {
+				part(new THREE.CylinderGeometry(0.052, 0.058, 0.17, 12), leather, 0, 0.03, 0, a);
+				const toe = part(new THREE.SphereGeometry(1, 14, 8), leather, 0, -0.035, 0.07, a);
+				toe.scale.set(0.058, 0.05, 0.13);
+				const s = part(new THREE.BoxGeometry(0.115, 0.022, 0.27), sole, 0, -0.075, 0.055, a);
+				s.castShadow = false;
+			}
+			if (J["palm" + S]) J["palm" + S].material = glove;
+		}
+		const ride = new THREE.Group();
+		J.head.add(ride);
+		const shell = part(new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, 0, 1.78), M(0xebe4d2, { roughness: 0.35, metalness: 0.05 }), 0, 0.03, -0.012, ride);
+		shell.scale.set(0.128, 0.138, 0.136);
+		shell.rotation.x = -0.42;
+		const stripe = part(new THREE.SphereGeometry(1, 6, 14, -0.12, 0.24, 0, 1.6), M(0x6a1a22, { roughness: 0.4 }), 0, 0.03, -0.012, ride);
+		stripe.scale.set(0.13, 0.14, 0.138);
+		stripe.rotation.x = -0.42;
+		const peak = part(new THREE.SphereGeometry(1, 16, 4, -0.9, 1.8, 1.45, 0.14), M(0x2a2624, { roughness: 0.5 }), 0, 0.075, 0.0, ride);
+		peak.scale.set(0.135, 0.14, 0.165);
+		// the goggles up on the helmet's brow, their band round it
+		const band = part(new THREE.TorusGeometry(1, 0.06, 6, 32), M(0x1e1c1a), 0, 0.085, -0.03, ride);
+		band.scale.set(0.132, 0.132, 0.138);
+		band.rotation.x = Math.PI / 2 - 0.55;
+		for (const k of [-1, 1]) {
+			const g = part(new THREE.CylinderGeometry(0.027, 0.027, 0.022, 16), M(0x8a6a2a, { metalness: 0.7, roughness: 0.3 }), k * 0.036, 0.138, 0.078, ride);
+			g.rotation.x = Math.PI / 2 - 0.55;
+			const l = part(new THREE.CircleGeometry(0.021, 16), M(0xc8902a, { metalness: 0.5, roughness: 0.15, emissive: 0x2a1600 }), 0, 0.0115, 0, g);
+			l.rotation.x = -Math.PI / 2;
+			// dark glasses on the face
+			const f = faceAt(k * 0.034, 0.017);
+			const lens = part(new THREE.CircleGeometry(0.019, 16), M(0x101418, { metalness: 0.6, roughness: 0.1 }), f[0], f[1], f[2] + 0.012, ride);
+			lens.scale.set(1.15, 0.85, 1);
+		}
+		part(new THREE.BoxGeometry(0.022, 0.004, 0.004), M(0x101418), 0, 0.02, faceAt(0, 0.02)[2] + 0.012, ride);
+		ride.visible = false;
+		this.ride = ride;
 	}
 	// mode: "walk", "darshan" (aarti), "idle" (standing) or "ride" (astride the motorbike);
 	// rate: walking cadence multiplier; yaw: facing (0 looks along +z)
@@ -1809,6 +1854,7 @@ export class Traveller {
 		const riding = this.w.ride > 0.5;
 		if (J.staff) J.staff.visible = !riding;
 		if (J.diya) J.diya.visible = !riding;
+		if (this.ride) this.ride.visible = riding;
 		// keep the staff upright in the world rather than swinging with the forearm
 		if (J.staff) {
 			J.staff.parent.updateWorldMatrix(true, false);

@@ -148,7 +148,6 @@ export function motorbike() {
 	}
 	// the luggage carrier and a cloth bundle tied on
 	k.rbox(0, 0.79, -0.76, 0.3, 0.025, 0.32, 0.01, 0xd8dade, "chrome");
-	k.rbox(0, 0.88, -0.8, 0.3, 0.15, 0.22, 0.05, 0xc96a1e, "matte");
 	// the forks, the headlamp in its casquette with the two pilot lamps, the bars, grips, levers and mirrors
 	for (const sx of [-1, 1]) {
 		tube([sx * 0.075, 0.38, 0.72], [sx * 0.075, 0.86, 0.56], 0.034, 0xd8dade);
@@ -175,6 +174,23 @@ export function motorbike() {
 	k.lamp(0, 0.62, -1.03, 0.08, 0.045, "tail", true);
 	k.plate("mh", 0, 0.52, -1.02, 0.24, 0.06, true);
 	for (const x of [-0.17, 0.17]) k.rbox(x, 0.3, 0.12, 0.12, 0.03, 0.05, 0.01, black, "matte");
+	// the crash guard: a chrome hoop each side round the front of the engine, braced to the down tube
+	for (const sx of [-1, 1]) {
+		tube([sx * 0.06, 0.62, 0.4], [sx * 0.22, 0.5, 0.32], 0.026, 0xdadde0);
+		tube([sx * 0.22, 0.5, 0.32], [sx * 0.23, 0.26, 0.24], 0.026, 0xdadde0);
+		tube([sx * 0.23, 0.26, 0.24], [sx * 0.08, 0.24, 0.12], 0.026, 0xdadde0);
+	}
+	// for the long ride in the Himalaya: canvas saddle bags slung either side over the rear wheel, a rolled
+	// tarp and a jerrycan on the carrier, all strapped down
+	for (const sx of [-1, 1]) {
+		k.rbox(sx * 0.21, 0.62, -0.66, 0.11, 0.26, 0.34, 0.04, 0x5a5236, "matte");
+		k.rbox(sx * 0.255, 0.69, -0.66, 0.025, 0.1, 0.2, 0.012, 0x4a432c, "matte");
+		for (const z of [-0.74, -0.58]) k.add(BOX, at(sx * 0.268, 0.66, z, 0, 0, 0, 0.006, 0.18, 0.025), 0x2a2018, "matte");
+		k.add(BOX, at(sx * 0.15, 0.78, -0.66, 0, 0, 0, 0.12, 0.012, 0.3), 0x3a2a1c, "matte");
+	}
+	k.add(CYL(14), at(0, 0.855, -0.7, 0, 0, Math.PI / 2, 0.11, 0.42, 0.11), 0x2f4a5a, "matte");
+	for (const sx of [-1, 1]) k.add(CYL(14), at(sx * 0.12, 0.855, -0.7, 0, 0, Math.PI / 2, 0.116, 0.02, 0.116), 0x1a1a1a, "matte");
+	k.rbox(0, 0.9, -0.86, 0.24, 0.2, 0.09, 0.02, 0x3e5a2e, "paint");
 	frame.add(k.build());
 	// the side stand: a leg hinged under the left foot peg, swung down to the ground or folded up behind
 	const stand = new THREE.Group();
