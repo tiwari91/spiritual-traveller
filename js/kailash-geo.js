@@ -404,6 +404,43 @@ export const SHRINES = LEH ? [...LEH_STOPS, ...LEH_SHARED] : LIPU_SHRINES;
 export const ROUTE = LEH ? LEH_ROUTE : LIPU_ROUTE;
 export const PASSING = LEH ? LEH_PASSING : LIPU_PASSING;
 export const CITIES = LEH ? LEH_CITIES : LIPU_CITIES;
-export const RIVERS = LEH ? [...INDUS, ...LIPU_RIVERS.filter((r) => r.pts.some(([lo, la]) => lo > 80.8 && la > 30.2))] : LIPU_RIVERS;
+// The Indus and Hanle river lines are coarse, and the road up the valley weaves across them; drawn as they are
+// they ran over the tarmac and threw up bridges in the middle of the valley. Densify each, and keep it on one bank
+// of the road, at least a road and a bank away from it, crossing only where it has gone well over to the far side.
+function offRoad(rivers, ways) {
+	const segsR = [];
+	for (const c of ways) for (let i = 0; i < c.pts.length - 1; i++) segsR.push([c.pts[i], c.pts[i + 1]]);
+	const near = (x, y) => {
+		let best = null;
+		for (const [a, b] of segsR) {
+			const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1e-12;
+			const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / l2));
+			const px = a[0] + dx * t, py = a[1] + dy * t, d = Math.hypot(x - px, y - py);
+			if (!best || d < best.d) {
+				const l = Math.sqrt(l2), nx = -dy / l, ny = dx / l;
+				best = { d, px, py, nx, ny, side: Math.sign((x - px) * nx + (y - py) * ny) || 1 };
+			}
+		}
+		return best;
+	};
+	const MIN = 0.075, FLIP = 0.3;
+	return rivers.map((r) => {
+		const out = [];
+		let cur = 0;
+		for (let i = 0; i < r.pts.length - 1; i++) {
+			const a = r.pts[i], b = r.pts[i + 1];
+			const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.02));
+			for (let k = 0; k < n || (i === r.pts.length - 2 && k === n); k++) {
+				const x = a[0] + (b[0] - a[0]) * (k / n), y = a[1] + (b[1] - a[1]) * (k / n);
+				const q = near(x, y);
+				if (!cur || (q.side !== cur && q.d > FLIP)) cur = q.side;
+				const d = q.side === cur ? Math.max(q.d, MIN) : MIN;
+				out.push(q.d > FLIP && q.side === cur ? [x, y] : [q.px + q.nx * cur * d, q.py + q.ny * cur * d]);
+			}
+		}
+		return { ...r, pts: out };
+	});
+}
+export const RIVERS = LEH ? [...offRoad(INDUS.slice(0, 2), LEH_ROUTE), INDUS[2], ...LIPU_RIVERS.filter((r) => r.pts.some(([lo, la]) => lo > 80.8 && la > 30.2))] : LIPU_RIVERS;
 export const ALTS = LEH ? ALT_LEH : ALT_LIPU;
 export const START_NAME = LEH ? "Leh" : "Delhi";

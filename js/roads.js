@@ -1213,6 +1213,7 @@ export class Roads {
 					const q = side(p, sg * (outer - 0.06));
 					// a footbridge has a low stone parapet; a road bridge the painted concrete one
 					if (p.kind === "trek" || p.kind === "trail") b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.05, 0.2, STEP * 1.02), 0x8a8378);
+					else if (KAILASH) b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.24, STEP * 0.8), i % 2 ? 0xe2b21e : 0xf1efe8); // BRO blocks, yellow and white
 					else b.add(T.box, place(q.x, p.y + k.lift, q.z, yaw, 0.12, 0.3, STEP * 1.02), i % 6 < 3 ? 0xe8e4da : 0x2a2a2a);
 				}
 				if (p.onDeck && i % 5 === 0) {
@@ -1251,7 +1252,7 @@ export class Roads {
 						b.add(T.box, place(q.x, y + 0.16, q.z, yaw, 0.03, 0.09, STEP * 1.02), Math.floor(i / 2) % 2 ? 0xf0c419 : 0x161616);
 					} else if (i % 2 === 0) {
 						// BRO parapet blocks with gaps
-						b.add(T.box, place(q.x, y, q.z, yaw, 0.14, 0.22, 0.2), Math.floor(i / 2) % 2 ? 0xf1efe8 : 0x2a2a2a);
+						b.add(T.box, place(q.x, y, q.z, yaw, 0.14, 0.22, 0.2), Math.floor(i / 2) % 2 ? 0xf1efe8 : KAILASH ? 0xe2b21e : 0x2a2a2a);
 					}
 					const up = side(p, -down * (outer + 0.05));
 					if (Math.abs(hl - hr) > 0.5) b.add(T.box, place(up.x, yAt(p, up) - 0.1, up.z, yaw, 0.18, 0.55, STEP * 1.02), 0x8a8378);
