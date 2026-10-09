@@ -343,6 +343,24 @@ export function* kailashCountry(sc, ctx, reg) {
 		}
 	}
 	yield;
+	// scree fans and fallen rock at the foot of the steep slopes above the road up the Indus and in the Changthang
+	if (LEH) for (let i = 0; i < 5; i++) {
+		const sm = s0 + R() * (s1 - s0), side = R() < 0.5 ? -1 : 1;
+		const a = ctx.frame(sm, side * 2.4, {}), u = ctx.frame(sm, side * 5.0, {});
+		if (!inTibet(a.x, a.z)) continue;
+		const rise = world.height(u.x, u.z) - world.height(a.x, a.z);
+		if (rise < 0.9) continue;
+		const n = 14 + Math.floor(R() * 14);
+		for (let q = 0; q < n; q++) {
+			// a cone of stones spreading as it comes down, the bigger ones rolled furthest
+			const t = Math.pow(R(), 0.7), along = (R() - 0.5) * (0.3 + t * 1.6);
+			const c = ctx.frame(sm + along, side * (4.6 - t * 2.2), {});
+			if (!okAt(c.x, c.z, 0.05)) continue;
+			const r = (0.15 + R() * 0.35 + t * 0.4) * M;
+			b.add(T.ball, place(c.x, world.height(c.x, c.z) - r * 0.3, c.z, R() * 6, r * (1 + R() * 0.5), r * 0.8, r), pick(R, STONE));
+		}
+	}
+	yield;
 	// cairns hung with flags on the rises beside the way, more of them on the parikrama and at the passes
 	const nc = 2 + (trail((s0 + s1) / 2) ? 4 : 0) + (near(P.lipulekh, 6) || near(P.gurlaLa, 6) || near(P.dolmaLa, 6) ? 4 : 0);
 	for (let i = 0; i < nc; i++) {
