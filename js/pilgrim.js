@@ -959,6 +959,20 @@ function body(opts) {
 		J.bag = [bag];
 		J.bag.push(part(ribbon(pts, { nt: sg(26, 10), sec: lod ? [-1, -0.72, -0.66, 0.66, 0.72, 1] : [-1, 1], w: () => 0.03, th: 0.004, up: (p) => (p.y < 0.1 ? V(-1, 0, 0) : up(p)), col: (t, s) => (Math.abs(s) > 0.7 ? st[1] : null) }), M.bag, 0, 0, 0, torso));
 	}
+	if (opts.mala) {
+		// a rudraksha mala round the neck, over the jacket and down on the chest, a larger guru bead and a tassel
+		const ctl = [[0, 0.6, -0.075], [0.07, 0.6, -0.02], [0.085, 0.55, 0.06], [0.06, 0.45, 0.2], [0, 0.39, 0.2], [-0.06, 0.45, 0.2], [-0.085, 0.55, 0.06], [-0.07, 0.6, -0.02]];
+		const pts = ctl.map(([x, y, z]) => (y < 0.56 ? onBody(surf, V(x, y, z), clothOff + 0.03) : V(x, y, z)));
+		const curve = new THREE.CatmullRomCurve3(pts, true);
+		const bead = new THREE.SphereGeometry(0.0085, 7, 5), bm = new THREE.MeshStandardMaterial({ color: 0x5a2c18, roughness: 0.7 });
+		const mala = new THREE.Group();
+		torso.add(mala);
+		for (let i = 0; i < 40; i++) part(bead, bm, ...curve.getPointAt(i / 40).toArray(), mala);
+		const g = curve.getPointAt(0.5);
+		part(new THREE.SphereGeometry(0.014, 9, 6), bm, g.x, g.y - 0.012, g.z, mala);
+		part(new THREE.ConeGeometry(0.01, 0.04, 6), new THREE.MeshStandardMaterial({ color: 0xc8301e, roughness: 0.8 }), g.x, g.y - 0.045, g.z, mala).rotation.x = Math.PI;
+		J.mala = mala;
+	}
 	if (opts.staff) {
 		// the staff is held in the left hand (the +x arm, "R" in the skeleton), its foot near the ground: the right
 		// hand carries the diya, the sacred thing
@@ -1734,7 +1748,7 @@ export function reach(J, S, target, p = {}, pt = PALM) {
 export class Traveller {
 	// warm: dressed for the high passes (the Kailash journey): long sleeves, a maroon woollen shawl and a woollen cap
 	constructor({ warm = false } = {}) {
-		this.J = body(Object.assign({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 }, warm ? { top: 0x2e2b2a, bottom: 0x3b3a33, pyjama: true, sleeve: 1, sash: 0xe2761b, shawl: 0xd8661a, head: "cap", headColor: 0x6a1a22, capBand: 0xe2761b } : {}));
+		this.J = body(Object.assign({ skin: SKIN[0], top: 0xe2761b, bottom: 0xf1ebdc, sash: 0xb8261c, head: "pheta", headColor: 0xf08a1f, beard: 0x5d554e, staff: true, diya: true, bag: true, lod: 2, sleeve: 0.6 }, warm ? { top: 0x2e2b2a, bottom: 0x3b3a33, pyjama: true, mala: true, sleeve: 1, sash: 0xe2761b, shawl: 0xd8661a, head: "cap", headColor: 0x6a1a22, capBand: 0xe2761b } : {}));
 		if (warm) this.gear();
 		this.group = new THREE.Group();
 		this.model = this.J.root;
