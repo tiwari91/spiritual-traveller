@@ -1578,7 +1578,8 @@ function updateHud() {
 		// the altitude here, and the next stop and how far to it
 		const alt = `${(Math.round(altAt(sNow) / 10) * 10).toLocaleString("en-IN")} m`;
 		const nx = app.state === "travel" ? route.chapters[app.leg] : null;
-		const meta = nx ? `${alt} · ${Math.max(0, Math.round(route.km(nx.s1) - route.km(sNow)))} km to ${nx.shrine.name}` : `≈ ${km} km · ${alt}`;
+		// (short, to fit under the little map: the stop it counts down to is in the heading and on the skip button)
+		const meta = nx ? `${alt} · ${Math.max(0, Math.round(route.km(nx.s1) - route.km(sNow)))} km to go` : `${alt} · ${km} km`;
 		if ($("map-meta").textContent !== meta) $("map-meta").textContent = meta;
 		const sk = $("btn-skip");
 		if (sk) {
