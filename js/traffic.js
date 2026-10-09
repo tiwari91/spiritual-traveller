@@ -5,6 +5,9 @@ import * as THREE from "three";
 import { VCOL } from "./batch.js";
 import { BOX, CYL, Kit, Outline, QUAD, SPH, arc, archFlare, at, carBody, loft, longSlab, planWidth, prep, section, stations, wheel } from "./carkit.js";
 import { autoBody } from "./vehicles.js";
+import { KAILASH } from "./geo.js";
+import { LEH as LEH_ROUTE } from "./kailash-geo.js";
+const LEH = KAILASH && LEH_ROUTE;
 import { M } from "./roads.js";
 import { rand } from "./util.js";
 
@@ -285,7 +288,70 @@ function car(R) {
 	carBody(k, CARS[type], { paint, plate, grille: type === "sedan" ? "chrome" : "mouth", wheel: R() < 0.5 ? "alloy" : "cover", chromeHandles: type === "sedan", n: 12, step: 0.1, gstep: 0.09, wheelN: 16 });
 	return k;
 }
-export const MAKERS = { truck, bus, auto, tractor, car };
+
+// An army truck on the Ladakh road: an Ashok Leyland Stallion in olive drab, the flat-nosed cab, the canvas
+// canopy over the bed on its hoops, the spare wheel behind the cab and the unit's white number on the bumper.
+function armyTruck(R) {
+	const k = new Kit();
+	const olive = pick(R, [0x4a5232, 0x525a36, 0x454c30]), canvas = 0x5e5f40, black = 0x161618, steel = 0x2a2a2c;
+	for (const sx of [-1, 1]) k.box(sx * 0.45, 0.9, -0.3, 0.12, 0.24, 6.6, steel, "matte");
+	// the cab, forward over the front wheels
+	k.rbox(0, 1.75, 2.85, 2.3, 1.7, 1.5, 0.08, olive, "paint");
+	k.box(0, 2.15, 3.61, 2.0, 0.62, 0.02, 0xffffff, "glass");
+	for (const sx of [-1, 1]) {
+		k.box(sx * 1.16, 2.15, 2.85, 0.02, 0.55, 0.9, 0xffffff, "glass");
+		k.lamp(sx * 0.8, 1.2, 3.61, 0.2, 0.2, "head", false, 0xf4f2ea, true);
+		k.box(sx * 1.3, 2.2, 3.4, 0.05, 0.3, 0.18, black, "matte"); // mirrors
+	}
+	k.box(0, 1.3, 3.61, 1.1, 0.4, 0.03, 0x2a2e20, "matte"); // grille
+	k.rbox(0, 0.8, 3.7, 2.35, 0.2, 0.14, 0.02, olive, "paint");
+	k.box(0.7, 0.8, 3.78, 0.4, 0.08, 0.01, 0xf0f0e8, "matte"); // the unit's number
+	k.cyl(0, 1.6, 1.95, 1.0, 0.25, black, "matte", "z", 16); // the spare wheel behind the cab
+	// the bed and its canopy on hoops
+	k.rbox(0, 1.35, -0.75, 2.4, 0.6, 4.9, 0.03, olive, "paint");
+	k.rbox(0, 2.2, -0.75, 2.36, 1.1, 4.8, 0.04, canvas, "matte");
+	k.add(CYL(16), at(0, 2.75, -0.75, Math.PI / 2, 0, 0, 2.36, 4.8, 0.6), canvas, "matte");
+	for (let z = -2.9; z < 1.5; z += 1.2) k.box(0, 2.0, z, 2.39, 1.6, 0.04, 0x4e4f34, "matte");
+	k.rbox(0, 0.85, -3.25, 2.3, 0.14, 0.1, 0.02, black, "matte");
+	for (const sx of [-1, 1]) k.lamp(sx * 0.95, 0.95, -3.31, 0.16, 0.1, "tail", true);
+	for (const sx of [-1, 1]) {
+		wheel(k, sx * 1.02, 0.55, 2.85, 0.55, 0.32, sx, "steel", 0x3a3e2a, 18);
+		wheel(k, sx * 1.02, 0.55, -1.9, 0.55, 0.32, sx, "steel", 0x3a3e2a, 18);
+	}
+	return k;
+}
+
+// Another biker on the way to the Changthang: a Royal Enfield with its rider in a riding jacket and helmet,
+// luggage strapped behind.
+function biker(R) {
+	const k = new Kit();
+	const paint = pick(R, [0x1a1a1c, 0x5a0f14, 0x3a4a2a, 0x2a3a5a, 0xb8b4a8]), jacket = pick(R, [0x1f2a44, 0x2a2a2e, 0x7a1a24, 0x3a4a2a, 0xa8641e, 0x24506a]);
+	const helmet = pick(R, [0xebe4d2, 0x161616, 0x8a1a1a, 0xd8d8d0]), black = 0x151517, chrome = 0xc8ccd0;
+	wheel(k, 0, 0.33, 0.68, 0.33, 0.1, 1, "steel", chrome, 16);
+	wheel(k, 0, 0.33, -0.68, 0.33, 0.11, 1, "steel", chrome, 16);
+	k.box(0, 0.58, 0.0, 0.08, 0.08, 1.1, black, "matte", 0.15);
+	k.rbox(0, 0.42, 0.05, 0.22, 0.3, 0.38, 0.05, 0x9a9ea4, "chrome"); // engine
+	k.add(SPH(14), at(0, 0.84, 0.25, -0.1, 0, 0, 0.27, 0.22, 0.56), paint, "paint"); // tank
+	k.rbox(0, 0.82, -0.3, 0.26, 0.08, 0.5, 0.03, 0x2a1c14, "matte"); // seat
+	k.box(0, 0.62, 0.62, 0.06, 0.5, 0.06, chrome, "chrome", -0.35); // forks
+	k.box(0, 0.98, 0.52, 0.62, 0.03, 0.03, black, "matte"); // bars
+	k.lamp(0, 0.86, 0.72, 0.15, 0.15, "head", false, 0xf4f2ea, true);
+	k.cyl(-0.15, 0.3, -0.45, 0.08, 0.8, chrome, "chrome", "z", 10); // silencer
+	k.rbox(0, 0.95, -0.72, 0.42, 0.26, 0.32, 0.04, pick(R, [0x3a4a2a, 0x2a2a2e, 0x8a3a1a]), "matte"); // the luggage
+	for (const sx of [-1, 1]) k.rbox(sx * 0.2, 0.62, -0.62, 0.12, 0.3, 0.36, 0.03, 0x3a3428, "matte"); // panniers
+	// the rider
+	k.rbox(0, 1.22, -0.18, 0.4, 0.58, 0.26, 0.08, jacket, "matte", 0.22);
+	k.add(SPH(12), at(0, 1.62, -0.06, 0, 0, 0, 0.27, 0.29, 0.29), helmet, "paint");
+	k.box(0, 1.6, 0.07, 0.17, 0.07, 0.03, 0x101418, "glass");
+	for (const sx of [-1, 1]) {
+		k.box(sx * 0.15, 0.92, -0.02, 0.14, 0.14, 0.46, 0x2a2c30, "matte", 0.15); // thighs
+		k.box(sx * 0.17, 0.62, 0.18, 0.12, 0.42, 0.13, 0x2a2c30, "matte", -0.2); // shins
+		k.box(sx * 0.17, 0.4, 0.24, 0.12, 0.1, 0.24, 0x2a1c14, "matte"); // boots
+		k.box(sx * 0.24, 1.25, 0.18, 0.1, 0.1, 0.55, jacket, "matte", 0.55); // arms to the bars
+	}
+	return k;
+}
+export const MAKERS = { truck, bus, auto, tractor, car, ...(LEH ? { army: armyTruck, biker } : {}) };
 // What you meet on each kind of road.
 const MIX = {
 	nh: ["truck", "truck", "truck", "bus", "car", "car", "auto", "tractor"],
@@ -293,9 +359,11 @@ const MIX = {
 	hill: ["car", "bus", "car", "truck"],
 };
 const MIX_TIBET = ["car", "car", "bus"];
-const LEN = { truck: 7.6, bus: 10.6, auto: 2.6, tractor: 7.4, car: 4.2 };
+// up the Indus and into the Changthang: army convoys, bikers on the great ride, jeeps and the odd bus and goods truck
+const MIX_LEH = ["army", "army", "biker", "biker", "car", "truck", "bus", "army", "biker"];
+const LEN = { army: 7.4, biker: 2.2, truck: 7.6, bus: 10.6, auto: 2.6, tractor: 7.4, car: 4.2 };
 // half widths in metres, for keeping lanes apart
-const HALF = { truck: 1.25, bus: 1.3, auto: 0.7, tractor: 1.15, car: 0.85 };
+const HALF = { army: 1.25, biker: 0.45, truck: 1.25, bus: 1.3, auto: 0.7, tractor: 1.15, car: 0.85 };
 
 export class Traffic {
 	constructor(roads, scene, low = false) {
@@ -325,7 +393,7 @@ export class Traffic {
 	spawn(c, s, ahead, kind) {
 		if (c.mesh) c.mesh.userData.used = false;
 		// on the Tibet side of the Kailash journey: few vehicles, cars and buses (no autos, tractors or painted trucks)
-		const types = s >= this.roads.tibetFrom ? MIX_TIBET : MIX[kind] || MIX.nh;
+		const types = s >= this.roads.tibetFrom ? MIX_TIBET : LEH ? MIX_LEH : MIX[kind] || MIX.nh;
 		let type = types[Math.floor(this.R() * types.length)], mesh = this.free(type);
 		if (!mesh) {
 			type = "car";
@@ -451,7 +519,7 @@ export class Traffic {
 }
 // the paved width of each kind of road (m), and half the track of each vehicle (m), for the wheels
 const PAVED = { nh: 7.5, ghat: 7, hill: 5.5 };
-const TRACK = { truck: 1.0, bus: 1.04, auto: 0.56, tractor: 0.86, car: 0.75 };
+const TRACK = { army: 1.02, biker: 0.12, truck: 1.0, bus: 1.04, auto: 0.56, tractor: 0.86, car: 0.75 };
 // The height of the road's own surface at s, lane metres (at M) right of the centre: the tarmac ribbon of
 // roads.js, five vertices across and one row per path point, interpolated over its triangles as drawn; off the
 // ribbon, or on no road, the ground.
