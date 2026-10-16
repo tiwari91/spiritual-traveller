@@ -13,6 +13,7 @@ import { Scenery } from "./scenery.js";
 import { TREE_STRIDE } from "./trees.js";
 import { Traffic, roadSurface, surfaceAt } from "./traffic.js";
 import { Sanctum } from "./sanctum.js";
+import { Post } from "./post.js";
 import { Music } from "./music.js";
 import { Aarti } from "./aarti.js";
 import { KDMusic } from "./kdmusic.js";
@@ -61,6 +62,8 @@ app.renderer = renderer;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 5000);
 app.camera = camera;
+// bloom, the tone curve and a light grade (not on phones and weak GPUs, which render straight to the screen)
+const post = LOW || params.get("post") === "0" ? null : new Post(renderer, scene, camera);
 
 let world, route, sky, landmarks, line, traveller, ride, journey, lights, weather, petals, roads, scenery, traffic, sanctum, music, aarti, kd, companions;
 const audio = new Audio();
@@ -907,6 +910,7 @@ function loop(now) {
 	app.t += dt;
 	app.frames++;
 	if (sanctum && sanctum.active) {
+		if (post) renderer.info.reset();
 		sanctum.update(dt, app.t);
 		sanctum.render();
 		return;
@@ -1005,7 +1009,7 @@ function loop(now) {
 	}
 	line.material.uniforms.uProg.value = app.state === "intro" ? -1 : app.s;
 	line.material.uniforms.uTime.value = app.t;
-	if (!app.mapOpen) renderer.render(scene, camera);
+	if (!app.mapOpen) post ? post.render(night) : renderer.render(scene, camera);
 	if (app.frames % 6 === 0 && app.state !== "loading") {
 		const tp = traveller.group.position, p = route.at(app.s, {});
 		app.mapView.setProgressWorld({ x: tp.x, z: tp.z, dx: p.dx, dz: p.dz, mode: app.mode, leg: app.state === "finale" ? N : app.leg, doneFraction: progressFraction(), state: app.state === "intro" ? "intro" : undefined, label: $("where").textContent });
@@ -1834,6 +1838,7 @@ function installInput() {
 	});
 	addEventListener("resize", () => {
 		renderer.setSize(innerWidth, innerHeight, false);
+		if (post) post.setSize(innerWidth, innerHeight);
 		if (sanctum && sanctum.active) sanctum.resize(innerWidth, innerHeight);
 		camera.aspect = innerWidth / innerHeight;
 		camera.updateProjectionMatrix();

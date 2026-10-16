@@ -495,7 +495,8 @@ function lakeMesh(L, world) {
 	g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
 	g.setIndex(idx);
 	g.computeVertexNormals();
-	const mat = haze(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.12, metalness: 0.15 }));
+	// (clear water: dark in itself, its colour from the depths below and the sky it mirrors, glancing light at a low angle)
+	const mat = haze(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.06, metalness: 0, color: new THREE.Color(0.72, 0.78, 0.82) }));
 	const uT = { value: 0 };
 	patch(mat, "lake", (sh) => {
 		sh.uniforms.uLakeT = uT;
