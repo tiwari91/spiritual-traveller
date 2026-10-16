@@ -11,7 +11,7 @@ import { CITIES, KAILASH, SHRINES, toGeo, toWorld } from "./geo.js";
 import { kailashCountry, kumaonWayside } from "./kailash-scenery.js";
 import { KAILASH as K_CENTRE, P as KP } from "./kailash-geo.js";
 import { OM_DIR } from "./kailash-world.js";
-import { addAnimal, addPerson, haystack } from "./life.js";
+import { addAnimal, addPerson, haystack, standable } from "./life.js";
 import { M, region } from "./roads.js";
 import { LEAF, blobTexture, leafAtlas, leafCell, signCell } from "./textures.js";
 import { parkedVehicle } from "./traffic.js";
@@ -532,13 +532,15 @@ export class Scenery {
 				// the lower Kali valley's pines stand a few units from the camps above, so the tree line is a height too
 				if (KAILASH) {
 					const yy = world.height(x, z);
-					if (yy > (kind === "bush" ? 53 : 40)) return 0;
+					if (yy > (kind === "bush" ? 50 : 40)) return 0;
 					if (kind !== "bush") {
 						const g = toGeo(x, z), rg = region(g.lon, g.lat);
 						if (rg === "byans" || rg === "tibet") return 0;
 						// (nor up the Kali gorge above Malpa, whose sides are bare rock and scree under the camps)
 						if (g.lat > 30.0 && g.lon > 80.6) return 0;
 					}
+					// high up, nothing rooted on a cliff or a steep snow slope
+					if (yy > 36 && !standable((u, v) => world.height(u, v), x, z, 0.25, kind === "bush" ? 34 : 42)) return 0;
 				}
 				const ki = this.trees.kind(kind, R);
 				const s = sc * (0.75 + R() * 0.4);

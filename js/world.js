@@ -177,6 +177,7 @@ varying vec3 vWNrm;
 const GROUND_FS = `
 uniform sampler2D uDetail;
 uniform float uDetailFar;
+uniform float uAlpine;
 varying vec4 vGround;
 varying vec3 vWPos;
 varying vec3 vWNrm;
@@ -194,14 +195,17 @@ vec3 groundDetailColor( vec3 macro ) {
 	soil *= mix( 1.0, 0.82 + 0.18 * d2.b, wb * vGround.w );
 	// grass cover in patches
 	float cover = vGround.z + ( d0.a - 0.5 ) * 0.9 + ( d1.a - 0.5 ) * 0.45 + ( d2.g - 0.5 ) * 0.2;
-	cover = smoothstep( 0.12, 0.62, cover + 0.08 );
-	float dryness = clamp( vGround.w + ( d0.r - 0.5 ) * 0.5 + ( d1.g - 0.5 ) * 0.3, 0.0, 1.0 );
+	// high up (the Kailash journey above about 3,000 m): alpine turf, short and patchy, browner, with bare earth
+	// and stones between the tussocks
+	float alp = uAlpine * smoothstep( 36.0, 48.0, vWPos.y );
+	cover = smoothstep( 0.12, 0.62, cover + 0.08 - alp * ( 0.12 + 0.2 * d1.b ) );
+	float dryness = clamp( vGround.w + ( d0.r - 0.5 ) * 0.5 + ( d1.g - 0.5 ) * 0.3 + alp * ( 0.18 + 0.22 * d2.b ), 0.0, 1.0 );
 	vec3 green = vec3( 0.06, 0.11, 0.025 ), olive = vec3( 0.12, 0.125, 0.045 ), straw = vec3( 0.24, 0.19, 0.09 );
 	vec3 grass = mix( mix( green, olive, smoothstep( 0.0, 0.55, dryness ) ), straw, smoothstep( 0.45, 1.0, dryness ) );
 	grass *= 0.62 + 0.55 * d3.g + 0.25 * ( d2.g - 0.5 );
 	vec3 col = mix( soil, grass, cover );
 	// stones scattered through the turf, more of them where the cover is thin
-	float stones = smoothstep( 0.8, 0.9, d3.b + ( 1.0 - cover ) * 0.12 ) * ( 0.5 + 0.5 * d1.b );
+	float stones = smoothstep( 0.8 - alp * 0.12, 0.9, d3.b + ( 1.0 - cover ) * 0.12 ) * ( 0.5 + 0.5 * d1.b );
 	col = mix( col, vec3( 0.2, 0.19, 0.17 ) * ( 0.6 + 0.6 * d2.r ), stones * 0.85 );
 	// on the slopes: grass only on gentle ground; scree and gravel fans from about 22 degrees, bare rock from about
 	// 32 (dark basalt in the ghats, grey granite and schist elsewhere), sampled from the side on the steep faces so
@@ -354,6 +358,7 @@ export class World {
 		const uDetail = { value: groundDetail() };
 		patch(mat, "ground", (sh) => {
 			sh.uniforms.uDetail = uDetail;
+			sh.uniforms.uAlpine = { value: KAILASH ? 1 : 0 };
 			sh.vertexShader = GROUND_VS + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n\tvGround = aGround;\n\tvWPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\n\tvWNrm = normalize( mat3( modelMatrix ) * objectNormal );");
 			sh.fragmentShader = GROUND_FS + sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
 	{
