@@ -1,5 +1,6 @@
 // Merge many small shapes into one vertex-coloured mesh, so a whole stretch of roadside is one draw call.
 import * as THREE from "three";
+import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Unit templates with their origin at the bottom centre, non-indexed, position and normal only.
 function template(g, lift = 0.5) {
@@ -9,7 +10,27 @@ function template(g, lift = 0.5) {
 	n.computeVertexNormals();
 	return n;
 }
+// A weathered boulder: a sphere pushed in and out by a few octaves of smooth noise, flattened where it beds into
+// the ground, with smooth normals (not the faceted ball), 1 across, its base at 0.
+function boulder() {
+	const g = mergeVertices(new THREE.IcosahedronGeometry(0.5, 3).deleteAttribute("normal").deleteAttribute("uv"));
+	const p = g.attributes.position, v = new THREE.Vector3();
+	const n3 = (x, y, z) => Math.sin(x * 3.1 + 1.7) * Math.sin(y * 2.7 + 0.3) * Math.sin(z * 3.3 + 2.1);
+	for (let i = 0; i < p.count; i++) {
+		v.fromBufferAttribute(p, i).normalize();
+		let k = 1 + 0.16 * n3(v.x * 2, v.y * 2, v.z * 2) + 0.07 * n3(v.x * 5 + 3, v.y * 5, v.z * 5 - 1) + 0.03 * n3(v.x * 11, v.y * 11 + 2, v.z * 11);
+		// a few flat cleavage faces, as a split boulder has
+		k = Math.min(k, 1.04 - 0.1 * Math.max(0, v.x * 0.7 + v.z * 0.7));
+		v.multiplyScalar(0.5 * k);
+		if (v.y < -0.18) v.y = -0.18 + (v.y + 0.18) * 0.25;
+		p.setXYZ(i, v.x, v.y, v.z);
+	}
+	g.translate(0, 0.5, 0);
+	g.computeVertexNormals();
+	return g.toNonIndexed();
+}
 export const T = {
+	rock: boulder(),
 	box: template(new THREE.BoxGeometry(1, 1, 1)),
 	cyl: template(new THREE.CylinderGeometry(0.5, 0.5, 1, 8, 1)),
 	cyl12: template(new THREE.CylinderGeometry(0.5, 0.5, 1, 12, 1)),

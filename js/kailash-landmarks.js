@@ -218,8 +218,16 @@ function tibetHouse(b, x, y, z, w, d, h, yaw, o = {}) {
 }
 // A prefab hut of the camps on the Indian side: cream walls, a pitched roof of painted tin, a door and windows.
 function hut(b, x, y, z, w, d, yaw, roof) {
-	b.add(T.box, place(x, y - 0.1, z, yaw, w, 0.62, d), 0xe8e2d0);
-	b.add(T.gable, place(x, y + 0.52, z, yaw + Math.PI / 2, d + 0.12, 0.28, w + 0.12), roof);
+	// a stone footing, whitewashed walls weathered at the base, a tin roof with deep eaves and a stove pipe
+	b.add(T.box, place(x, y - 0.1, z, yaw, w + 0.04, 0.2, d + 0.04), 0x77706a);
+	b.add(T.box, place(x, y + 0.08, z, yaw, w, 0.44, d), 0xe0dbcc);
+	b.add(T.box, place(x, y + 0.08, z, yaw, w + 0.004, 0.06, d + 0.004), 0xbfb8a8);
+	b.add(T.box, place(x, y + 0.51, z, yaw, w + 0.02, 0.03, d + 0.02), 0x5a4a3a);
+	b.add(T.gable, place(x, y + 0.52, z, yaw + Math.PI / 2, d + 0.24, 0.24, w + 0.2), new THREE.Color(roof).lerp(new THREE.Color(0x6a6a62), 0.35));
+	{
+		const c = Math.cos(yaw), s = Math.sin(yaw), u = w * 0.3;
+		b.add(T.cyl, place(x + c * u, y + 0.62, z - s * u, 0, 0.04, 0.3, 0.04), 0x2a2622);
+	}
 	const c = Math.cos(yaw), s = Math.sin(yaw);
 	const fx = x + s * (d / 2 + 0.006), fz = z + c * (d / 2 + 0.006);
 	b.add(T.box, place(fx, y - 0.02, fz, yaw, 0.14, 0.32, 0.01), 0x6a4a2e);
@@ -242,7 +250,7 @@ function rocks(b, F, n, r0, r1, R, col = STONE) {
 		const a = R() * 6.3, d = lerp(r0, r1, R()), lx = Math.sin(a) * d, lz = Math.cos(a) * d, s = 0.04 + R() * 0.14;
 		// (a stone lies only where it would stay, half sunk in the ground; none on the cliffs)
 		if (!F.free(lx, lz, s) || !standable(F.ground, lx, lz, Math.max(s, 0.1), 32)) continue;
-		b.add(T.ball, place(lx, F.ground(lx, lz) - s * 0.35, lz, R() * 6, s, s * (0.5 + R() * 0.4), s * (0.7 + R() * 0.5)), new THREE.Color(col).offsetHSL(0, 0, (R() - 0.5) * 0.12));
+		b.add(T.rock, place(lx, F.ground(lx, lz) - s * 0.4, lz, R() * 6, s, s * (0.5 + R() * 0.4), s * (0.7 + R() * 0.5)), new THREE.Color(col).offsetHSL(0, 0, (R() - 0.5) * 0.12));
 	}
 }
 // A spot for a flag pole whose strings run out to radius rim: the pole and the whole ring of its strings' feet clear.
@@ -435,26 +443,41 @@ function cloudCollar(cx, y0, cz, r, n, seed) {
 }
 // Om Parvat: a sharp snow pyramid, the face towards the camp marked with ॐ in the snow lying in its gullies.
 function omTexture() {
-	const c = document.createElement("canvas");
-	c.width = c.height = 512;
+	const N = 512, c = document.createElement("canvas");
+	c.width = c.height = N;
 	const g = c.getContext("2d");
-	g.clearRect(0, 0, 512, 512);
-	// the syllable in snow: thick soft strokes broken up by rock showing through
-	g.fillStyle = "#f6f8fb";
+	g.clearRect(0, 0, N, N);
+	// the syllable as the snow lies on the real face: not a painted sign but snow held in the gullies and on the
+	// ledges of the rock where the strokes run, soft at its edges and broken by the bare rock between the ledges
+	g.fillStyle = "#ffffff";
 	g.textAlign = "center";
 	g.textBaseline = "middle";
 	g.font = `700 330px "Tiro Devanagari Hindi", "Noto Sans Devanagari", serif`;
-	g.shadowColor = "rgba(246,248,251,0.9)";
-	g.shadowBlur = 14;
+	g.filter = "blur(7px)";
 	g.fillText("ॐ", 256, 270);
-	g.shadowBlur = 0;
-	const R = rand(23);
-	g.globalCompositeOperation = "destination-out";
-	for (let i = 0; i < 900; i++) {
-		g.fillStyle = `rgba(0,0,0,${0.25 + R() * 0.5})`;
-		g.fillRect(R() * 512, R() * 512, 2 + R() * 6, 1 + R() * 2);
+	g.filter = "none";
+	const img = g.getImageData(0, 0, N, N), d = img.data;
+	const R = rand(23), P = 64, lat = new Float32Array(P * P);
+	for (let i = 0; i < P * P; i++) lat[i] = R();
+	const vn = (x, y) => {
+		const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+		const at = (i, j) => lat[(((j % P) + P) % P) * P + (((i % P) + P) % P)];
+		return lerp(lerp(at(ix, iy), at(ix + 1, iy), u), lerp(at(ix, iy + 1), at(ix + 1, iy + 1), u), v);
+	};
+	for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+		const k = (y * N + x) * 4;
+		let a = d[k + 3] / 255;
+		if (a <= 0) continue;
+		const n = vn(x / 22, y / 22) * 0.6 + vn(x / 7, y / 7) * 0.4;
+		// ledges: bands across the face where the snow lies thicker, rock showing between them
+		const ledge = 0.55 + 0.45 * smoothstep(-0.2, 0.6, Math.sin(y * 0.16 + vn(x / 40, y / 40) * 5));
+		a = smoothstep(0.32, 0.78, a * ledge * (0.65 + 0.7 * n));
+		d[k] = 236 + 14 * n;
+		d[k + 1] = 240 + 12 * n;
+		d[k + 2] = 246 + 8 * n;
+		d[k + 3] = a * 235;
 	}
-	g.globalCompositeOperation = "source-over";
+	g.putImageData(img, 0, 0);
 	const t = new THREE.CanvasTexture(c);
 	t.colorSpace = THREE.SRGBColorSpace;
 	t.anisotropy = 8;
@@ -492,7 +515,7 @@ function omParvat(h = 10, r = 3.1, toward = [0, 1]) {
 	g.computeVertexNormals();
 	const tex = omTexture();
 	tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-	const om = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.35, roughness: 0.75, depthWrite: true }));
+	const om = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.02, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
 	om.name = "om";
 	grp.add(om);
 	return grp;
@@ -524,7 +547,7 @@ function gompa(world, x, z, yaw, s = 1, seed = 1, rock = true) {
 	const R = rand(seed);
 	if (rock) for (let i = 0; i < 7; i++) {
 		const a = R() * 6.3, d = R() * 0.6 * s, r = (0.35 + R() * 0.35) * s;
-		b.add(T.ball, place(x + Math.cos(a) * d, y - r * 0.5, z + Math.sin(a) * d, R() * 6, r * 1.2, r, r), new THREE.Color(0x7a6c62).offsetHSL(0, 0, (R() - 0.5) * 0.08));
+		b.add(T.rock, place(x + Math.cos(a) * d, y - r * 0.5, z + Math.sin(a) * d, R() * 6, r * 1.2, r, r), new THREE.Color(0x7a6c62).offsetHSL(0, 0, (R() - 0.5) * 0.08));
 	}
 	const top = y + (rock ? 0.35 * s : 0);
 	tibetHouse(b, x, top, z, 0.9 * s, 0.7 * s, 0.7 * s, yaw, { band: 0x7a1e18, door: true });
@@ -609,9 +632,22 @@ function kalapani(ctx) {
 	const y0 = F.ground(0, 0.4);
 	b.add(T.box, place(0, y0 - 0.06, 0.3, 0, 1.3, 0.14, 1.0), 0x8a8076);
 	b.add(T.box, place(0, y0 + 0.08, 0.2, 0, 0.9, 0.6, 0.8), 0xf1eee6);
-	b.add(T.box, place(0, y0 + 0.62, 0.2, 0, 0.96, 0.05, 0.86), 0xb8261c);
-	b.add(T.taper, place(0, y0 + 0.66, 0.2, 0, 0.52, 0.7, 0.52), 0xd8261c);
-	b.add(T.ball, place(0, y0 + 1.34, 0.2, 0, 0.09, 0.09, 0.09), 0xc8962a);
+	b.add(T.box, place(0, y0 + 0.62, 0.2, 0, 0.96, 0.05, 0.86), 0xa8301f);
+	// the shikhara: courses stepping in and curving to the top, in red ochre with a paler band at each course,
+	// the ribbed amalaka and a gilt kalash on it
+	const courses = [[0.7, 0.62], [0.6, 0.56], [0.5, 0.48], [0.4, 0.38], [0.3, 0.28]];
+	let cy = y0 + 0.67;
+	courses.forEach(([w0, w1], i) => {
+		b.add(T.taper, place(0, cy, 0.2, 0, w0, 0.17, w0), i % 2 ? 0xa83222 : 0xb53a26);
+		b.add(T.cyl12, place(0, cy + 0.165, 0.2, 0, w1 * 1.02, 0.02, w1 * 1.02), 0x8e2a1c);
+		cy += 0.19;
+	});
+	b.add(T.cyl12, place(0, cy, 0.2, 0, 0.2, 0.07, 0.2), 0xb8a890);
+	b.add(T.ball, place(0, cy + 0.06, 0.2, 0, 0.16, 0.06, 0.16), 0xa89a82);
+	b.add(T.ball, place(0, cy + 0.12, 0.2, 0, 0.08, 0.09, 0.08), 0xc8962a);
+	b.add(T.cone, place(0, cy + 0.2, 0.2, 0, 0.03, 0.09, 0.03), 0xd8a83a);
+	// weathering: a darker damp line along the foot of the walls
+	b.add(T.box, place(0, y0 + 0.08, 0.2, 0, 0.91, 0.07, 0.81), 0xb0a898);
 	b.add(T.box, place(0, y0 + 0.1, 0.61, 0, 0.28, 0.42, 0.02), 0x3a2a20);
 	for (const sx of [-1, 1]) b.add(T.box, place(sx * 0.42, y0 + 0.08, 0.72, 0, 0.03, 0.62, 0.03), 0x5a4434);
 	b.add(T.box, place(0, y0 + 0.7, 0.72, 0, 0.9, 0.03, 0.03), 0x5a4434);

@@ -48,8 +48,8 @@ export function dhuni(b, x, y, z, R = Math.random) {
 // A hermit's cave: a mass of rock in the hillside with a dark mouth towards yaw, a trishul and a flag at the entrance.
 export function cave(b, x, y, z, yaw, s = 1) {
 	const c = Math.cos(yaw), sn = Math.sin(yaw);
-	b.add(T.ball, place(x, y - 0.35 * s, z, yaw, 1.7 * s, 1.1 * s, 1.3 * s), 0x6a645c);
-	b.add(T.ball, place(x - sn * 0.3 * s, y - 0.3 * s, z - c * 0.3 * s, yaw + 0.7, 1.1 * s, 0.9 * s, 1.0 * s), 0x7a7268);
+	b.add(T.rock, place(x, y - 0.45 * s, z, yaw, 1.7 * s, 1.2 * s, 1.3 * s), 0x5e5952);
+	b.add(T.rock, place(x - sn * 0.3 * s, y - 0.4 * s, z - c * 0.3 * s, yaw + 0.7, 1.1 * s, 1.0 * s, 1.0 * s), 0x6e675e);
 	b.add(T.ball, place(x + sn * 0.55 * s, y - 0.02, z + c * 0.55 * s, yaw, 0.5 * s, 0.42 * s, 0.4 * s), 0x0e0c0a);
 	trishul(b, x + sn * 0.9 * s + c * 0.35 * s, y, z + c * 0.9 * s - sn * 0.35 * s, 0.5 * s);
 	saffronFlag(b, x + sn * 0.95 * s - c * 0.4 * s, y, z + c * 0.95 * s + sn * 0.4 * s, 0.7 * s);
