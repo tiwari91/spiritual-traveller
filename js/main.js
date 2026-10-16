@@ -981,7 +981,8 @@ function loop(now) {
 	lights.material.size = clamp(rig.dist * 0.007, 0.35, 1.6);
 	line.material.uniforms.uWidth.value = clamp(rig.dist * 0.0055, 0.1, 1.1);
 	// up close the real road takes over from the glowing route line
-	line.material.uniforms.uAlpha.value = app.state === "intro" || app.state === "finale" ? 1 : smoothstep(40, 130, rig.dist) * 0.85 + 0.15;
+	// (and gone altogether close to, at a stop or on the road, where it would read as a painted stripe on the ground)
+	line.material.uniforms.uAlpha.value = app.state === "intro" || app.state === "finale" ? 1 : smoothstep(40, 130, rig.dist) * 0.85 + 0.15 * smoothstep(25, 60, rig.dist);
 	beaconMaterial().uniforms.uOpacity.value = clamp((rig.dist - 25) / 140, 0, 1) * 0.5;
 	const wscale = clamp(rig.dist / 25, 1, 4);
 	weather.update(dt, focus, wx.rain, wx.snow, wscale);

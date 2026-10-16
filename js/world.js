@@ -200,10 +200,24 @@ vec3 groundDetailColor( vec3 macro ) {
 	vec3 grass = mix( mix( green, olive, smoothstep( 0.0, 0.55, dryness ) ), straw, smoothstep( 0.45, 1.0, dryness ) );
 	grass *= 0.62 + 0.55 * d3.g + 0.25 * ( d2.g - 0.5 );
 	vec3 col = mix( soil, grass, cover );
-	// bare rock on steep slopes: dark basalt in the ghats, grey granite and schist elsewhere
+	// stones scattered through the turf, more of them where the cover is thin
+	float stones = smoothstep( 0.8, 0.9, d3.b + ( 1.0 - cover ) * 0.12 ) * ( 0.5 + 0.5 * d1.b );
+	col = mix( col, vec3( 0.2, 0.19, 0.17 ) * ( 0.6 + 0.6 * d2.r ), stones * 0.85 );
+	// on the slopes: grass only on gentle ground; scree and gravel fans from about 22 degrees, bare rock from about
+	// 32 (dark basalt in the ghats, grey granite and schist elsewhere), sampled from the side on the steep faces so
+	// the rock is not smeared into streaks down them
 	float slope = 1.0 - clamp( vWNrm.y, 0.0, 1.0 );
-	float rock = smoothstep( 0.3, 0.55, slope + ( d1.r - 0.5 ) * 0.25 );
-	vec3 rk = mix( vec3( 0.16, 0.15, 0.14 ), vec3( 0.07, 0.065, 0.06 ), wr ) * ( 0.65 + 0.7 * d1.r ) * ( 0.85 + 0.3 * d3.r );
+	vec3 bw = pow( abs( vWNrm ), vec3( 3.0 ) );
+	bw /= bw.x + bw.y + bw.z;
+	vec4 t1 = texture2D( uDetail, vWPos.zy * 0.29 ) * bw.x + d1 * bw.y + texture2D( uDetail, vWPos.xy * 0.29 ) * bw.z;
+	vec4 t3 = texture2D( uDetail, vWPos.zy * 1.37 ) * bw.x + d2 * bw.y + texture2D( uDetail, vWPos.xy * 1.37 ) * bw.z;
+	float scree = smoothstep( 0.06, 0.13, slope + ( t1.g - 0.5 ) * 0.12 );
+	vec3 sc = vec3( 0.17, 0.155, 0.135 ) * ( 0.6 + 0.6 * t3.r ) * ( 0.85 + 0.3 * d3.g );
+	col = mix( col, mix( sc, col, cover * 0.35 ), scree * 0.85 );
+	float rock = smoothstep( 0.14, 0.24, slope + ( t1.r - 0.5 ) * 0.2 );
+	vec3 rk = mix( vec3( 0.11, 0.1, 0.092 ), vec3( 0.06, 0.055, 0.05 ), wr ) * ( 0.55 + 0.8 * t1.r ) * ( 0.8 + 0.4 * t3.r );
+	// ledges: the strata of the cliff, banded across it
+	rk *= 0.8 + 0.35 * smoothstep( 0.35, 0.65, texture2D( uDetail, vec2( ( vWPos.x + vWPos.z ) * 0.02, vWPos.y * 0.6 ) ).g );
 	col = mix( col, rk, rock );
 	// keep the regional hue of the map so the detail never strays far from it
 	float lm = dot( macro, vec3( 0.3, 0.59, 0.11 ) ), lc = dot( col, vec3( 0.3, 0.59, 0.11 ) );
@@ -348,9 +362,14 @@ export class World {
 		float snowy = smoothstep( 0.45, 0.7, dot( diffuseColor.rgb, vec3( 0.3, 0.59, 0.11 ) ) );
 		float land = step( 0.05, vWPos.y );
 		if ( near * land * ( 1.0 - snowy ) > 0.001 ) diffuseColor.rgb = mix( diffuseColor.rgb, groundDetailColor( diffuseColor.rgb ), near * land * ( 1.0 - snowy ) * 0.9 );
+		// further off, the steep faces still read as rock and scree, not as grass running up a cliff
+		float farSl = 1.0 - clamp( vWNrm.y, 0.0, 1.0 );
+		float farRock = smoothstep( 0.1, 0.24, farSl ) * land * ( 1.0 - snowy ) * ( 1.0 - near * 0.9 );
+		float lmF = dot( diffuseColor.rgb, vec3( 0.3, 0.59, 0.11 ) );
+		diffuseColor.rgb = mix( diffuseColor.rgb, vec3( 0.11, 0.1, 0.092 ) * ( 0.6 + 2.0 * lmF ), farRock * 0.8 );
 	}`);
 		});
-		snowRock(mat, 0.05, 0.45);
+		snowRock(mat, 0.1, 0.3);
 		const mesh = new THREE.Mesh(geo, mat);
 		mesh.receiveShadow = true;
 		mesh.name = "terrain";

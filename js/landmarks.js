@@ -407,10 +407,11 @@ function peak(r, h, seed, snowLine = 0.45, rock = 0x6b6259) {
 	const col = [];
 	const rc = new THREE.Color(rock), rd = new THREE.Color(rock).multiplyScalar(0.62), sc = new THREE.Color(0xf4f7fb), sh = new THREE.Color(0xc9d4e4), gc = new THREE.Color(0x56603f);
 	const tmp = new THREE.Color();
-	const o = seed * 13.7;
+	const o = seed * 13.7, foot = [];
 	for (let i = 0; i < p.count; i++) {
 		const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
 		const t = (y + h / 2) / h;
+		if (t < 1e-4) foot.push(i);
 		const a = Math.atan2(z, x);
 		// ridges and gullies run down the face
 		const ridge = 1 - Math.abs(fbm(Math.cos(a) * 2.2 + o, Math.sin(a) * 2.2 + t * 1.4, 4) * 2 - 1);
@@ -430,6 +431,13 @@ function peak(r, h, seed, snowLine = 0.45, rock = 0x6b6259) {
 		col.push(tmp.r, tmp.g, tmp.b);
 	}
 	g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+	// a skirt: the foot of the mountain runs on down and out into the hillside under it, so on a slope no underside
+	// or overhang shows below it
+	for (const i of foot) {
+		p.setY(i, -h / 2 - h * 0.7);
+		p.setX(i, p.getX(i) * 1.35);
+		p.setZ(i, p.getZ(i) * 1.35);
+	}
 	g.computeVertexNormals();
 	g.translate(0, h / 2, 0);
 	const m = new THREE.Mesh(g, peakMaterial());
