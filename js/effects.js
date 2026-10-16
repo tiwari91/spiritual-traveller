@@ -173,7 +173,8 @@ export class Weather {
 // Marigold and rose petals drifting down over the shrine during darshan.
 export class Petals {
 	constructor(scene) {
-		const N = 160;
+		// a few marigold petals, small, drifting down round the door (not a sky full of confetti)
+		const N = 48;
 		this.N = N;
 		const R = rand(21);
 		this.seed = new Float32Array(N * 3);
@@ -187,7 +188,7 @@ export class Petals {
 			col.set([c.r, c.g, c.b], i * 3);
 		}
 		g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-		this.points = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.2, map: glowTexture(), vertexColors: true, transparent: true, opacity: 0, depthWrite: false }));
+		this.points = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.05, map: glowTexture(), vertexColors: true, transparent: true, opacity: 0, depthWrite: false }));
 		this.points.frustumCulled = false;
 		scene.add(this.points);
 		this.t = 0;
@@ -201,9 +202,11 @@ export class Petals {
 		if (!this.points.visible) return;
 		const a = this.points.geometry.attributes.position.array, sd = this.seed;
 		for (let i = 0; i < this.N; i++) {
-			const r = 0.6 + sd[i * 3] * 3.2, ang = sd[i * 3 + 1] * Math.PI * 2 + this.t * 0.25;
-			const y = 6 - ((sd[i * 3 + 2] * 6 + this.t * 0.55) % 6);
-			a.set([centre.x + Math.cos(ang) * r + Math.sin(this.t * 2 + i) * 0.08, centre.y + y, centre.z + Math.sin(ang) * r], i * 3);
+			const r = 0.4 + sd[i * 3] * 1.6, ang = sd[i * 3 + 1] * Math.PI * 2 + this.t * 0.08;
+			// each falls from a little above head height, fluttering, and lies a moment on the ground before the next
+			const y = Math.max(0.02, 1.6 - ((sd[i * 3 + 2] * 2.2 + this.t * 0.22) % 2.2));
+			const fl = y > 0.03 ? 1 : 0;
+			a.set([centre.x + Math.cos(ang) * r + Math.sin(this.t * 1.7 + i) * 0.06 * fl, centre.y + y, centre.z + Math.sin(ang) * r + Math.cos(this.t * 1.3 + i * 2) * 0.05 * fl], i * 3);
 		}
 		this.points.geometry.attributes.position.needsUpdate = true;
 	}
