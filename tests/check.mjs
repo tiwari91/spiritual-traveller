@@ -543,7 +543,7 @@ async function kailashBasic() {
 	}
 	// getting on and off: the yatra's bus out of Delhi, jeeps at Dharchula, the Chinese bus beyond the Lipulekh
 	{
-		const o = await open({}, "?noenter=1&s=0.6&go=mixed", KPAGE);
+		const o = await open({}, "?noenter=1&s=0.6&go=mixed&route=lipulekh", KPAGE);
 		const until = (fn, ms) => o.page.waitForFunction(fn, null, { timeout: ms }).then(() => true, () => false);
 		ok("Kailash: the yatra's bus pulls up in Delhi and the traveller gets on", await until(() => app.journey.status().ep === "walk>bus", 20000));
 		ok("Kailash: rides the bus", await until(() => app.mode === "bus" && !app.journey.status().ep, 40000));
@@ -564,7 +564,7 @@ async function kailashBasic() {
 	}
 	// on the bike (the journey's starting choice) the ride goes on across the Tibet side, keeping to the right
 	{
-		const o = await open({}, "?noenter=1", KPAGE);
+		const o = await open({}, "?noenter=1&route=lipulekh", KPAGE);
 		ok("Kailash: starts out on the motorbike", await o.page.evaluate(() => document.getElementById("transport-label").textContent === "Bike"));
 		await o.page.evaluate(() => {
 			app.begin();
