@@ -38,7 +38,8 @@ export class Post {
 		const size = renderer.getDrawingBufferSize(new THREE.Vector2());
 		const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
 		this.composer = new EffectComposer(renderer, rt);
-		this.composer.addPass(new RenderPass(scene, camera));
+		this.pass = new RenderPass(scene, camera);
+		this.composer.addPass(this.pass);
 		this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.22, 0.45, 2.2);
 		this.composer.addPass(this.bloom);
 		this.composer.addPass(new OutputPass());
@@ -46,6 +47,12 @@ export class Post {
 		this.composer.addPass(this.grade);
 		// (the triangle counts the checks read are for the whole frame, all passes together)
 		renderer.info.autoReset = false;
+	}
+	// another scene through the same finish (the sanctum and the rituals)
+	renderScene(scene, camera, night = 0) {
+		this.pass.scene = scene;
+		this.pass.camera = camera;
+		this.render(night);
 	}
 	// night: 0 by day, 1 at night, when the lamps carry the picture and their glow spreads a little wider
 	render(night = 0) {

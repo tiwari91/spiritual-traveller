@@ -41,6 +41,7 @@
 <script type="module">
 import * as THREE from "three";
 import { Sanctum } from "./js/sanctum.js";
+import { Post } from "./js/post.js";
 import { Audio } from "./js/audio.js";
 import { SHRINES } from "./js/geo.js";
 
@@ -55,7 +56,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const audio = new Audio();
 const chooser = document.getElementById("chooser");
-const sanctum = new Sanctum({ renderer, container: document.body, audio, low: params.get("q") === "low", onExit: () => (chooser.hidden = false) });
+const post = params.get("q") === "low" || params.get("post") === "0" ? null : new Post(renderer, null, null);
+const sanctum = new Sanctum({ renderer, container: document.body, audio, low: params.get("q") === "low", post, onExit: () => (chooser.hidden = false) });
 window.sanctum = sanctum;
 
 const list = document.getElementById("list");
@@ -87,6 +89,7 @@ if (key && SHRINES.some((s) => s.key === key)) {
 
 addEventListener("resize", () => {
 	renderer.setSize(innerWidth, innerHeight, false);
+	if (post) post.setSize(innerWidth, innerHeight);
 	sanctum.resize(innerWidth, innerHeight);
 });
 // For scripted screenshots: advance the clock by hand.

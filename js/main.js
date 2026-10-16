@@ -120,7 +120,7 @@ async function init() {
 	if (params.has("go")) app.transport = Math.max(0, TRANSPORT.findIndex((t) => t.toLowerCase() === params.get("go")));
 	scenery.prebuild(params.has("s") ? parseFloat(params.get("s")) || 0 : 0);
 	// inside each temple: the shrine's own rituals, step by step
-	sanctum = new Sanctum({ renderer, container: document.body, audio, low: LOW, onStep: (i, step, key) => {
+	sanctum = new Sanctum({ renderer, container: document.body, audio, low: LOW, post, onStep: (i, step, key) => {
 		// the music of the temple follows the rituals inside
 		if (/aarti/i.test(step.title) && !/take/i.test(step.title)) {
 			music.aarti(key);

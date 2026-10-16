@@ -4155,7 +4155,8 @@ function stepsFor(key, L) {
 
 // ---------- the module ----------
 export class Sanctum {
-	constructor({ renderer, container = document.body, audio = null, low = false, onExit = null, onStep = null } = {}) {
+	constructor({ renderer, container = document.body, audio = null, low = false, onExit = null, onStep = null, post = null } = {}) {
+		this.post = post;
 		this.renderer = renderer;
 		this.container = container;
 		this.audio = audio;
@@ -4861,7 +4862,13 @@ export class Sanctum {
 		r.shadowMap.enabled = !this.low;
 		r.autoClear = true;
 		r.setClearColor(0x060403, 1);
-		r.render(this.scene, this.camera);
+		// (bloom round the lamps and diyas, and the same light grade as outside; the lamp-lit interiors glow more)
+		if (this.post && !this.low) {
+			const ps = this.post.pass.scene, pc = this.post.pass.camera;
+			this.post.renderScene(this.scene, this.camera, this.L && this.L.outdoor ? 0 : 0.7);
+			this.post.pass.scene = ps;
+			this.post.pass.camera = pc;
+		} else r.render(this.scene, this.camera);
 		r.toneMapping = prev.tm;
 		r.toneMappingExposure = prev.ex;
 		r.shadowMap.enabled = prev.sh;
