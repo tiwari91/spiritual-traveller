@@ -79,6 +79,7 @@
 		})();
 		</script>
 		<button id="start" class="primary" disabled>Begin the yatra</button>
+		<a class="other-journey" href="index.html" data-journey="char-dham"><small>Or the other journey</small><b>Char Dham &amp; Jyotirlingas</b><span>Pune to Bhimashankar, Shirdi, Tirumala, Kedarnath and Badrinath</span></a>
 		<p class="hint" id="hint">Space to pause or continue · 1 to 9 to go to a stop · N to skip to the next · drag to look around</p>
 		<p class="hint"><a href="./">The five-shrine yatra from Pune</a></p>
 	</div>
@@ -109,6 +110,11 @@
 		</nav>
 	</header>
 	<div id="chapters" class="menu panel" hidden>
+		<div class="journeys" id="journeys">
+			<div class="menu-title">Journeys <small>J</small></div>
+			<a class="journey" href="index.html" data-journey="char-dham"><b>Char Dham &amp; Jyotirlingas</b><small>Pune to Badrinath</small></a>
+			<a class="journey" href="kailash.html?route=lipulekh" data-journey="kailash" aria-current="page"><b>Kailash Mansarovar</b><small>Delhi to Darchen</small></a>
+		</div>
 		<div class="menu-title">Go to a stop</div>
 		<ul id="chapter-list"></ul>
 		<button class="menu-restart" id="btn-restart">Start again from Delhi</button>

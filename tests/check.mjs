@@ -1,7 +1,7 @@
 // Headless browser check for Spiritual Traveller.
 // Usage: node tests/check.mjs            (writes screenshots to tests/shots/)
 // Env:   CHROME_BIN=/path/to/chrome-headless-shell   PW_REQUIRE=/path/to/a/package.json that has playwright
-//        ONLY=basic|scenarios|phone|kleh|kbasic|kscenarios|kphone   run some parts (default: all; the k parts are the
+//        ONLY=basic|journeys|scenarios|phone|kleh|kbasic|kscenarios|kphone   run some parts (default: all; the k parts are the
 //                                       Kailash Mansarovar journey, kailash.html)
 //        MODES=mixed,train,bike,car     LEGS=0,1,2,3,4   which journeys the scenarios ride (default: all)
 // The scenarios ride every leg in every way of travelling, end to end, with tests/monitor.js watching each frame,
@@ -71,6 +71,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + ".png
 
 try {
 	if (part("basic")) await basic();
+	if (part("journeys")) await journeys();
 	if (part("scenarios")) {
 		await scenarios({ width: 1280, height: 760 }, "desk");
 		await sheets("desk");
@@ -381,6 +382,45 @@ async function kailashLeh() {
 	await page.evaluate(() => localStorage.setItem("kailashRoute", "leh"));
 	await ctx.close();
 }
+// the two journeys linked: from the start screen, from the stops menu (and J), on both pages, at desktop and phone sizes
+async function journeys() {
+	const inBox = (r, W, H) => r && r.width > 0 && r.left >= -1 && r.top >= -1 && r.right <= W + 1 && r.bottom <= H + 1;
+	for (const [vp, tag] of [[{}, "desk"], [{ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, "phone"]]) {
+		for (const [pageName, here, there, other] of [["", "char-dham", "kailash", "kailash.html"], [KPAGE, "kailash", "char-dham", "index.html"]]) {
+			const { ctx, page, errors } = await open(vp, "?noenter=1&q=low", pageName);
+			const label = `${tag} ${pageName || "index.html"}`;
+			const intro = await page.evaluate((t) => { const a = document.querySelector(`#intro a.other-journey[data-journey="${t}"]`); if (!a) return null; const r = a.getBoundingClientRect(); return { r: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width }, W: innerWidth, H: innerHeight, href: a.getAttribute("href") }; }, there);
+			ok(`Journeys (${label}): the start screen offers the other journey`, !!intro && intro.href.startsWith(other), intro ? intro.href : "missing");
+			await page.click("#start");
+			await wait(page, 800);
+			await page.click("#btn-chapters");
+			await wait(page, 300);
+			const menu = await page.evaluate(() => {
+				const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width }; };
+				const links = [...document.querySelectorAll("#chapters a.journey")];
+				const R = { menu: box(document.getElementById("chapters")), bottom: box(document.querySelector(".bottom") || document.body) };
+				return { n: links.length, cur: links.filter((a) => a.getAttribute("aria-current") === "page").map((a) => a.dataset.journey), boxes: links.map(box), R, W: innerWidth, H: innerHeight };
+			});
+			ok(`Journeys (${label}): both journeys in the stops menu, this one marked`, menu.n === 2 && menu.cur.length === 1 && menu.cur[0] === here, JSON.stringify(menu.cur));
+			ok(`Journeys (${label}): the menu entries are on screen`, menu.boxes.every((b) => inBox(b, menu.W, menu.H) && b.top >= menu.R.menu.top - 1 && b.bottom <= menu.R.menu.bottom + 1));
+			const { menu: mr, bottom: br } = menu.R;
+			ok(`Journeys (${label}): the menu clear of the controls bar`, !(mr.left < br.right && br.left < mr.right && mr.top < br.bottom && br.top < mr.bottom), JSON.stringify(menu.R));
+			await Promise.all([page.waitForURL((u) => u.pathname.endsWith("/" + other) || (other === "index.html" && u.pathname.endsWith("/")), { timeout: 15000 }), page.click(`#chapters a.journey[data-journey="${there}"]`)]);
+			const url = new URL(page.url());
+			ok(`Journeys (${label}): goes to the other journey, keeping the quality`, url.pathname.endsWith(other) && url.searchParams.get("q") === "low", page.url());
+			ok(`Journeys (${label}): console clean`, errors.length === 0, errors.slice(0, 3).join(" | "));
+			await ctx.close();
+		}
+	}
+	// J goes across too
+	const { ctx, page } = await open({}, "?noenter=1");
+	await page.click("#start");
+	await wait(page, 600);
+	await Promise.all([page.waitForURL((u) => u.pathname.endsWith("/kailash.html"), { timeout: 15000 }), page.keyboard.press("j")]);
+	ok("Journeys: J switches to the Kailash journey", page.url().includes("kailash.html"));
+	await ctx.close();
+}
+
 async function kailashBasic() {
 	const { ctx, page, errors } = await open({}, "?noenter=1&route=lipulekh", KPAGE);
 	await wait(page, 1500);

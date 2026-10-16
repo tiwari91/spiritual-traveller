@@ -4,7 +4,7 @@ A quiet pilgrimage across India in the browser. You set out from Pune as a pilgr
 
 **Travel it:** https://tiwari91.github.io/spiritual-traveller/
 
-A second, separate journey, **the Kailash Mansarovar Yatra** by the Lipulekh route, starts from Delhi on its own page, [`kailash.html`](https://tiwari91.github.io/spiritual-traveller/kailash.html). It is described [below](#the-kailash-mansarovar-yatra).
+A second, separate journey, **the Kailash Mansarovar Yatra** by the Lipulekh route, starts from Delhi on its own page, [`kailash.html`](https://tiwari91.github.io/spiritual-traveller/kailash.html). It is described [below](#the-kailash-mansarovar-yatra). The two journeys are linked: the start screen of each offers the other, and the pin menu (or J) switches between them at any time, keeping the chosen quality (`?q=`); sound and the way of travelling are remembered.
 
 ## The route
 
@@ -89,6 +89,7 @@ Click the minimap (or press G) for a full-screen satellite map with real 3D terr
 | Pause or continue; next darshan | Space or Enter | play button, Continue |
 | Go to a shrine | 1 to 5 | pin menu or the progress bar |
 | Start again from Pune | 0 | pin menu |
+| Switch journey (Char Dham & Jyotirlingas / Kailash Mansarovar) | J | pin menu, or the start screen |
 | Faster or slower | + and - | speed chip |
 | Look around | drag, arrow keys | drag |
 | Zoom | scroll, [ and ], magnifier buttons | pinch, magnifier buttons |
@@ -166,7 +167,7 @@ The map is a stylised India with greatly exaggerated relief (the Himalaya would 
 
 ## Tests
 
-`tests/check.mjs` serves the folder, loads it in headless Chromium with Playwright, travels to every shrine, checks the darshan cards and controls, requires a clean console, and saves screenshots at desktop and phone sizes to `tests/shots/`.
+`tests/check.mjs` serves the folder, loads it in headless Chromium with Playwright, travels to every shrine, checks the darshan cards and controls (and, as `ONLY=journeys`, the switch between the two journeys on both pages at desktop and phone sizes), requires a clean console, and saves screenshots at desktop and phone sizes to `tests/shots/`.
 
 It then rides every leg in every way of travelling (Mixed, Train, Bike and Car), end to end, at a desktop and a phone size, with `tests/monitor.js` watching every frame: the traveller drawn and in the shot, standing on the ground (not floating or sunk), never jumping, clear of the other pilgrims, and the camera above the ground with nothing solid in the way. It photographs each leaving of a temple, each getting on and off and the train, checks that no panel, caption, chip or dialog is off screen or on top of another, and makes contact sheets of the photographs in `tests/shots/sheets/`.
 

@@ -39,6 +39,7 @@
 			<li><span class="dot"></span><b>Badrinath</b><span>Badri Vishal on the Alaknanda</span></li>
 		</ol>
 		<button id="start" class="primary" disabled>Begin the yatra</button>
+		<a class="other-journey" href="kailash.html?route=lipulekh" data-journey="kailash"><small>Or the other journey</small><b>The Kailash Mansarovar Yatra</b><span>Delhi to Darchen, over the Lipulekh, round Mansarovar and the parikrama of Kailash</span></a>
 		<p class="hint" id="hint">Space to pause or continue · 1 to 5 to go to a shrine · drag to look around</p>
 	</div>
 </section>
@@ -68,6 +69,11 @@
 		</nav>
 	</header>
 	<div id="chapters" class="menu panel" hidden>
+		<div class="journeys" id="journeys">
+			<div class="menu-title">Journeys <small>J</small></div>
+			<a class="journey" href="index.html" data-journey="char-dham" aria-current="page"><b>Char Dham &amp; Jyotirlingas</b><small>Pune to Badrinath</small></a>
+			<a class="journey" href="kailash.html?route=lipulekh" data-journey="kailash"><b>Kailash Mansarovar</b><small>Delhi to Darchen</small></a>
+		</div>
 		<div class="menu-title">Go to a shrine</div>
 		<ul id="chapter-list"></ul>
 		<button class="menu-restart" id="btn-restart">Start again from Pune</button>

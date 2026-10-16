@@ -1362,6 +1362,14 @@ function buildUI() {
 	kd.bind($("help-aarti-music"));
 	$("btn-chapters").addEventListener("click", () => ($("chapters").hidden ? openMenu() : closeMenu()));
 	$("btn-restart").addEventListener("click", restart);
+	// the other journey keeps the chosen quality (?q=); sound and the way of travelling are remembered already
+	for (const a of document.querySelectorAll("a[data-journey]")) {
+		a.addEventListener("click", () => {
+			const u = new URL(a.href);
+			if (params.has("q")) u.searchParams.set("q", params.get("q"));
+			a.href = u.toString();
+		});
+	}
 	$("btn-help").addEventListener("click", () => { $("help").hidden = false; $("help-close").focus(); });
 	$("help-close").addEventListener("click", () => ($("help").hidden = true));
 	$("help").addEventListener("click", (e) => { if (e.target.id === "help") $("help").hidden = true; });
@@ -1823,6 +1831,7 @@ function installInput() {
 		else if ((k === "e" || k === "E") && app.state === "darshan") enterTemple(true);
 		else if ((k === "k" || k === "K") && app.state === "darshan" && KAILASH && SHRINES[app.at].lookKailash) kailashWhole();
 		else if (k === "m" || k === "M") toggleSound();
+		else if (k === "j" || k === "J") document.querySelector("a[data-journey]:not([aria-current])")?.click();
 		else if (k === "h" || k === "H") document.body.classList.toggle("hide-hud");
 		else if (k === "c" || k === "C") resetView();
 		else if (k === "?") $("help").hidden = false;
