@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { haze, patch } from "./batch.js";
 import { groundDetail } from "./textures.js";
+import { snowRock } from "./landmarks.js";
 import { INDIA, KAILASH, LANKA, NEIGHBOURS, RIVERS, SHRINES, toWorld, toGeo } from "./geo.js";
 import { LAKES, LEH } from "./kailash-geo.js";
 import { kColour, kGround, kHeight, lakeDist } from "./kailash-world.js";
@@ -349,6 +350,7 @@ export class World {
 		if ( near * land * ( 1.0 - snowy ) > 0.001 ) diffuseColor.rgb = mix( diffuseColor.rgb, groundDetailColor( diffuseColor.rgb ), near * land * ( 1.0 - snowy ) * 0.9 );
 	}`);
 		});
+		snowRock(mat, 0.05, 0.45);
 		const mesh = new THREE.Mesh(geo, mat);
 		mesh.receiveShadow = true;
 		mesh.name = "terrain";

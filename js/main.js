@@ -105,7 +105,7 @@ async function init() {
 	scene.add(lights);
 	weather = new Weather(scene);
 	petals = new Petals(scene);
-	sky = new Sky(scene);
+	sky = new Sky(scene, renderer, LOW);
 	if (LOW) sky.sun.shadow.mapSize.set(1024, 1024);
 	Object.assign(app, { world, route, sky, landmarks, scene, roads, scenery, traffic, ride, journey, traveller });
 	if (KAILASH) await kRaycastTrees();
@@ -963,6 +963,10 @@ function loop(now) {
 	// (the thin air of the plateau, and over it the summer's cumulus; the plateau rises from the crest, and under
 	// a stop's own weather the clouds thin or thicken with the hour)
 	sky.update(hour, focus, dt, { overcast: wx.overcast, snow: wx.snow > 0.3, thin: wx.thin || 0, cumulus: KAILASH ? (wx.thin || 0) * (0.55 + 0.4 * Math.sin(app.t * 0.004 + 1)) : 0 });
+	sky.view(camera);
+	// exposed for the snow up high, as a photographer would: the thin air of the plateau and the Himalayan stops are
+	// brighter than the plains, so the shutter closes a little rather than letting the snow burn out
+	renderer.toneMappingExposure = 1.05 * (KAILASH ? 0.92 : 1) * (1 - 0.12 * (wx.thin || 0));
 	scene.fog.density *= clamp(70 / rig.dist, 0.12, 1.2);
 	const night = smoothstep(4, -8, sky.elev);
 	app.night = night;

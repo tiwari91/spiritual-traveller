@@ -5,7 +5,7 @@
 // LOD (trees.js); grass and weeds are scattered near the camera; soft contact shadows sit under trees and
 // houses. Everything keeps off roads, rails, rivers and the temple precincts, and sits on the ground.
 import * as THREE from "three";
-import { Batch, DITHER, HAZE_FOG, NO_FLIP, SHARED, T, VCOL, patch, place } from "./batch.js";
+import { Batch, DITHER, HAZE_FOG, HAZE_U, NO_FLIP, SHARED, T, VCOL, patch, place } from "./batch.js";
 import { FieldGeo, StripGeo, cropMaterial, fieldMaterial, landOf, layFields } from "./fields.js";
 import { CITIES, KAILASH, SHRINES, toGeo, toWorld } from "./geo.js";
 import { kailashCountry, kumaonWayside } from "./kailash-scenery.js";
@@ -180,6 +180,7 @@ class Clutter {
 		this.centre = { value: new THREE.Vector3() };
 		const mat = new THREE.MeshStandardMaterial({ map: leafAtlas(low), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.9, color: new THREE.Color(1.05, 1.05, 1.05) });
 		patch(mat, "clutter", (s) => {
+		Object.assign(s.uniforms, HAZE_U);
 			Object.assign(s.uniforms, SHARED, { uRad: this.radius, uCtr: this.centre });
 			s.vertexShader = "attribute float aSway;\nuniform float uTime, uWind, uRad;\nuniform vec3 uCtr;\nvarying float vStFade;\n" + s.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
 	vec3 cIP = vec3( instanceMatrix[ 3 ] );

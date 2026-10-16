@@ -11,7 +11,7 @@ import { ROUTE, toWorld } from "./geo.js";
 import { KAILASH, P } from "./kailash-geo.js";
 import { addAnimal } from "./life.js";
 import { cave, dhuni, saffronFlag } from "./kailash-scenery.js";
-import { glowTexture, peak, terrainDetail } from "./landmarks.js";
+import { glowTexture, peak, snowRock, terrainDetail } from "./landmarks.js";
 import { clamp, fbm, lerp, rand, smoothstep } from "./util.js";
 
 const std = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.9, metalness: 0 }, o));
@@ -383,7 +383,7 @@ function kailashMesh(H = 12, R0 = 6.2) {
 		col.set([tmp.r, tmp.g, tmp.b], k * 3);
 	}
 	g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-	const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
+	const m = new THREE.Mesh(g, snowRock(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), 0.1, 0.5, 0.75, 0.1));
 	m.castShadow = true;
 	m.receiveShadow = true;
 	m.name = "kailash";

@@ -5,7 +5,7 @@
 // Mangalore-tile and tin roofs with overhangs, flat concrete roofs with parapets and black water tanks,
 // and unfinished brick houses with rebar standing out of the roof.
 import * as THREE from "three";
-import { HAZE_FOG, T, place, patch } from "./batch.js";
+import { HAZE_FOG, HAZE_U, T, place, patch } from "./batch.js";
 import { addAnimal, addBike, addPerson, handPump, haystack, katta, laundry, shrine, well } from "./life.js";
 import { WALL, houseAtlas, signAtlas, signCell, wallCell } from "./textures.js";
 import { clamp, lerp } from "./util.js";
@@ -50,6 +50,7 @@ function choose(R, list) {
 export function houseMaterial(low) {
 	const m = new THREE.MeshStandardMaterial({ map: houseAtlas(low), vertexColors: true, roughness: 0.88 });
 	return patch(m, "house", (s) => {
+		Object.assign(s.uniforms, HAZE_U);
 		s.vertexShader = "attribute vec4 aRect;\nvarying vec4 vRect;\n" + s.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvRect = aRect;");
 		s.fragmentShader = "varying vec4 vRect;\n" + s.fragmentShader
 			.replace("#include <map_fragment>", `
@@ -64,6 +65,7 @@ export function houseMaterial(low) {
 export function signMaterial() {
 	const m = new THREE.MeshStandardMaterial({ map: signAtlas(), roughness: 0.7 });
 	return patch(m, "sign", (s) => {
+		Object.assign(s.uniforms, HAZE_U);
 		s.fragmentShader = s.fragmentShader.replace("#include <fog_fragment>", HAZE_FOG);
 	});
 }

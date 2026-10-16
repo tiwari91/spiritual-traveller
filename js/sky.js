@@ -1,6 +1,7 @@
 // Sky dome, sun, moon, stars and fog by hour of day.
 import * as THREE from "three";
 import { clamp, lerp, smoothstep } from "./util.js";
+import { HAZE_U } from "./batch.js";
 
 const KEYS = [
 	// sun elevation, zenith, horizon, sun colour, sun intensity, hemi sky, hemi ground, hemi intensity, glow
@@ -26,7 +27,8 @@ void main() {
 }`;
 const FS = `
 uniform vec3 uZenith, uHorizon, uGlow, uSunDir, uMoonDir;
-uniform float uStars, uTime, uOvercast, uSunVis, uCumulus;
+uniform float uStars, uTime, uOvercast, uSunVis, uCumulus, uEnv;
+uniform vec3 uGround;
 varying vec3 vDir;
 float h21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float n2(vec2 p) { vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -60,13 +62,13 @@ void main() {
 		cuCol = mix(cuCol, cuCol * (uHorizon + 0.4), 1.0 - uSunVis);
 		col = mix(col, cuCol, cover * 0.96);
 	}
-	float disc = smoothstep(0.9995, 0.9998, dot(d, uSunDir));
+	float disc = smoothstep(0.9995, 0.9998, dot(d, uSunDir)) * (1.0 - uEnv);
 	col += vec3(1.0, 0.93, 0.8) * disc * 10.0 * uSunVis * (1.0 - uOvercast * 0.9);
 	// moon
-	float md = dot(d, uMoonDir);
+	float md = dot(d, uMoonDir) * (1.0 - uEnv);
 	col += vec3(0.9, 0.93, 1.0) * smoothstep(0.9993, 0.9997, md) * 1.6 * uStars;
 	col += vec3(0.5, 0.6, 0.9) * pow(max(md, 0.0), 60.0) * 0.25 * uStars;
-	if (uStars > 0.01 && h > 0.0) {
+	if (uStars > 0.01 && h > 0.0 && uEnv < 0.5) {
 		vec2 g = floor(d.xz / (h + 0.35) * 240.0);
 		float s = h21(g);
 		float tw = 0.7 + 0.3 * sin(uTime * 2.0 + s * 60.0);
@@ -78,18 +80,29 @@ void main() {
 	// overcast: monsoon grey, warmer near the sun
 	vec3 grey = mix(vec3(0.5, 0.54, 0.6), uHorizon, 0.3) * (0.45 + 0.55 * clamp(uSunVis + 0.3, 0.0, 1.0));
 	col = mix(col, grey * (0.85 + 0.2 * fbm(cp * 0.7 + uTime * 0.01)), uOvercast * smoothstep(-0.05, 0.2, h + 0.1));
+	// for the light the sky sheds on the land (the environment map), the ground below the horizon is the earth's
+	// own bounce colour rather than more sky
+	if (uEnv > 0.5) {
+		col = mix(col, uGround, smoothstep(0.0, -0.08, h));
+		col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), 0.15) * 0.85;
+	}
 	gl_FragColor = vec4(col, 1.0);
 	#include <tonemapping_fragment>
 	#include <colorspace_fragment>
 }`;
 
+// How strongly the sky's own light (the environment map) fills the scene, against the hemisphere light it replaces.
+const HEMI_KEEP = 0.25;
+
 export class Sky {
-	constructor(scene) {
+	constructor(scene, renderer, low = false) {
+		this.renderer = renderer;
+		this.low = low;
 		this.scene = scene;
 		this.u = {
 			uZenith: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() },
 			uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uMoonDir: { value: new THREE.Vector3(0, 1, 0) },
-			uStars: { value: 0 }, uTime: { value: 0 }, uOvercast: { value: 0 }, uSunVis: { value: 1 }, uCumulus: { value: 0 },
+			uStars: { value: 0 }, uTime: { value: 0 }, uOvercast: { value: 0 }, uSunVis: { value: 1 }, uCumulus: { value: 0 }, uEnv: { value: 0 }, uGround: { value: new THREE.Color() },
 		};
 		this.dome = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.ShaderMaterial({ uniforms: this.u, vertexShader: VS, fragmentShader: FS, side: THREE.BackSide, depthWrite: false }));
 		this.dome.frustumCulled = false;
@@ -113,6 +126,15 @@ export class Sky {
 		this.moon = new THREE.DirectionalLight(0x8fa4d8, 0);
 		scene.add(this.moon);
 		scene.fog = new THREE.FogExp2(0x9fb6cc, 0.0035);
+		// the sky dome again, alone in a scene of its own, rendered to a prefiltered environment map: image-based
+		// light from the live sky, so shade is blue at dawn, gilding mirrors the sky and nothing is lit by a flat fill
+		if (renderer) {
+			this.envScene = new THREE.Scene();
+			const em = new THREE.ShaderMaterial({ uniforms: Object.assign({}, this.u, { uEnv: { value: 1 } }), vertexShader: VS, fragmentShader: FS, side: THREE.BackSide, depthWrite: false });
+			this.envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), em));
+			this.pmrem = new THREE.PMREMGenerator(renderer);
+			this.envKey = null;
+		}
 		this.overcast = 0;
 		this.fogColor = new THREE.Color();
 	}
@@ -167,7 +189,26 @@ export class Sky {
 			this.sun.intensity *= 1 + 0.12 * thin;
 		}
 		this.dome.position.copy(focus);
+		if (this.pmrem) {
+			this.u.uGround.value.copy(hg).multiplyScalar(0.55);
+			this.hemi.intensity *= HEMI_KEEP;
+			// re-made only when the sky has visibly changed (a degree or two of sun, a shift in the weather)
+			const key = [elev / (this.low ? 4 : 1.5), oc * 20, thin * 20, (weather.cumulus || 0) * 10].map(Math.round).join();
+			if (key !== this.envKey) {
+				this.envKey = key;
+				const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 100);
+				if (this.envRT) this.envRT.dispose();
+				this.envRT = rt;
+				this.scene.environment = rt.texture;
+			}
+		}
 		this.sunDir = sunDir;
 		this.elev = elev;
+		// the sunlit haze (batch.js HAZE_FOG): its warm colour, fading as the sun goes down or behind cloud
+		HAZE_U.uSunGlow.value.copy(glow).multiplyScalar(0.4 * smoothstep(-4, 3, elev) * (1 - oc * 0.85));
+	}
+	// the sun's direction as the camera sees it, for the haze
+	view(camera) {
+		if (this.sunDir) HAZE_U.uSunView.value.copy(this.sunDir).transformDirection(camera.matrixWorldInverse);
 	}
 }

@@ -167,10 +167,18 @@ export const HAZE_FOG = `
 	#endif
 	float lumA = dot( gl_FragColor.rgb, vec3( 0.3, 0.59, 0.11 ) );
 	gl_FragColor.rgb = mix( gl_FragColor.rgb, vec3( lumA ), aerial * 0.4 );
-	gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, max( fogFactor, aerial ) );
+	// the haze is lit by the sun: towards it the air glows warm (forward scattering), away from it it keeps the sky's
+	// colour, so a dawn valley fills with gold on the sun's side and stays blue on the other
+	float sunF = pow( max( dot( normalize( -vViewPosition ), uSunView ), 0.0 ), 6.0 );
+	vec3 hazeCol = fogColor + uSunGlow * ( sunF * 0.75 + 0.08 );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, hazeCol, max( fogFactor, aerial ) );
 #endif`;
+// The sun's direction in view space and its glow colour, for HAZE_FOG (sky.js sets them each frame).
+export const HAZE_U = { uSunView: { value: new THREE.Vector3(0, 0, -1) }, uSunGlow: { value: new THREE.Color(0, 0, 0) } };
+THREE.ShaderChunk.fog_pars_fragment += "\nuniform vec3 uSunView;\nuniform vec3 uSunGlow;\n";
 export function haze(material) {
 	return patch(material, "haze", (s) => {
+		Object.assign(s.uniforms, HAZE_U);
 		s.fragmentShader = s.fragmentShader.replace("#include <fog_fragment>", HAZE_FOG);
 	});
 }

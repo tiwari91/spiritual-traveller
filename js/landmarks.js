@@ -45,6 +45,54 @@ function terrainDetail(mat, mode) {
 	}));
 }
 
+// Snow and rock up close (the peaks, Kailash, the high valleys): fine relief from a tiled noise as a bump map,
+// sampled from three sides so cliffs are not smeared, softer on snow than on rock; and snow a little glossier
+// than rock, so the low sun glances off its crust. Fades out with distance, where it would only shimmer.
+function snowRock(mat, scale = 0.12, freq = 0.35, sharp = 1, bias = 0) {
+	const uDetail = { value: groundDetail() };
+	return patch(mat, "snowrock" + [scale, freq, sharp, bias], (sh) => {
+		sh.uniforms.uSrDetail = uDetail;
+		sh.vertexShader = "varying vec3 vSrW;\nvarying vec3 vSrN;\n" + sh.vertexShader.replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\n\tvSrW = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;\n\tvSrN = normalize( mat3( modelMatrix ) * objectNormal );");
+		sh.fragmentShader = "uniform sampler2D uSrDetail;\nvarying vec3 vSrW;\nvarying vec3 vSrN;\n" + sh.fragmentShader
+			.replace("#include <color_fragment>", `#include <color_fragment>
+	float srSnow;
+	{
+		// the snow line crisp and ragged rather than a soft blur of vertex colour: where the colour lies between rock
+		// and snow, it is pushed to one or the other by a fine noise, as drifts and bare rock break up along a ledge
+		float srL = dot( diffuseColor.rgb, vec3( 0.3, 0.59, 0.11 ) );
+		float srT = clamp( ( srL - 0.05 ) / 0.75, 0.0, 1.0 );
+		vec2 srQ = vSrW.xz * ${(freq * 1.7).toFixed(3)} + vSrW.y * ${(freq * 0.9).toFixed(3)};
+		float srN = texture2D( uSrDetail, srQ ).r * 0.65 + texture2D( uSrDetail, srQ * 4.3 ).g * 0.35;
+		float srS = smoothstep( 0.42, 0.58, srT + ( srN - 0.5 ) * 0.45 + ${bias.toFixed(3)} );
+		float srMid = smoothstep( 0.08, 0.3, srT ) * ( 1.0 - smoothstep( 0.82, 0.96, srT ) );
+		vec3 srRock = mix( diffuseColor.rgb, vec3( 0.055, 0.047, 0.04 ) * ( 0.75 + 0.5 * srN ), smoothstep( 0.1, 0.35, srT ) );
+		vec3 srSnowC = vec3( 0.84, 0.86, 0.9 ) * ( 0.94 + 0.08 * srN );
+		diffuseColor.rgb = mix( diffuseColor.rgb, mix( srRock, srSnowC, srS ), srMid * ${sharp.toFixed(3)} );
+		srSnow = smoothstep( 0.5, 0.8, dot( diffuseColor.rgb, vec3( 0.3, 0.59, 0.11 ) ) );
+	}`)
+			.replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>
+	roughnessFactor = mix( roughnessFactor, 0.6, srSnow );`)
+			.replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+	{
+		vec3 bw = pow( abs( vSrN ), vec3( 4.0 ) );
+		bw /= bw.x + bw.y + bw.z;
+		vec3 q = vSrW * ${freq.toFixed(3)};
+		float hgt = ( texture2D( uSrDetail, q.zy ).g + 0.5 * texture2D( uSrDetail, q.zy * 3.1 ).r ) * bw.x
+			+ ( texture2D( uSrDetail, q.xz ).g + 0.5 * texture2D( uSrDetail, q.xz * 3.1 ).r ) * bw.y
+			+ ( texture2D( uSrDetail, q.xy ).g + 0.5 * texture2D( uSrDetail, q.xy * 3.1 ).r ) * bw.z;
+		float camD = length( vSrW - cameraPosition );
+		float amp = ${scale.toFixed(3)} * mix( 1.0, 0.3, srSnow ) * ( 1.0 - smoothstep( 40.0, 160.0, camD ) );
+		if ( amp > 0.0005 ) {
+			vec3 sp = -vViewPosition;
+			vec3 sx = dFdx( sp ), sy = dFdy( sp );
+			vec2 dh = vec2( dFdx( hgt ), dFdy( hgt ) ) * amp;
+			vec3 r1 = cross( sy, normal ), r2 = cross( normal, sx );
+			float det = dot( sx, r1 ) * faceDirection;
+			normal = normalize( abs( det ) * normal - sign( det ) * ( dh.x * r1 + dh.y * r2 ) );
+		}
+	}`);
+	});
+}
 const std = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.85, metalness: 0 }, o));
 export const GOLD = std(0xe0a83e, { metalness: 0.9, roughness: 0.3, emissive: 0x5a3a06, emissiveIntensity: 0.12 });
 // Lamps glow at night; main.js sets emissiveIntensity from the hour.
@@ -353,7 +401,7 @@ function windowsTex(base, trim, seed) {
 // ---------- mountains and trees ----------
 // A snow mountain: ridged noise on a fine cone, snow by height and slope, bare rock on the ridges.
 function peak(r, h, seed, snowLine = 0.45, rock = 0x6b6259) {
-	const g = new THREE.ConeGeometry(r, h, 64, 36);
+	const g = new THREE.ConeGeometry(r, h, 96, 48);
 	const p = g.attributes.position;
 	const col = [];
 	const rc = new THREE.Color(rock), rd = new THREE.Color(rock).multiplyScalar(0.62), sc = new THREE.Color(0xf4f7fb), sh = new THREE.Color(0xc9d4e4), gc = new THREE.Color(0x56603f);
@@ -366,7 +414,9 @@ function peak(r, h, seed, snowLine = 0.45, rock = 0x6b6259) {
 		// ridges and gullies run down the face
 		const ridge = 1 - Math.abs(fbm(Math.cos(a) * 2.2 + o, Math.sin(a) * 2.2 + t * 1.4, 4) * 2 - 1);
 		const bumpy = fbm(Math.cos(a) * 5 + o, t * 6 + Math.sin(a) * 5, 3);
-		const k = t < 0.995 ? 1 + (ridge - 0.5) * 0.4 + (bumpy - 0.5) * 0.2 : 1;
+		// finer spurs on the big ridges, and faces that steepen towards the summit (concave, as worn rock is)
+		const spur = 1 - Math.abs(fbm(Math.cos(a) * 7 + o, Math.sin(a) * 7 + t * 4, 3) * 2 - 1);
+		const k = t < 0.995 ? (1 + (ridge - 0.5) * 0.45 + (bumpy - 0.5) * 0.2 + (spur - 0.5) * 0.12) * (Math.pow(1 - t, 0.35) * (1 + 0.35 * t)) : 1;
 		p.setX(i, x * k);
 		p.setZ(i, z * k);
 		p.setY(i, y + (bumpy - 0.5) * h * 0.06 * (1 - t));
@@ -387,7 +437,7 @@ function peak(r, h, seed, snowLine = 0.45, rock = 0x6b6259) {
 }
 let _peakMat;
 function peakMaterial() {
-	return (_peakMat ||= terrainDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }), "peak"));
+	return (_peakMat ||= snowRock(terrainDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }), "peak")));
 }
 // Broadleaf trees: a trunk and a lumpy crown of two or three masses, instanced.
 let _crown;
@@ -1506,28 +1556,8 @@ function shirdi(site) {
 
 const BUILDERS = { kedarnath, badrinath, tirupati: tirumala, bhimashankar, shirdi };
 
-// A sky-and-earth environment so gilding and bronze catch light.
-function environment(renderer) {
-	const pm = new THREE.PMREMGenerator(renderer);
-	const s = new THREE.Scene();
-	const sky = new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.ShaderMaterial({
-		side: THREE.BackSide,
-		vertexShader: "varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-		fragmentShader: "varying vec3 vP; void main(){ vec3 d = normalize(vP); float h = d.y; vec3 c = h > 0.0 ? mix(vec3(0.95,0.85,0.7), vec3(0.35,0.55,0.85), pow(h, 0.6)) : mix(vec3(0.5,0.42,0.32), vec3(0.18,0.15,0.12), pow(-h, 0.5)); c += vec3(1.6,1.3,0.9) * pow(max(dot(d, normalize(vec3(0.5,0.45,0.6))), 0.0), 40.0); gl_FragColor = vec4(c, 1.0); }",
-	}));
-	s.add(sky);
-	const env = pm.fromScene(s, 0.02).texture;
-	pm.dispose();
-	return env;
-}
-
 export function buildLandmarks(world, scene, renderer, crowdFigure) {
-	const env = renderer ? environment(renderer) : null;
-	if (env) {
-		GOLD.envMap = env;
-		GOLD.envMapIntensity = 1.1;
-		GOLD.needsUpdate = true;
-	}
+	// (the gilding takes its reflections from the live sky: scene.environment, which sky.js keeps up to date)
 	const out = [];
 	for (const s of SHRINES) {
 		const w = toWorld(s.lon, s.lat);
@@ -1559,12 +1589,6 @@ export function buildLandmarks(world, scene, renderer, crowdFigure) {
 		root.add(spec.g);
 		scene.add(root);
 		projectUVs(spec.g);
-		if (env) spec.g.traverse((o) => {
-			if (o.isMesh && !Array.isArray(o.material) && o.material.metalness > 0.5 && !o.material.envMap) {
-				o.material.envMap = env;
-				o.material.needsUpdate = true;
-			}
-		});
 		// Local-to-world helper for set dressing that must follow the terrain.
 		const toW = (lx, lz) => {
 			const c = Math.cos(s.facing), sn = Math.sin(s.facing);
@@ -1704,4 +1728,4 @@ export function ribbonMesh(pts, width, mat) {
 }
 
 // for the Kailash journey's mountains (kailash-landmarks.js)
-export { terrainDetail, peak };
+export { terrainDetail, peak, snowRock };

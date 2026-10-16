@@ -4,7 +4,7 @@
 // edges, tall crops (sugarcane, jowar, cotton, banana) as rows of alpha-tested strips, paddy with
 // standing water, and terraces with retaining walls in the hills.
 import * as THREE from "three";
-import { HAZE_FOG, SHARED, patch } from "./batch.js";
+import { HAZE_FOG, HAZE_U, SHARED, patch } from "./batch.js";
 import { CROP as STRIP, cropAtlas, groundDetail } from "./textures.js";
 import { clamp, lerp } from "./util.js";
 
@@ -82,6 +82,7 @@ export function fieldMaterial() {
 	const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
 	const uDetail = { value: groundDetail() };
 	return patch(m, "field", (s) => {
+		Object.assign(s.uniforms, HAZE_U);
 		s.uniforms.uDetail = uDetail;
 		s.vertexShader = FIELD_VS + s.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n\tvSoil = aSoil;\n\tvField = aField;\n\tvFWPos = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;");
 		s.fragmentShader = FIELD_FS + s.fragmentShader
@@ -130,6 +131,7 @@ const packFlags = (wet, ridge, weedy) => (wet ? 1 : 0) + (ridge ? 2 : 0) + (weed
 export function cropMaterial(low) {
 	const m = new THREE.MeshStandardMaterial({ map: cropAtlas(low), alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85, color: new THREE.Color(1.6, 1.6, 1.6) });
 	return patch(m, "crop", (s) => {
+		Object.assign(s.uniforms, HAZE_U);
 		Object.assign(s.uniforms, SHARED);
 		s.vertexShader = "attribute float aSway;\nuniform float uTime, uWind;\n" + s.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
 	float cPh = position.x * 0.9 + position.z * 0.7;
