@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { Batch, T, VCOL, place } from "./batch.js";
 import { ROUTE, toWorld } from "./geo.js";
 import { KAILASH, P } from "./kailash-geo.js";
-import { addAnimal } from "./life.js";
+import { addAnimal, standable } from "./life.js";
 import { cave, dhuni, saffronFlag } from "./kailash-scenery.js";
 import { glowTexture, peak, snowRock, terrainDetail } from "./landmarks.js";
 import { clamp, fbm, lerp, rand, smoothstep } from "./util.js";
@@ -115,7 +115,9 @@ function frame(ctx) {
 	};
 	// the lowest ground under a spot of radius r, to set a building into the slope
 	const floor = (lx, lz, r) => Math.min(...[[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].map(([u, v]) => ground(lx + u, lz + v)));
-	return { toW, ground, free, take, spot, ring, rest, tilt, floor };
+	// whether a person or an animal can stand there (no steeper than about 25 degrees)
+	const stands = (lx, lz, r = 0.18) => standable(ground, lx, lz, r);
+	return { toW, ground, free, take, spot, ring, rest, tilt, floor, stands };
 }
 
 // ---------- pieces ----------
@@ -238,7 +240,8 @@ function snowPatch(b, x, y, z, r, R) {
 function rocks(b, F, n, r0, r1, R, col = STONE) {
 	for (let i = 0; i < n; i++) {
 		const a = R() * 6.3, d = lerp(r0, r1, R()), lx = Math.sin(a) * d, lz = Math.cos(a) * d, s = 0.04 + R() * 0.14;
-		if (!F.free(lx, lz, s)) continue;
+		// (a stone lies only where it would stay, half sunk in the ground; none on the cliffs)
+		if (!F.free(lx, lz, s) || !standable(F.ground, lx, lz, Math.max(s, 0.1), 32)) continue;
 		b.add(T.ball, place(lx, F.ground(lx, lz) - s * 0.35, lz, R() * 6, s, s * (0.5 + R() * 0.4), s * (0.7 + R() * 0.5)), new THREE.Color(col).offsetHSL(0, 0, (R() - 0.5) * 0.12));
 	}
 }
@@ -262,12 +265,12 @@ function poleSpot(F, cands, rim) {
 function crowdAt(F, n, seed) {
 	const R = rand(seed), out = [];
 	const cands = [[-1.35, 2.2], [1.45, 2.05], [-1.7, 3.6], [1.8, 3.4], [-2.2, 1.1], [2.3, 1.3], [-0.9, 4.3], [1.0, 4.4], [-2.6, 2.6], [2.7, 2.7]];
-	for (let k = 0; k < 20; k++) cands.push([(R() - 0.5) * 6, 0.5 + R() * 4]);
+	for (let k = 0; k < 60; k++) cands.push([(R() - 0.5) * 7, 0.3 + R() * 4.4]);
 	for (const [x, z] of cands) {
 		if (out.length >= n) break;
-		// near the altar but not in the aarti's way
+		// near the altar but not in the aarti's way, and only on ground a pilgrim could stand on
 		if (Math.abs(x) < 1.15 && z > 0.9 && z < 4.2) continue;
-		if (!F.free(x, z, 0.25)) continue;
+		if (!F.free(x, z, 0.25) || !F.stands(x, z)) continue;
 		F.take(x, z, 0.25);
 		out.push([x, z, F.ground(x, z)]);
 	}
@@ -863,7 +866,7 @@ function dirapuk(ctx) {
 	for (let i = 0; i < 4; i++) {
 		const s = F.spot(F.ring(1.8, 4.0, 24, 80 + i), 0.45);
 		if (!s) continue;
-		addAnimal(b, i === 0 ? "packyak" : "yak", R, s[0], F.ground(s[0], s[1]), s[1], R() * 6.3);
+		if (F.stands(s[0], s[1], 0.3)) addAnimal(b, i === 0 ? "packyak" : "yak", R, s[0], F.ground(s[0], s[1]), s[1], R() * 6.3);
 	}
 	// a lhatse: a cairn with a pole and its flags
 	const lh = poleSpot(F, F.ring(1.6, 3.4, 40, 90), 1.05);

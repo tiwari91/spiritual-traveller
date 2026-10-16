@@ -5,7 +5,14 @@
 // and on the parikrama Tibetan pilgrims and pack yaks on the path. Built in the chunk's batch, in metres (M).
 import * as THREE from "three";
 import { T, beam, place } from "./batch.js";
-import { addAnimal, addPerson } from "./life.js";
+import { PLACED, addAnimal as addAnimal0, addPerson as addPerson0, standable } from "./life.js";
+
+// people and animals by the way stand only where a foot can: never on a cliff or a steep scree slope
+let GROUND = null;
+const stands = (x, z) => !GROUND || standable((u, v) => GROUND.height(u, v), x, z);
+const put = (x, y, z, kind) => PLACED.length < 4000 && PLACED.push({ x, y, z, kind });
+const addPerson = (b, R, x, y, z, ...a) => stands(x, z) && (put(x, y, z, "person"), addPerson0(b, R, x, y, z, ...a));
+const addAnimal = (b, kind, R, x, y, z, ...a) => stands(x, z) && (put(x, y, z, kind), addAnimal0(b, kind, R, x, y, z, ...a));
 import { LAKES, LEH, P } from "./kailash-geo.js";
 import { lakeDist } from "./kailash-world.js";
 import { toGeo, toWorld } from "./geo.js";
@@ -53,6 +60,7 @@ export function cave(b, x, y, z, yaw, s = 1) {
 // caves on the walk up, but no particular cave or hermit by this road is on record.)
 export function* kumaonWayside(sc, ctx) {
 	const { R, s0, s1, world, b } = ctx;
+	GROUND = world;
 	if (R() < 0.45) return;
 	const okAt = (x, z, m) => ctx.ok(x, z, m) && !ctx.taken(x, z, m);
 	const tallOk = (x, z, r) => okAt(x, z, r) && sc.roads.footDist(x, z) > r + 1.9 && sc.roads.clearance(x, z) > r + 1.6;
@@ -237,6 +245,7 @@ function seat(world, x, z, r, most = 0.22) {
 // The plateau's chunk. ctx is scenery.js's chunk context; sc the Scenery.
 export function* kailashCountry(sc, ctx, reg) {
 	const { R, s0, s1, world, b } = ctx;
+	GROUND = world;
 	const tib = reg === "tibet";
 	const clearOfLakes = (x, z, m) => {
 		const g = toGeo(x, z);

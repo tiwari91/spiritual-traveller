@@ -9,6 +9,7 @@ import { fbm, rand } from "./util.js";
 import { TREE_STRIDE, Trees } from "./trees.js";
 import { haze, patch } from "./batch.js";
 import { groundDetail } from "./textures.js";
+import { standable } from "./life.js";
 import { K_BUILDERS } from "./kailash-landmarks.js";
 
 // World-space detail for mountains and hills: rock strata and scree on peaks, mottled scrub, red earth
@@ -1575,7 +1576,24 @@ export function buildLandmarks(world, scene, renderer, crowdFigure) {
 		}
 		const spec = (BUILDERS[s.key] || K_BUILDERS[s.key])({ world, x: w.x, y, z: w.z, facing: s.facing, shrine: s });
 		if (crowdFigure && spec.crowd) {
+			const c = Math.cos(s.facing), sn = Math.sin(s.facing);
+			// each pilgrim's feet on what is really under them: the paving, a step or the bare ground, whichever is
+			// highest just below where they were put, so no one sinks into a platform or hovers over it
+			spec.g.updateMatrixWorld(true);
+			const solid = spec.g.children.filter((o) => o.isMesh && !o.material.transparent);
+			const rc = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0);
+			const feet = (x, z, fy) => {
+				let top = world.height(w.x + x * c + z * sn, w.z - x * sn + z * c) - y + 0.05;
+				rc.set(new THREE.Vector3(x, fy + 0.25, z), down);
+				rc.far = 0.6;
+				const hit = rc.intersectObjects(solid, false)[0];
+				if (hit) top = Math.max(top, hit.point.y);
+				return Math.abs(top - fy) < 0.35 ? top : fy;
+			};
 			spec.crowd.forEach(([x, z, fy, dress], i) => {
+				fy = feet(x, z, fy);
+				// (out on the open hillside of a Kailash stop, no one stands where the ground is too steep to stand)
+				if (K_BUILDERS[s.key] && !standable((u, v) => world.height(u, v), w.x + x * c + z * sn, w.z - x * sn + z * c)) return;
 				const f = crowdFigure(s.key.length * 100 + i * 7 + 3, dress || s.key);
 				f.position.set(x, fy - 0.0, z);
 				// pilgrims face the shrine, with a little variety

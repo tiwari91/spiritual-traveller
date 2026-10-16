@@ -2044,7 +2044,7 @@ function mergeFigure(J) {
 	for (const g of geos) g.dispose();
 	return merged;
 }
-const CROWD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
+const CROWD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, name: "crowd" });
 
 // Shared with the temple interiors (sanctum.js) and the outdoor aarti (aarti.js), which pose their own figures.
 export { body, pose, SKIN, NAMASTE, STAND, mergeFigure, RIGHT, LEFT, own };

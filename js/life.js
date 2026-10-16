@@ -265,6 +265,15 @@ export function animal(kind, R) {
 	}
 	return ANIMALS[key] || (ANIMALS[key] = make());
 }
+// Whether a person or an animal can stand at x, z on the ground height(x, z): no steeper than about 25 degrees
+// across the feet (r: half the footprint), so no one is stuck on a cliff or hangs off a scree slope.
+export function standable(height, x, z, r = 0.18, maxDeg = 25) {
+	const c = height(x, z), lim = Math.tan((maxDeg * Math.PI) / 180) * r;
+	for (const [u, v] of [[r, 0], [-r, 0], [0, r], [0, -r], [r * 0.7, r * 0.7], [-r * 0.7, -r * 0.7], [r * 0.7, -r * 0.7], [-r * 0.7, r * 0.7]]) if (Math.abs(height(x + u, z + v) - c) > lim) return false;
+	return true;
+}
+// Where the people and animals out in the country were put (world x, y, z), for the checks (tests/check.mjs).
+export const PLACED = [];
 // Put an animal into a batch at x, z (world), turned by yaw, at the ground height y.
 export function addAnimal(b, kind, R, x, y, z, yaw) {
 	const g = animal(kind, R);

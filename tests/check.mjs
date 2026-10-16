@@ -1,7 +1,7 @@
 // Headless browser check for Spiritual Traveller.
 // Usage: node tests/check.mjs            (writes screenshots to tests/shots/)
 // Env:   CHROME_BIN=/path/to/chrome-headless-shell   PW_REQUIRE=/path/to/a/package.json that has playwright
-//        ONLY=basic|journeys|scenarios|phone|kleh|kbasic|kscenarios|kphone   run some parts (default: all; the k parts are the
+//        ONLY=basic|journeys|grounding|scenarios|phone|kleh|kbasic|kscenarios|kphone   run some parts (default: all; the k parts are the
 //                                       Kailash Mansarovar journey, kailash.html)
 //        MODES=mixed,train,bike,car     LEGS=0,1,2,3,4   which journeys the scenarios ride (default: all)
 // The scenarios ride every leg in every way of travelling, end to end, with tests/monitor.js watching each frame,
@@ -72,6 +72,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(OUT, name + ".png
 try {
 	if (part("basic")) await basic();
 	if (part("journeys")) await journeys();
+	if (part("grounding")) await grounding();
 	if (part("scenarios")) {
 		await scenarios({ width: 1280, height: 760 }, "desk");
 		await sheets("desk");
@@ -419,6 +420,54 @@ async function journeys() {
 	await Promise.all([page.waitForURL((u) => u.pathname.endsWith("/kailash.html"), { timeout: 15000 }), page.keyboard.press("j")]);
 	ok("Journeys: J switches to the Kailash journey", page.url().includes("kailash.html"));
 	await ctx.close();
+}
+
+// Everyone on their feet: at every stop of both journeys (and both ways to Kailash), each pilgrim at the door stands
+// on what is under them (the terrain or a temple's paving, within a few centimetres), and out on the Kailash
+// journey's open hillsides no one, pilgrim, sadhu, herder or animal, stands on ground steeper than about 28 degrees.
+async function grounding() {
+	for (const [pageName, q] of [["", ""], [KPAGE, "&route=lipulekh"], [KPAGE, "&route=leh"]]) {
+		const { ctx, page, errors } = await open({}, "?noenter=1&q=low" + q, pageName);
+		const tag = pageName ? `Kailash (${q.split("=")[1]})` : "Char Dham";
+		// the country built along the whole way (as it is when ridden), then everyone looked at
+		await page.evaluate(() => { for (let s = 0; s < app.route.length; s += 6) app.scenery.prebuild(s); });
+		const r = await page.evaluate(async () => {
+			const THREE = await import("three");
+			const { PLACED } = await import("./js/life.js");
+			const rc = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), out = { n: 0, float: [], steep: [], placed: 0, placedSteep: [] };
+			const slope = (x, z, e = 0.15) => (Math.atan(Math.hypot(app.world.height(x + e, z) - app.world.height(x - e, z), app.world.height(x, z + e) - app.world.height(x, z - e)) / (2 * e)) * 180) / Math.PI;
+			for (const l of app.landmarks) {
+				l.root.updateMatrixWorld(true);
+				const solid = [app.world.mesh];
+				l.root.traverse((o) => o.isMesh && !(o.material && o.material.name === "crowd") && !o.material.transparent && solid.push(o));
+				l.root.traverse((o) => {
+					if (!o.isMesh || !o.material || o.material.name !== "crowd") return;
+					out.n++;
+					const p = o.getWorldPosition(new THREE.Vector3());
+					rc.set(new THREE.Vector3(p.x, p.y + 0.12, p.z), down);
+					rc.far = 3;
+					const hit = rc.intersectObjects(solid, false)[0];
+					const dy = hit ? p.y - hit.point.y : 9;
+					if (Math.abs(dy) > 0.07) out.float.push(`${l.shrine.key} ${dy.toFixed(2)}`);
+					if (l.shrine.rest !== undefined || /kailash/.test(location.pathname)) {
+						const sl = slope(p.x, p.z);
+						if (sl > 28) out.steep.push(`${l.shrine.key} ${sl.toFixed(0)}°`);
+					}
+				});
+			}
+			for (const q of PLACED) {
+				out.placed++;
+				const sl = slope(q.x, q.z);
+				if (sl > 28 || Math.abs(q.y - app.world.height(q.x, q.z)) > 0.07) out.placedSteep.push(`${q.kind} ${sl.toFixed(0)}°`);
+			}
+			return out;
+		});
+		ok(`Grounding (${tag}): the pilgrims at every stop stand on the ground`, r.float.length === 0, `${r.n} figures; ${r.float.slice(0, 6).join(", ")}`);
+		if (pageName) ok(`Grounding (${tag}): no one at a stop stands on a slope too steep to stand on`, r.steep.length === 0, r.steep.slice(0, 6).join(", "));
+		if (pageName) ok(`Grounding (${tag}): no one by the way stands on a cliff`, r.placedSteep.length === 0, `${r.placed} placed; ${r.placedSteep.slice(0, 6).join(", ")}`);
+		ok(`Grounding (${tag}): console clean`, errors.length === 0, errors.slice(0, 3).join(" | "));
+		await ctx.close();
+	}
 }
 
 async function kailashBasic() {
