@@ -299,7 +299,7 @@ function kailashMesh(H = 12, R0 = 6.2) {
 	const tt = new Float32Array(N), band = new Float32Array(N), gul = new Float32Array(N), face = new Float32Array(N);
 	// strata of uneven thickness, each a ledge stepping back
 	const R = rand(17), cuts = [0];
-	while (cuts[cuts.length - 1] < 1) cuts.push(cuts[cuts.length - 1] + 0.042 + R() * 0.05);
+	while (cuts[cuts.length - 1] < 1) cuts.push(cuts[cuts.length - 1] + 0.032 + R() * 0.048);
 	const bandAt = (t) => {
 		let i = 0;
 		while (cuts[i + 1] < t) i++;
@@ -324,7 +324,10 @@ function kailashMesh(H = 12, R0 = 6.2) {
 			const u = Math.max(0, (t - 0.08) / 0.92);
 			// (the north face, over Dirapuk, is a sheer wall: it keeps its width higher and then drops in steeply)
 			const northy = smoothstep(0.3, 1, -Math.cos(th));
-			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.872 * (1 - 0.76 * Math.pow(u, lerp(1.05, 2.3, northy))) * (u > 0.9 ? Math.sqrt(Math.max(0, 1 - ((u - 0.9) / 0.1) ** 2)) : 1));
+			// (seen from Dirapuk it is a squat, near-symmetric pyramid: straight flanks, the north wall barely bulging,
+			// and a small rounded cap of snow, not a spike)
+			const cap = u > 0.9 ? Math.sqrt(Math.max(0, 1 - ((u - 0.9) / 0.1) ** 2)) : 1;
+			let r = R0 * (t < 0.08 ? 1 - t * 1.6 : 0.92 * (1 - 0.8 * Math.pow(u, lerp(0.95, 1.3, northy))) * cap);
 			// the strata dip gently to the west and wander a little
 			const [bi, f] = bandAt(clamp(t + 0.035 * Math.sin(th) + 0.012 * Math.sin(th * 3 + 1) + 0.03 * (fbm(th * 1.6 + 5, t * 2.5, 3) - 0.5), 0, 0.999));
 			const jag = fbm(th * 5 + bi, bi * 0.7, 2);
@@ -333,7 +336,7 @@ function kailashMesh(H = 12, R0 = 6.2) {
 			// the gully down the middle of the south face (the 'stairway'), and a lesser one on the north
 			const ds = Math.atan2(Math.sin(th), Math.cos(th)), dn = Math.atan2(Math.sin(th - Math.PI), Math.cos(th - Math.PI));
 			const gS = Math.exp(-((ds / (0.07 + 0.04 * fbm(t * 9, 3, 2))) ** 2)) * smoothstep(0.1, 0.22, t) * (1 - smoothstep(0.8, 0.92, t));
-			const gN = Math.exp(-((dn / 0.045) ** 2)) * smoothstep(0.2, 0.3, t) * (1 - smoothstep(0.7, 0.8, t)) * 0.6;
+			const gN = Math.exp(-((dn / (0.05 + 0.02 * fbm(t * 8, 7, 2))) ** 2)) * smoothstep(0.12, 0.24, t) * (1 - smoothstep(0.78, 0.88, t)) * 0.9;
 			r *= 1 - 0.12 * (gS + gN);
 			// buttresses and broken rock
 			r *= 1 + (fbm(th * 7 + 3, t * 10, 3) - 0.5) * 0.07 * (1 - t);
@@ -372,14 +375,21 @@ function kailashMesh(H = 12, R0 = 6.2) {
 		// the stratum's face: bare rock through its lower, steeper part (f small), snow on the shelf at its top; the
 		// line between them wanders along the band, and the bare band is wider where the band is a cliff (P.w small)
 		const along = fbm(th * P.fq + P.o, t * 7 + P.o, 3) + 0.25 * (fbm(th * 17 + P.o, t * 30, 2) - 0.5);
-		const edge = 0.42 + 0.3 * (1 - P.w) + 0.2 * (along - 0.5);
-		const bare = (1 - smoothstep(edge - 0.07, edge + 0.07, f)) * smoothstep(0.04, 0.2, f + 0.1 * (broken - 0.5));
+		const edge = 0.34 + 0.3 * (1 - P.w) + 0.24 * (along - 0.5);
+		// long streaks of snow and ice run down the wall from each ledge over the rock below it, so the dark bands
+		// are broken into slabs: fine vertical lines, much finer across than down
+		const dn = Math.atan2(Math.sin(th - Math.PI), Math.cos(th - Math.PI));
+		const streak = smoothstep(0.5, 0.72, fbm(th * 30 + 9, t * 2.2, 3)) * (0.55 + 0.45 * smoothstep(0.3, 0.7, fbm(th * 9, t * 3 + 4, 2)));
+		const bare = (1 - smoothstep(edge - 0.05, edge + 0.05, f)) * smoothstep(0.03, 0.14, f + 0.1 * (broken - 0.5)) * (1 - 0.6 * streak);
 		// more rock lower down and where the slope is steepest; the flat shelves and the summit all snow
 		const low = 1 - 0.4 * smoothstep(0.25, 0.75, t);
 		const steep = 0.75 + 0.25 * (1 - smoothstep(0.25, 0.6, ny));
 		let s = 1 - clamp(bare * (0.8 + 0.2 * low) * steep + 0.25 * low * smoothstep(0.55, 0.75, broken) * (1 - smoothstep(0.3, 0.6, ny)), 0, 1);
 		// the north face, in shadow and sheer, is mostly dark rock with the snow in lines along its ledges
-		s *= 1 - north * 0.5 * (1 - smoothstep(0.55, 0.8, f));
+		s *= 1 - north * 0.3 * (1 - smoothstep(0.4, 0.7, f)) * (1 - streak);
+		// the fainter couloirs either side of the stairway: dark runnels of rock down the wall
+		const cou = Math.max(Math.exp(-(((dn - 0.32) / 0.025) ** 2)), Math.exp(-(((dn + 0.36) / 0.022) ** 2)), 0.7 * Math.exp(-(((dn - 0.62) / 0.02) ** 2)));
+		s *= 1 - 0.45 * cou * smoothstep(0.15, 0.3, t) * (1 - smoothstep(0.65, 0.8, t)) * (1 - smoothstep(0.75, 0.95, f));
 		s = Math.max(s, smoothstep(0.82, 0.95, ny) * 0.9); // the shelves
 		s = Math.max(s, smoothstep(0.76, 0.86, t + (fbm(th * 4, t * 6, 3) - 0.5) * 0.1)); // the dome
 		s *= smoothstep(0.05, 0.18, t); // the scree at the foot
@@ -394,7 +404,7 @@ function kailashMesh(H = 12, R0 = 6.2) {
 		col.set([tmp.r, tmp.g, tmp.b], k * 3);
 	}
 	g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-	const m = new THREE.Mesh(g, snowRock(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), 0.1, 0.5, 0.75, 0.1));
+	const m = new THREE.Mesh(g, snowRock(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), 0.1, 0.5, 0.6, 0.1));
 	m.castShadow = true;
 	m.receiveShadow = true;
 	m.name = "kailash";
