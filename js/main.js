@@ -22,6 +22,7 @@ import { Audio } from "./audio.js";
 import { CITIES, INDIA, KAILASH, LANKA, ROUTE, SHRINES, toGeo, toWorld } from "./geo.js";
 import { ALTS, LAKES, LEH, PASSING, RIVERS as K_RIVERS, START_NAME } from "./kailash-geo.js";
 import { Companions } from "./kailash-companion.js";
+import { Wildlife } from "./kailash-wildlife.js";
 import { kRegion, tibet } from "./kailash-world.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
 
@@ -95,6 +96,8 @@ async function init() {
 	scene.add(traveller.group);
 	// the yakman and his pack yak who walk the parikrama with the traveller
 	if (KAILASH) companions = new Companions(scene);
+	// the birds and the wild animals of the Kailash country
+	if (KAILASH) app.wildlife = new Wildlife(scene, world, LOW);
 	// the aarti at the door, with each shrine's own music
 	music = new Music(audio);
 	aarti = new Aarti({ scene, landmarks, music, traveller, low: LOW });
@@ -940,6 +943,7 @@ function loop(now) {
 		companions.update(on, app.s, c.s1 - 2.4, (s, lane) => Object.assign({}, roadPoint(s, lane * journey.keep(s))), app.playing);
 	}
 	updateCamera(dt);
+	if (app.wildlife) app.wildlife.update(dt, camera);
 	// a snow peak the camera has strayed into is hidden rather than filling the screen
 	for (const l of landmarks) for (const m of l.decor.children) {
 		const pk = m.userData.peak;

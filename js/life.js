@@ -229,6 +229,120 @@ function sheep(col, pose) {
 	for (const [lx, lz] of [[-0.1, 0.25], [0.1, 0.25], [-0.1, -0.25], [0.1, -0.25]]) p.limb(V(lx, by - 0.1, lz), V(lx, 0, lz), 0.03, 0.02, 0x2a2420);
 	return p.build();
 }
+// ---------- the wild animals of the Kailash country ----------
+// A leg from the hip at (x, y, z), length L, swung forward by a (radians) with the lower leg folded back by k; the
+// foot is on y = 0 when the leg hangs straight down from a hip at height L.
+function leg(p, x, y, z, L, a, k, r, col, hoof) {
+	const kn = V(x, y - L * 0.5 * Math.cos(a), z + L * 0.5 * Math.sin(a)), b = a - k;
+	const ft = V(x, kn.y - L * 0.5 * Math.cos(b), kn.z + L * 0.5 * Math.sin(b));
+	p.limb(V(x, y, z), kn, r, r * 0.8, col);
+	p.limb(kn, ft, r * 0.8, r * 0.6, col);
+	if (hoof) p.box(ft.x, ft.y, ft.z, r * 1.3, 0.05, r * 1.5, hoof);
+}
+// a four-legged gait at phase ph (radians; null standing): each leg's swing and fold, diagonal pairs together (a trot)
+const gait = (ph, i, amp = 0.42) => {
+	if (ph === null) return [0, 0];
+	const o = ph + (i === 0 || i === 3 ? 0 : Math.PI);
+	return [amp * Math.sin(o), Math.max(0, Math.cos(o)) * 0.9];
+};
+// The kiang, the Tibetan wild ass, in herds on the open steppe round the lakes: about 1.4 m at the shoulder, a
+// chestnut back and a white belly, legs, rump and muzzle, a dark stripe down the spine and a short dark mane.
+// pose: "graze" (head down), "stand"; ph: the trot's phase (radians), or null standing still.
+export function kiang(pose = "stand", ph = null) {
+	const p = new Parts();
+	const back = 0x8a5230, white = 0xece4d4, dark = 0x3a2a1e;
+	const graze = pose === "graze" && ph === null, by = 0.95;
+	p.blob(0, by, 0, 0.27, 0.3, 0.82, back);
+	p.blob(0, by - 0.1, 0, 0.25, 0.2, 0.72, white);
+	p.blob(0, by + 0.02, 0.45, 0.25, 0.29, 0.36, back);
+	p.blob(0, by + 0.02, -0.5, 0.27, 0.29, 0.36, back);
+	p.blob(0, by - 0.04, -0.7, 0.2, 0.22, 0.14, white); // the pale rump
+	p.blob(0, by + 0.28, -0.05, 0.05, 0.035, 0.8, dark); // the dorsal stripe
+	const head = graze ? V(0, 0.32, 1.12) : V(0, by + 0.58 - (ph === null ? 0 : 0.1), 0.98);
+	p.limb(V(0, by + 0.12, 0.62), head, 0.15, 0.1, back);
+	p.limb(V(0, by + 0.3, 0.62), V(0, head.y + 0.1, head.z - 0.08), 0.05, 0.04, dark); // the mane
+	p.blob(head.x, head.y, head.z + 0.12, 0.1, 0.12, 0.25, back, graze ? 1.2 : 0.5);
+	p.blob(0, head.y - (graze ? 0.22 : 0.1), head.z + (graze ? 0.16 : 0.3), 0.08, 0.08, 0.09, white);
+	for (const sx of [-1, 1]) p.cone(sx * 0.06, head.y + 0.08, head.z - 0.04, 0.035, 0.2, back, -0.3, 0, sx * 0.25);
+	[[-0.15, 0.55], [0.15, 0.55], [-0.15, -0.58], [0.15, -0.58]].forEach(([lx, lz], i) => {
+		const [a, k] = gait(ph, i);
+		leg(p, lx, by - 0.08, lz, by - 0.08, i < 2 ? a : -a * 0.8, i < 2 ? k : -k * 0.5, 0.075, white, dark);
+	});
+	p.limb(V(0, by + 0.1, -0.84), V(0, by - 0.3, -0.9), 0.025, 0.018, back);
+	p.blob(0, by - 0.36, -0.9, 0.04, 0.08, 0.04, dark);
+	return p.build();
+}
+// The bharal or blue sheep, on the ledges and grassy slopes of the valleys round Kailash: about 0.8 m at the
+// shoulder, a slate grey-brown coat with a blue sheen, white belly, black stripes down the flank and the fronts of
+// the legs; the rams' thick horns sweep out and back.
+export function bharal(pose = "stand", ram = true) {
+	const p = new Parts();
+	const coat = 0x7c7a74, white = 0xe8e4dc, black = 0x1e1c1a, horn = 0x8a7a62;
+	const graze = pose === "graze", by = 0.62;
+	p.blob(0, by, 0, 0.2, 0.22, 0.45, coat);
+	p.blob(0, by - 0.1, 0, 0.17, 0.12, 0.4, white);
+	for (const sx of [-1, 1]) p.blob(sx * 0.17, by - 0.06, 0, 0.03, 0.06, 0.38, black);
+	const head = graze ? V(0, 0.18, 0.62) : V(0, by + 0.3, 0.5);
+	p.limb(V(0, by + 0.06, 0.32), head, 0.1, 0.07, coat);
+	p.blob(head.x, head.y, head.z + 0.05, 0.07, 0.08, 0.14, coat, graze ? 1.1 : 0.5);
+	if (ram) for (const sx of [-1, 1]) {
+		const a = V(sx * 0.05, head.y + 0.08, head.z - 0.02), b = V(sx * 0.17, head.y + 0.1, head.z - 0.1), c = V(sx * 0.22, head.y - 0.02, head.z - 0.2);
+		p.limb(a, b, 0.045, 0.035, horn);
+		p.limb(b, c, 0.035, 0.015, horn);
+	}
+	for (const [lx, lz] of [[-0.09, 0.3], [0.09, 0.3], [-0.09, -0.3], [0.09, -0.3]]) {
+		p.limb(V(lx, by - 0.1, lz), V(lx, 0, lz), 0.035, 0.022, white);
+		p.limb(V(lx, by - 0.14, lz + 0.03), V(lx, 0.02, lz + 0.025), 0.02, 0.012, black);
+	}
+	return p.build();
+}
+// The Himalayan marmot, by its burrow on the grassy stretches of the steppe: about 0.6 m long, golden-brown, a dark
+// face. pose: "up" (sitting up on its haunches, keeping watch), or "down" (on all fours).
+export function marmot(pose = "up") {
+	const p = new Parts();
+	const fur = 0xb48a52, dark = 0x4a3826;
+	if (pose === "up") {
+		p.blob(0, 0.16, 0, 0.11, 0.16, 0.1, fur);
+		p.blob(0, 0.34, 0.01, 0.08, 0.1, 0.08, fur);
+		p.blob(0, 0.44, 0.03, 0.065, 0.06, 0.07, dark);
+		for (const sx of [-1, 1]) p.blob(sx * 0.05, 0.28, 0.07, 0.025, 0.06, 0.025, dark);
+		p.limb(V(0, 0.05, -0.08), V(0, 0.02, -0.22), 0.03, 0.025, dark);
+	} else {
+		p.blob(0, 0.12, 0, 0.11, 0.1, 0.2, fur);
+		p.blob(0, 0.13, 0.2, 0.065, 0.06, 0.07, dark);
+		p.limb(V(0, 0.12, -0.18), V(0, 0.06, -0.32), 0.03, 0.025, dark);
+	}
+	return p.build();
+}
+// The Tibetan fox, of the open steppe, hunting the pikas and marmots: small, with a broad square face, a tawny
+// back, grey flanks and a bushy tail tipped white. ph: the trot's phase (radians), null sitting.
+export function fox(ph = null) {
+	const p = new Parts();
+	const back = 0xb87638, grey = 0x9a948c, white = 0xeee8de;
+	if (ph === null) {
+		p.blob(0, 0.2, -0.02, 0.1, 0.16, 0.12, grey);
+		p.blob(0, 0.26, 0.0, 0.07, 0.14, 0.09, back);
+		p.blob(0, 0.42, 0.06, 0.09, 0.08, 0.1, back);
+		p.blob(0, 0.4, 0.15, 0.05, 0.045, 0.06, white);
+		for (const sx of [-1, 1]) p.cone(sx * 0.05, 0.47, 0.04, 0.025, 0.07, back);
+		p.limb(V(0, 0.06, -0.12), V(0.08, 0.03, -0.38), 0.06, 0.05, back);
+		p.blob(0.09, 0.03, -0.42, 0.04, 0.035, 0.05, white);
+		return p.build();
+	}
+	const by = 0.3;
+	p.blob(0, by, 0, 0.09, 0.1, 0.28, grey);
+	p.blob(0, by + 0.04, 0, 0.07, 0.07, 0.27, back);
+	p.blob(0, by + 0.05, 0.3, 0.09, 0.08, 0.1, back);
+	p.blob(0, by + 0.03, 0.4, 0.05, 0.045, 0.07, white);
+	for (const sx of [-1, 1]) p.cone(sx * 0.05, by + 0.1, 0.28, 0.025, 0.07, back);
+	[[-0.05, 0.2], [0.05, 0.2], [-0.05, -0.2], [0.05, -0.2]].forEach(([lx, lz], i) => {
+		const [a, k] = gait(ph, i, 0.5);
+		leg(p, lx, by - 0.05, lz, by - 0.05, i < 2 ? a : -a, i < 2 ? k : -k * 0.5, 0.02, back, null);
+	});
+	p.limb(V(0, by + 0.02, -0.26), V(0, by - 0.08, -0.56), 0.06, 0.05, back);
+	p.blob(0, by - 0.1, -0.6, 0.04, 0.04, 0.06, white);
+	return p.build();
+}
 let _r0 = 7;
 const R0 = () => ((_r0 = (_r0 * 16807) % 2147483647) / 2147483647);
 const ANIMALS = {};
@@ -257,6 +371,21 @@ export function animal(kind, R) {
 		const sp = pose === "lie" ? "stand" : pose;
 		key = `sheep${col}${sp}`;
 		make = () => sheep(col, sp);
+	} else if (kind === "kiang") {
+		const kp = pose === "lie" ? "stand" : pose;
+		key = `kiang${kp}`;
+		make = () => kiang(kp);
+	} else if (kind === "bharal") {
+		const ram = R() < 0.5, bp = pose === "lie" ? "stand" : pose;
+		key = `bharal${bp}${ram}`;
+		make = () => bharal(bp, ram);
+	} else if (kind === "marmot") {
+		const mp = pose === "graze" ? "down" : "up";
+		key = `marmot${mp}`;
+		make = () => marmot(mp);
+	} else if (kind === "fox") {
+		key = "fox";
+		make = () => fox(null);
 	} else {
 		const col = [0xc49a62, 0xb88a52, 0xd8c09a, 0x3a3028][Math.floor(R() * 4)];
 		const dp = pose === "graze" ? "stand" : pose;

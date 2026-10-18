@@ -490,6 +490,9 @@ async function kailashBasic() {
 	ok("Kailash: eight stops on the route", (await page.evaluate(() => app.route.chapters.length)) === names.length);
 	// the lakes are drawn, and the Tibet side keeps to the right
 	ok("Kailash: Mansarovar and Rakshas Tal are drawn", await page.evaluate(() => app.world.rivers.children.filter((m) => m.name === "lake").length === 2));
+	// the birds and the wild animals of the Kailash country (kailash-wildlife.js)
+	const census = await page.evaluate(() => app.wildlife && app.wildlife.census);
+	ok("Kailash: birds and wild animals are out", !!census && census.birds > 40 && census.kiang > 0 && census.bharal > 0 && census.marmots > 0, JSON.stringify(census));
 	ok("Kailash: the Tibet side keeps to the right", await page.evaluate(() => app.journey.keep(app.route.chapters[3].s1 - 10) === -1 && app.journey.keep(app.route.chapters[0].s0 + 10) === 1));
 	await page.evaluate(() => app.setSpeed(3));
 	for (let i = 0; i < names.length; i++) {
