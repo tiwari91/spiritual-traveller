@@ -698,6 +698,8 @@ export class Scenery {
 		// ---------- build the meshes ----------
 		const g = new THREE.Group();
 		if (!ctx.b.empty) g.add(yield* ctx.b.buildGen(VCOL, low ? 20000 : 40000));
+		// (meshes of their own: the Kailash journey's flapping flags)
+		if (ctx.extra) for (const x of ctx.extra) if (!x.empty) g.add(x.build());
 		if (!ctx.soft.empty) {
 			g.userData.soft = ctx.soft.build(VCOL);
 			this.soft.add(g.userData.soft);

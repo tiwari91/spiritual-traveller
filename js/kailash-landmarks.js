@@ -10,7 +10,7 @@ import { Batch, T, VCOL, place } from "./batch.js";
 import { ROUTE, toWorld } from "./geo.js";
 import { KAILASH, P } from "./kailash-geo.js";
 import { addAnimal, standable } from "./life.js";
-import { cave, dhuni, saffronFlag } from "./kailash-scenery.js";
+import { Cloth, cave, dhuni, saffronFlag } from "./kailash-scenery.js";
 import { glowTexture, peak, snowRock, terrainDetail } from "./landmarks.js";
 import { clamp, fbm, lerp, rand, smoothstep } from "./util.js";
 
@@ -144,7 +144,7 @@ function flagString(b, a, c, sag = 0.12, step = 0.11) {
 	for (let i = 0; i <= n; i++) {
 		const t = i / n;
 		const x = lerp(a[0], c[0], t), y = lerp(a[1], c[1], t) - Math.sin(t * Math.PI) * sag, z = lerp(a[2], c[2], t);
-		if (i > 0 && i < n) b.add(T.box, place(x, y - 0.075, z, yaw + Math.PI / 2, 0.075, 0.07, 0.004, 0, Math.sin(i * 1.7) * 0.25), FLAG[i % 5]);
+		if (i > 0 && i < n) (b.cloth ||= new Cloth()).add(x, y - 0.005, z, yaw + Math.PI / 2, 0.075, 0.07, FLAG[i % 5]);
 		if (i < n) {
 			const x2 = lerp(a[0], c[0], (i + 1) / n), y2 = lerp(a[1], c[1], (i + 1) / n) - Math.sin(((i + 1) / n) * Math.PI) * sag, z2 = lerp(a[2], c[2], (i + 1) / n);
 			const d = Math.hypot(x2 - x, y2 - y, z2 - z);
@@ -286,6 +286,7 @@ function crowdAt(F, n, seed) {
 }
 function finish(b, g) {
 	if (!b.empty) g.add(b.build(VCOL));
+	if (b.cloth && !b.cloth.empty) g.add(b.cloth.build());
 	return g;
 }
 
@@ -569,8 +570,7 @@ function gompa(world, x, z, yaw, s = 1, seed = 1, rock = true) {
 	chorten(b, x - c * 0.8 * s, world.height(x - c * 0.8 * s, z + sn * 0.8 * s), z + sn * 0.8 * s, 0.6 * s, yaw);
 	const F = { ground: (lx, lz) => world.height(lx, lz) };
 	flagPole(b, F, x + sn * 0.9 * s - c * 0.3 * s, z + c * 0.9 * s + sn * 0.3 * s, 1.2 * s, 0.9 * s, 8, seed + 5, (px, pz) => world.height(px, pz));
-	const m = b.build(VCOL);
-	return m;
+	return finish(b, new THREE.Group());
 }
 
 // A deodar for the ashram's grove: a trunk and three tiers of dark green.
@@ -943,7 +943,8 @@ function dolmala(ctx) {
 	b.add(T.ball, place(ds[0], dy - 0.25, ds[1], 0.4, 1.0, 0.75, 0.85), 0x6a625a);
 	b.add(T.ball, place(ds[0] + 0.3, dy - 0.15, ds[1] - 0.2, 1.1, 0.55, 0.45, 0.5), 0x7a7068);
 	// flags heaped over it: strings from a pole on top down to the ground all round, and bundles on the rock
-	flagPole(b, F, ds[0], ds[1], 1.15, 1.5, 34, 17);
+	// (pilgrims bring new strings every year and tie them over the old, till the stone is lost in a sea of flags)
+	flagPole(b, F, ds[0], ds[1], 1.15, 1.5, 64, 17);
 	for (let i = 0; i < 60; i++) {
 		const a = R() * 6.3, e = R() * 1.2, r = 0.42;
 		const x = ds[0] + Math.cos(a) * Math.cos(e) * r, y = dy + 0.1 + Math.sin(e) * r * 0.85, z = ds[1] + Math.sin(a) * Math.cos(e) * r;

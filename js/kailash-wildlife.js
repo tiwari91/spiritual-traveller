@@ -18,6 +18,7 @@ import { toWorld, toGeo } from "./geo.js";
 import { KAILASH, KORA, LAKES, P } from "./kailash-geo.js";
 import { wayDist } from "./kailash-landmarks.js";
 import { lakeDist } from "./kailash-world.js";
+import { FLAG_TIME } from "./kailash-scenery.js";
 import { PLACED, bharal, fox, kiang, marmot, standable } from "./life.js";
 import { lerp, rand } from "./util.js";
 
@@ -240,7 +241,7 @@ export class Wildlife {
 		this.kFrames = kFrames;
 		const plain = (x, z) => {
 			const g = toGeo(x, z);
-			return g.lat > 30.8 && g.lat < 30.95 && g.lon > 81.16 && g.lon < 81.45 && inLake(x, z) > 1.2 && wayDist(x, z) > 1.6 && stands(x, z, 0.5);
+			return Math.hypot(x - W(P.darchen).x, z - W(P.darchen).z) > 5 && Math.hypot(x - W(P.tarboche).x, z - W(P.tarboche).z) > 5 && g.lat > 30.8 && g.lat < 30.95 && g.lon > 81.16 && g.lon < 81.45 && inLake(x, z) > 1.2 && wayDist(x, z) > 1.6 && stands(x, z, 0.5);
 		};
 		for (let h = 0, tries = 0; h < (low ? 2 : 3) && tries < 200; tries++) {
 			const g = W([81.18 + R() * 0.25, 30.81 + R() * 0.13]);
@@ -347,6 +348,8 @@ export class Wildlife {
 
 	update(dt, camera) {
 		const t = (this.t += dt), R = this.R, H = (x, z) => this.world.height(x, z);
+		// the prayer flags flap in the wind (held still for those who ask for less motion)
+		FLAG_TIME.value = RM ? 0 : t;
 		const cp = camera.position;
 		// the group of animals is only looked at near the camera: far off, the world goes on without them
 		const near = (x, z, d = 45) => Math.abs(x - cp.x) < d && Math.abs(z - cp.z) < d;

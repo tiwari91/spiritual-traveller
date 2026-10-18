@@ -4,7 +4,7 @@
 // and flocks of sheep with a herder and a black tent, the flat-roofed whitewashed houses of Taklakot and Darchen,
 // and on the parikrama Tibetan pilgrims and pack yaks on the path. Built in the chunk's batch, in metres (M).
 import * as THREE from "three";
-import { T, beam, place } from "./batch.js";
+import { T, beam, haze, patch, place } from "./batch.js";
 import { PLACED, addAnimal as addAnimal0, addPerson as addPerson0, standable } from "./life.js";
 
 // people and animals by the way stand only where a foot can: never on a cliff or a steep scree slope
@@ -93,6 +93,54 @@ export function* kumaonWayside(sc, ctx) {
 		}
 	}
 }
+// Prayer flags that flap. Each cloth is a quad hung from its string (or tied by one edge to a stick), merged per
+// chunk or stop; the vertex shader blows the free edge out and ripples it, aSway being how far a vertex is from where
+// the cloth is tied (world units), so the tied edge holds still. FLAG_TIME is the clock (kailash-wildlife.js sets it).
+export const FLAG_TIME = { value: 0 };
+export const CLOTH_MAT = patch(haze(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide })), "cloth", (s) => {
+	s.uniforms.uFlagT = FLAG_TIME;
+	s.vertexShader = "attribute float aSway;\nuniform float uFlagT;\n" + s.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
+		float fph = position.x * 3.1 + position.z * 2.3 + position.y * 1.7;
+		float flap = 0.5 + 0.45 * sin(uFlagT * 6.5 + fph - aSway * 30.0) + 0.2 * sin(uFlagT * 11.0 + fph * 1.6 - aSway * 55.0);
+		transformed += objectNormal * aSway * flap * 0.75;`);
+});
+export class Cloth {
+	constructor() {
+		this.P = [];
+		this.C = [];
+		this.S = [];
+	}
+	get empty() {
+		return this.P.length === 0;
+	}
+	// a flag w wide and h deep, the middle of its top edge at x, y, z, its face turned to yaw (as place() turns a box:
+	// across the cloth is (cos yaw, -sin yaw)); side: tied by its near edge to a stick instead of hanging from the top
+	add(x, y, z, yaw, w, h, hex, side = false) {
+		const c = new THREE.Color(hex), ux = Math.cos(yaw), uz = -Math.sin(yaw);
+		const a = side ? [x, y, z] : [x - (ux * w) / 2, y, z - (uz * w) / 2], b = side ? [x + ux * w, y, z + uz * w] : [x + (ux * w) / 2, y, z + (uz * w) / 2];
+		const a2 = [a[0], a[1] - h, a[2]], b2 = [b[0], b[1] - h, b[2]];
+		const sw = side ? [0, w, 0, w] : [0, 0, h, h];
+		for (const [v, k] of [[a, 0], [a2, 2], [b, 1], [b, 1], [a2, 2], [b2, 3]]) {
+			this.P.push(...v);
+			this.C.push(c.r, c.g, c.b);
+			this.S.push(side ? (k === 1 || k === 3 ? w : 0) : sw[k]);
+		}
+	}
+	build() {
+		const g = new THREE.BufferGeometry();
+		g.setAttribute("position", new THREE.Float32BufferAttribute(this.P, 3));
+		g.setAttribute("color", new THREE.Float32BufferAttribute(this.C, 3));
+		g.setAttribute("aSway", new THREE.Float32BufferAttribute(this.S, 1));
+		g.computeVertexNormals();
+		const m = new THREE.Mesh(g, CLOTH_MAT);
+		m.name = "flags";
+		m.receiveShadow = true;
+		this.P = [];
+		this.C = [];
+		this.S = [];
+		return m;
+	}
+}
 // A string of prayer flags from a to b (world points), sagging, n flags along it.
 export function prayerFlags(b, a, c, sag = 0.18, n = 0, R = Math.random) {
 	const len = a.distanceTo(c);
@@ -105,7 +153,9 @@ export function prayerFlags(b, a, c, sag = 0.18, n = 0, R = Math.random) {
 		b.add(T.box, beam(prev, q, 0.006, 0.006), 0xd8d0c0);
 		// the flag hangs below the string, turned along it, a little ruffled
 		const yaw = Math.atan2(c.x - a.x, c.z - a.z);
-		b.add(T.box, place(q.x, q.y - 0.36 * M, q.z, yaw + Math.PI / 2 + (R() - 0.5) * 0.4, 0.42 * M, 0.34 * M, 0.01, (R() - 0.5) * 0.3), FLAGS[i % 5]);
+		const fy = yaw + Math.PI / 2 + (R() - 0.5) * 0.4;
+		if (b.cloth) b.cloth.add(q.x, q.y - 0.02 * M, q.z, fy, 0.42 * M, 0.34 * M, FLAGS[i % 5]);
+		else b.add(T.box, place(q.x, q.y - 0.36 * M, q.z, fy, 0.42 * M, 0.34 * M, 0.01, (R() - 0.5) * 0.3), FLAGS[i % 5]);
 		prev = q;
 	}
 }
@@ -217,7 +267,10 @@ function house(b, x, y, z, yaw, w, d, R, floors = 1) {
 	for (const s of [-1, 1]) {
 		const cx = x + rx * s * (w / 2) * M + fx * (d / 2) * M, cz = z + rz * s * (w / 2) * M + fz * (d / 2) * M;
 		b.add(T.cyl, place(cx, y + h, cz, 0, 0.02, 0.5, 0.02), 0x6a4a2e);
-		for (let k = 0; k < 3; k++) b.add(T.box, place(cx + 0.03, y + h + 0.42 - k * 0.07, cz, yaw, 0.08, 0.06, 0.008), FLAGS[(k + (s > 0 ? 2 : 0)) % 5]);
+		for (let k = 0; k < 3; k++) {
+			if (b.cloth) b.cloth.add(cx, y + h + 0.48 - k * 0.07, cz, yaw, 0.08, 0.06, FLAGS[(k + (s > 0 ? 2 : 0)) % 5], true);
+			else b.add(T.box, place(cx + 0.03, y + h + 0.42 - k * 0.07, cz, yaw, 0.08, 0.06, 0.008), FLAGS[(k + (s > 0 ? 2 : 0)) % 5]);
+		}
 	}
 	void R;
 }
@@ -246,6 +299,9 @@ function seat(world, x, z, r, most = 0.22) {
 export function* kailashCountry(sc, ctx, reg) {
 	const { R, s0, s1, world, b } = ctx;
 	GROUND = world;
+	// (the flags' cloth goes into its own mesh, which flaps; scenery.js adds ctx.extra to the chunk)
+	b.cloth = new Cloth();
+	(ctx.extra ||= []).push(b.cloth);
 	const tib = reg === "tibet";
 	const clearOfLakes = (x, z, m) => {
 		const g = toGeo(x, z);
