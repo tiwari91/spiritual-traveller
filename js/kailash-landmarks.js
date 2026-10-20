@@ -379,12 +379,15 @@ function kailashMesh(H = 12, R0 = 6.2) {
 		// the stratum's face: bare rock through its lower, steeper part (f small), snow on the shelf at its top; the
 		// line between them wanders along the band, and the bare band is wider where the band is a cliff (P.w small)
 		const along = fbm(th * P.fq + P.o, t * 7 + P.o, 3) + 0.25 * (fbm(th * 17 + P.o, t * 30, 2) - 0.5);
-		const edge = 0.34 + 0.3 * (1 - P.w) + 0.24 * (along - 0.5);
+		// (the south face, in the sun and steep, shows more of its dark rock in summer: the snow lies only along the
+		// ledges, in long level lines, and the bands read as continuous strata across the face)
+		const south = smoothstep(0.1, 0.7, nz) * (1 - smoothstep(0.78, 0.9, t));
+		const edge = 0.34 + 0.3 * (1 - P.w) + 0.24 * (along - 0.5) + 0.22 * south;
 		// long streaks of snow and ice run down the wall from each ledge over the rock below it, so the dark bands
 		// are broken into slabs: fine vertical lines, much finer across than down
 		const dn = Math.atan2(Math.sin(th - Math.PI), Math.cos(th - Math.PI));
 		const streak = smoothstep(0.5, 0.72, fbm(th * 30 + 9, t * 2.2, 3)) * (0.55 + 0.45 * smoothstep(0.3, 0.7, fbm(th * 9, t * 3 + 4, 2)));
-		const bare = (1 - smoothstep(edge - 0.05, edge + 0.05, f)) * smoothstep(0.03, 0.14, f + 0.1 * (broken - 0.5)) * (1 - 0.6 * streak);
+		const bare = (1 - smoothstep(edge - 0.05, edge + 0.05, f)) * smoothstep(0.03, 0.14, f + 0.1 * (broken - 0.5)) * (1 - 0.6 * streak * (1 - 0.75 * south));
 		// more rock lower down and where the slope is steepest; the flat shelves and the summit all snow
 		const low = 1 - 0.4 * smoothstep(0.25, 0.75, t);
 		const steep = 0.75 + 0.25 * (1 - smoothstep(0.25, 0.6, ny));
@@ -887,6 +890,23 @@ function yamdwar(ctx) {
 		const km = kailashMesh(Math.max(10.5, top + 5.5 - (foot - 0.6)), 6.3);
 		km.position.set(kw.x, foot - 0.6, kw.z);
 		decor.add(km);
+		// scree aprons at the foot of the faces: fans of broken rock fallen from the cliffs, below every gully, and
+		// boulders strewn out beyond them (their number and size are the journey's own, not surveyed)
+		const sb = new Batch(), SR = rand(66), SCREE = [0x5e554c, 0x6a6056, 0x544c44, 0x72675b];
+		for (let i = 0; i < 64; i++) {
+			const a = (i / 64) * Math.PI * 2 + (SR() - 0.5) * 0.08;
+			const cs = Math.abs(Math.cos(a)), sn = Math.abs(Math.sin(a)), plan = 1 / Math.pow(Math.pow(cs, 7) + Math.pow(sn, 7), 1 / 7);
+			const r = (5.5 + SR() * 0.35) * plan, x = kw.x + Math.sin(a) * r, z = kw.z + Math.cos(a) * r;
+			if (wayDist(x, z) < 1.8) continue;
+			// a fan: broken rock heaped against the foot, spreading and coarser as it runs out, the biggest blocks furthest
+			for (let k = 0; k < 22; k++) {
+				const u = Math.pow(SR(), 0.8), rr = r - 0.3 + u * 2.2, aa = a + (SR() - 0.5) * (0.04 + u * 0.16), bx = kw.x + Math.sin(aa) * rr, bz = kw.z + Math.cos(aa) * rr;
+				if (wayDist(bx, bz) < 1.2) continue;
+				const q = 0.04 + SR() * 0.05 + u * u * SR() * 0.13;
+				sb.add(T.rock, place(bx, h.world.height(bx, bz) - q * 0.3, bz, SR() * 6, q * 1.3, q, q), SCREE[(k + i) % 4]);
+			}
+		}
+		if (!sb.empty) decor.add(sb.build(VCOL));
 		decor.add(cloudCollar(kw.x, base + 2.6, kw.z, 6.2, 16, 5));
 	};
 	return { g, peaks: [], crowd, world };
