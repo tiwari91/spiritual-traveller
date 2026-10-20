@@ -146,7 +146,7 @@ const bell = (f0, parts, click = 0.25) => (d, r) => {
 };
 const drum = (o) => [Math.min(2.5, o.decay * 6 + 0.05), (d, r) => drumInto(d, r, o)];
 // name: [seconds, fill(data, rate), sample rate (defaults to the context's)]
-const K_BUFS = new Set(["bowl", "drilbu", "rolmo", "rolmoC", "nga", "yakBell", "flap", "lap"]);
+const K_BUFS = new Set(["bowl", "drilbu", "rolmo", "rolmoC", "nga", "yakBell", "flap", "lap", "chough", "raven"]);
 const BUFS = {
 	// the great temple bell, its partial pairs beating slowly
 	ghanta: [6, bell(165, [[0.5, 0.35, 6.5], [1, 0.6, 5.5], [1.004, 0.45, 5.5], [1.19, 0.3, 4], [1.5, 0.3, 3.2], [1.506, 0.2, 3.2], [2, 0.32, 2.6], [2.52, 0.2, 1.8], [2.67, 0.18, 1.6], [3.01, 0.14, 1.2], [3.98, 0.1, 0.8], [5.3, 0.06, 0.5], [6.8, 0.04, 0.35]], 0.35)],
@@ -208,6 +208,29 @@ const BUFS = {
 	flap: [0.18, (d, r) => {
 		noiseInto(d, r, 0.9, 0.012, 3200, 700, 41);
 		noiseInto(d.subarray(Math.floor(0.035 * r)), r, 0.5, 0.018, 2400, 500, 43);
+	}],
+	// a red-billed chough's call overhead: a high, ringing "chee-ow", falling (synthesised, not a recording)
+	chough: [0.4, (d, r) => {
+		let ph = 0;
+		for (let i = 0; i < d.length; i++) {
+			const t = i / r, u = Math.min(1, t / 0.3), f = 2900 - 1300 * u * u;
+			ph += (2 * Math.PI * f) / r;
+			const e = Math.min(1, t / 0.015) * Math.max(0, 1 - t / 0.32) ** 1.5;
+			d[i] = e * (0.7 * Math.sin(ph) + 0.25 * Math.sin(2 * ph) + 0.08 * Math.sin(3 * ph));
+		}
+	}],
+	// a raven's croak from the rocks: a low, hoarse "kronk" (synthesised)
+	raven: [0.45, (d, r) => {
+		const R = lcg(71);
+		let ph = 0, n = 0;
+		for (let i = 0; i < d.length; i++) {
+			const t = i / r, f = 470 - 90 * (t / 0.35);
+			ph += (2 * Math.PI * f) / r;
+			n += 0.3 * (R() * 2 - 1 - n);
+			const e = Math.min(1, t / 0.02) * Math.max(0, 1 - t / 0.36) * (0.65 + 0.35 * Math.sin(2 * Math.PI * 38 * t));
+			const saw = ((ph / (2 * Math.PI)) % 1) * 2 - 1;
+			d[i] = e * (0.45 * saw + 0.3 * Math.sin(ph) + 0.25 * n);
+		}
 	}],
 	// a small wave on a stony shore
 	lap: [1.6, (d, r) => {
@@ -1344,11 +1367,20 @@ function makeProgram(e, dest, key, kind, piece) {
 	} else P.gen = AMBIENT[key];
 	return P;
 }
+// now and then, far off, choughs calling as a flock wheels over, or a raven croaking from the rocks
+function birds(S, t0, R) {
+	if (R() < 0.035) for (let k = 0, n = 2 + Math.floor(R() * 3), p = R() * 1.6 - 0.8; k < n; k++) S.hit(t0 + 0.4 + k * (0.35 + R() * 0.4), "chough", 0.035 + R() * 0.03, 0.9 + R() * 0.25, p + (R() - 0.5) * 0.3);
+	else if (R() < 0.02) for (let k = 0, n = 1 + Math.floor(R() * 3); k < n; k++) S.hit(t0 + 0.3 + k * 0.7, "raven", 0.04 + R() * 0.02, 0.95 + R() * 0.1, R() * 1.2 - 0.6);
+}
 // The country while travelling (the Kailash journey): a quiet bed on its own bus, with flags now and then.
 const TRAVEL = {
-	plateau: { wind: 0.07, gen: (S, t0, R) => R() < 0.25 && S.hit(t0 + R() * 3.6, "flap", 0.08 + R() * 0.08, 0.9 + R() * 0.2, R() - 0.5) },
+	plateau: { wind: 0.07, gen: (S, t0, R) => {
+		if (R() < 0.25) S.hit(t0 + R() * 3.6, "flap", 0.08 + R() * 0.08, 0.9 + R() * 0.2, R() - 0.5);
+		birds(S, t0, R);
+	} },
 	pass: { wind: 0.15, gen: (S, t0, R) => {
 		for (let k = 0, n = Math.floor(R() * 3); k < n; k++) S.hit(t0 + R() * 3.6, "flap", 0.1 + R() * 0.1, 0.85 + R() * 0.3, R() * 1.4 - 0.7);
+		birds(S, t0, R);
 	} },
 	gorge: { wind: 0.02, river: 0.06 },
 };
