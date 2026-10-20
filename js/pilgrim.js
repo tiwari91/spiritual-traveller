@@ -581,7 +581,8 @@ function drapeable(J, mesh, o) {
 //   build ("slim" | "average" | "heavy"), bare (bare chest), pujari (bare, sacred thread, shaven head with a
 //   shikha, long dhoti, tripundra), janeu, shawl (a colour: an uparna over both shoulders), mark ("tilak" |
 //   "tripundra" | "namam" | "urdhva" | "bindi" | "none"), moustache (a colour), hairColor, sleeve (0..1 of the
-//   forearm), border (sari and shawl border colour), dhoti ("mid" | "long"), glasses, jewels (false for none).
+//   forearm), border (sari and shawl border colour), dhoti ("mid" | "long"), glasses, jewels (false for none),
+//   hem (how low the kurta falls, in the torso frame: lower for a robe such as a chuba).
 function body(opts) {
 	const lod = opts.lod ?? 1;
 	const Q = [0.3, 0.56, 0.68][lod];
@@ -737,7 +738,7 @@ function body(opts) {
 		part(outward(g), M.bottom, 0, 0, 0, torso);
 	} else {
 		// the kurta's skirt: flaring to above the knee, open in side slits, the hem rolled inside
-		const top = 0.1, slit = -0.2, bot = fem ? -0.52 : -0.42; // a woman's kameez falls to the knee
+		const top = 0.1, slit = -0.2, bot = opts.hem ?? (fem ? -0.52 : -0.42); // a woman's kameez falls to the knee (hem: lower, for a robe)
 		const nth = sg(40, 10);
 		const ring = (y, th) => {
 			const p = surf(Math.max(y, -0.08), th, 0.02, 1), f = sstep(-0.06, bot, y);
@@ -2062,4 +2063,4 @@ function mergeFigure(J) {
 const CROWD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, name: "crowd" });
 
 // Shared with the temple interiors (sanctum.js) and the outdoor aarti (aarti.js), which pose their own figures.
-export { body, pose, SKIN, NAMASTE, STAND, mergeFigure, RIGHT, LEFT, own };
+export { body, pose, SKIN, NAMASTE, STAND, mergeFigure, RIGHT, LEFT, own, drapeable };

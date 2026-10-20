@@ -465,6 +465,29 @@ async function grounding() {
 		ok(`Grounding (${tag}): the pilgrims at every stop stand on the ground`, r.float.length === 0, `${r.n} figures; ${r.float.slice(0, 6).join(", ")}`);
 		if (pageName) ok(`Grounding (${tag}): no one at a stop stands on a slope too steep to stand on`, r.steep.length === 0, r.steep.slice(0, 6).join(", "));
 		if (pageName) ok(`Grounding (${tag}): no one by the way stands on a cliff`, r.placedSteep.length === 0, `${r.placed} placed; ${r.placedSteep.slice(0, 6).join(", ")}`);
+		if (q === "&route=lipulekh") {
+			// the prostrators on the kora (kailash-companion.js), laid face down at every few steps of each day's way,
+			// where each would settle: head, hips and feet all just above the ground, none hovering or sunk in
+			const k = await page.evaluate(async () => {
+				const kp = app.koraPilgrims, out = { n: 0, bad: [] };
+				kp.low = false;
+				await new Promise((r) => { const t = () => (kp.list && kp.point ? r() : setTimeout(t, 50)); t(); });
+				kp.low = true;
+				for (const p of kp.list) if (p.kind === "prostrate") for (let s = p.c.s0 + 1; s < p.c.s1 - 3; s += 1.5) {
+					kp.settle(p, kp.point, s);
+					kp.put(p, 6, kp.point);
+					const m = p.o.frames[6];
+					p.o.g.updateMatrixWorld(true);
+					for (const [key, v0] of Object.entries(m.userData.body)) {
+						const v = v0.clone().applyMatrix4(m.matrixWorld), dy = v.y - app.world.height(v.x, v.z);
+						out.n++;
+						if (dy < -0.03 || dy > 0.08) out.bad.push(`${key} at ${p.s.toFixed(1)} ${dy.toFixed(3)}`);
+					}
+				}
+				return out;
+			});
+			ok(`Grounding (${tag}): a prostrator lies on the ground, head, hips and feet`, k.n > 0 && k.bad.length === 0, `${k.n} points; ${k.bad.slice(0, 6).join(", ")}`);
+		}
 		ok(`Grounding (${tag}): console clean`, errors.length === 0, errors.slice(0, 3).join(" | "));
 		await ctx.close();
 	}
