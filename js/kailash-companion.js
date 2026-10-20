@@ -39,6 +39,7 @@ function walkingYak() {
 	const bodyGeo = yak(col, "stand", true, false);
 	const m = new THREE.Mesh(bodyGeo, FIG);
 	m.castShadow = true;
+	m.raycast = noRay;
 	g.add(m);
 	const legMat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.9 });
 	const legs = [];
@@ -47,6 +48,7 @@ function walkingYak() {
 		p.position.set(lx, 0.92, lz);
 		const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.085, 0.92, 7).translate(0, -0.46, 0), legMat);
 		leg.castShadow = true;
+		leg.raycast = noRay;
 		p.add(leg);
 		g.add(p);
 		legs.push(p);
@@ -146,7 +148,6 @@ export class KoraPilgrims {
 	// chapters: the route's legs, each null unless it is a day of the kora; point(s, lane): a point on the path
 	update(dt, camera, chapters, point) {
 		if (this.low) return;
-		this.point = point;
 		if (!this.list) {
 			this.list = [];
 			let seed = 9100;

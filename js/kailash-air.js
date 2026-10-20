@@ -5,8 +5,8 @@
 //   the ground's own material so they run over every slope;
 // - dust lifted off the dry, stony Barkha plain between the lakes and Darchen by the afternoon wind, drifting low
 //   in wisps.
-// None of it is solid. On the low setting the shadows and the banner stand still and there is no dust; under reduced
-// motion the same.
+// None of it is solid. On the low setting there are no cloud shadows or dust, and the banner stands still; under
+// reduced motion the shadows and the banner stand still and there is no dust.
 import * as THREE from "three";
 import { patch } from "./batch.js";
 import { toGeo } from "./geo.js";
@@ -38,7 +38,8 @@ export class Air {
 		this.t = 0;
 		// the cloud shadows: patches of shade some kilometres across, a third of the sky's worth, moving with the wind
 		this.U = { uCloudOff: { value: new THREE.Vector2(3.1, 7.7) }, uCloudAmt: { value: 0 } };
-		const mat = world.mesh && world.mesh.material;
+		// (not on the low setting, where a still blotch would not read as a cloud and the shader costs most)
+		const mat = !low && world.mesh && world.mesh.material;
 		if (mat) {
 			const U = this.U;
 			patch(mat, "cloudShadow", (sh) => {
