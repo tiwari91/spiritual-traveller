@@ -23,6 +23,7 @@ import { CITIES, INDIA, KAILASH, LANKA, ROUTE, SHRINES, toGeo, toWorld } from ".
 import { ALTS, LAKES, LEH, PASSING, RIVERS as K_RIVERS, START_NAME } from "./kailash-geo.js";
 import { Companions, KoraPilgrims } from "./kailash-companion.js";
 import { Wildlife } from "./kailash-wildlife.js";
+import { Air } from "./kailash-air.js";
 import { kRegion, tibet } from "./kailash-world.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
 
@@ -99,6 +100,8 @@ async function init() {
 	// the birds and the wild animals of the Kailash country
 	if (KAILASH) app.wildlife = new Wildlife(scene, world, LOW);
 	if (KAILASH) app.koraPilgrims = new KoraPilgrims(scene, LOW);
+	// the banner cloud off the summit, the clouds' shadows and the dust on the Barkha plain
+	if (KAILASH) app.air = new Air(scene, world, LOW);
 	// the aarti at the door, with each shrine's own music
 	music = new Music(audio);
 	aarti = new Aarti({ scene, landmarks, music, traveller, low: LOW });
@@ -980,6 +983,7 @@ function loop(now) {
 	scene.fog.density *= clamp(70 / rig.dist, 0.12, 1.2);
 	const night = smoothstep(4, -8, sky.elev);
 	app.night = night;
+	if (app.air) app.air.update(dt, camera, focus, wx.thin || 0, night, wx.overcast || 0);
 	LAMP.emissiveIntensity = 0.25 + night * 4;
 	GOLD.emissiveIntensity = 0.12 + night * 1.0; // lamplight on the gilded roofs after dark
 	for (const m of WINDOW_GLOW) m.emissiveIntensity = night * 2.2;
