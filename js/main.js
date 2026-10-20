@@ -21,7 +21,7 @@ import { MapView } from "./map3d.js";
 import { Audio } from "./audio.js";
 import { CITIES, INDIA, KAILASH, LANKA, ROUTE, SHRINES, toGeo, toWorld } from "./geo.js";
 import { ALTS, LAKES, LEH, PASSING, RIVERS as K_RIVERS, START_NAME } from "./kailash-geo.js";
-import { Companions } from "./kailash-companion.js";
+import { Companions, KoraPilgrims } from "./kailash-companion.js";
 import { Wildlife } from "./kailash-wildlife.js";
 import { kRegion, tibet } from "./kailash-world.js";
 import { clamp, lerp, nextFrame, segDist, smoothstep, store } from "./util.js";
@@ -98,6 +98,7 @@ async function init() {
 	if (KAILASH) companions = new Companions(scene);
 	// the birds and the wild animals of the Kailash country
 	if (KAILASH) app.wildlife = new Wildlife(scene, world, LOW);
+	if (KAILASH) app.koraPilgrims = new KoraPilgrims(scene, LOW);
 	// the aarti at the door, with each shrine's own music
 	music = new Music(audio);
 	aarti = new Aarti({ scene, landmarks, music, traveller, low: LOW });
@@ -938,12 +939,13 @@ function loop(now) {
 	if (KAILASH && app.frames % 30 === 0) travelSound();
 	if (companions) {
 		const c = route.chapters[app.leg];
-		const on = app.state === "travel" && !!c.kora && app.mode === "walk" && app.s > c.s0 + 0.8 && app.s < c.s1 - 2.2;
+		const on = app.state === "travel" && !!ROUTE[app.leg].kora && app.mode === "walk" && app.s > c.s0 + 0.8 && app.s < c.s1 - 2.2;
 		// (on the other side of the path from the traveller)
 		companions.update(on, app.s, c.s1 - 2.4, (s, lane) => Object.assign({}, roadPoint(s, lane * journey.keep(s))), app.playing);
 	}
 	updateCamera(dt);
 	if (app.wildlife) app.wildlife.update(dt, camera);
+	if (app.koraPilgrims) app.koraPilgrims.update(dt, camera, route.chapters.map((c) => ROUTE[c.index].kora && c), (s, lane) => Object.assign({}, roadPoint(s, lane * journey.keep(s))));
 	// a snow peak the camera has strayed into is hidden rather than filling the screen
 	for (const l of landmarks) for (const m of l.decor.children) {
 		const pk = m.userData.peak;

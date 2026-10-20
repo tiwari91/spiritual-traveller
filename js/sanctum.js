@@ -4154,6 +4154,8 @@ function stepsFor(key, L) {
 }
 
 // ---------- the module ----------
+// (the kneeling and the prostration, for the pilgrims who go round Kailash by prostrations, kailash-companion.js)
+export { kneelDown, KNEEL, prostrate, NA as NAMASTE_ARMS };
 export class Sanctum {
 	constructor({ renderer, container = document.body, audio = null, low = false, onExit = null, onStep = null, post = null } = {}) {
 		this.post = post;

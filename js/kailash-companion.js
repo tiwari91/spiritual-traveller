@@ -3,12 +3,15 @@
 // Both walk the path at the traveller's pace and stop when the traveller stops (main.js calls update each frame on
 // the Kailash journey; it does nothing elsewhere on the route).
 import * as THREE from "three";
-import { body, crowdOpts, mergeFigure, pose, stride } from "./pilgrim.js";
+import { NAMASTE, body, crowdOpts, mergeFigure, pose, stride } from "./pilgrim.js";
+import { KNEEL, NAMASTE_ARMS, kneelDown, prostrate } from "./sanctum.js";
 import { yak } from "./life.js";
-import { rand } from "./util.js";
+import { lerp, rand } from "./util.js";
 
 const M = 0.28;
 const FIG = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
+const RM = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+const noRay = () => {};
 // The yakman as a flipbook: eight poses of a stride and one standing, swapped as he walks.
 function walker(seed) {
 	const R = rand(seed);
@@ -23,6 +26,7 @@ function walker(seed) {
 		m.scale.setScalar(M);
 		m.castShadow = true;
 		m.visible = false;
+		m.raycast = noRay;
 		frames.push(m);
 		g.add(m);
 	}
@@ -88,5 +92,107 @@ export class Companions {
 		this.man.frames.forEach((m, i) => (m.visible = i === f));
 		this.yak.phase += (d / (1.4 * M)) * Math.PI;
 		this.yak.legs.forEach((p, i) => (p.rotation.x = walking ? Math.sin(this.yak.phase + (i === 0 || i === 3 ? 0 : Math.PI)) * 0.35 : 0));
+	}
+}
+
+// Tibetan pilgrims who go round the mountain by full-body prostrations, as some do, taking two weeks or more over
+// the circuit: palms joined, down on the knees, laid face down with the arms stretched out beyond the head, up
+// again, and a step forward to where the hands reached, then again. And a few Bonpo pilgrims, who go round
+// anticlockwise, the other way from everyone else, walking towards the traveller. Both on the far verge of the
+// path, beyond the yakman, two of each to each day of the kora (placed by description, not at any recorded spot;
+// none on the low setting, and standing still under reduced motion). main.js calls update each frame.
+const OVERHEAD = { shL: -3.05, shR: -3.05, shLz: -0.2, shRz: 0.2, elL: -0.05, elR: -0.05, shLy: 0, shRy: 0 };
+function prostrator(seed) {
+	const R = rand(seed);
+	const J = body(Object.assign(crowdOpts(R, "tibetan"), { lod: 0 }));
+	const keys = [NAMASTE, { ...kneelDown(0.4), ...NAMASTE_ARMS }, { ...kneelDown(0.8), ...NAMASTE_ARMS }, { ...KNEEL, ...NAMASTE_ARMS }];
+	for (const f of [0.35, 0.7, 1]) keys.push({ ...prostrate(f).pose, ...(f < 0.5 ? NAMASTE_ARMS : OVERHEAD) });
+	for (const ph of [0, Math.PI]) {
+		const st = stride(ph);
+		keys.push({ hipL: st.hipL, hipR: st.hipR, kneeL: st.kneeL, kneeR: st.kneeR, ankleL: st.footL - st.hipL - st.kneeL, ankleR: st.footR - st.hipR - st.kneeR, bob: st.bob, ...NAMASTE_ARMS });
+	}
+	const g = new THREE.Group(), frames = keys.map((k) => {
+		pose(J, k);
+		const m = new THREE.Mesh(mergeFigure(J), FIG);
+		m.scale.setScalar(M);
+		m.castShadow = true;
+		m.visible = false;
+		m.raycast = noRay;
+		g.add(m);
+		return m;
+	});
+	return { g, frames };
+}
+// one round of a prostration, as [seconds, frame]: down, a moment flat, up; then two paces forward (frames 7, 8)
+const ROUND = [[1, 0], [0.6, 1], [0.6, 2], [0.4, 3], [0.5, 4], [0.5, 5], [1.4, 6], [0.4, 5], [0.4, 4], [0.4, 3], [0.4, 2], [0.4, 1]];
+const STEP_T = 1.0, ROUND_T = ROUND.reduce((a, r) => a + r[0], 0) + STEP_T;
+function roundFrame(u) {
+	for (const [d, f] of ROUND) {
+		if (u < d) return [f, false];
+		u -= d;
+	}
+	return [7 + (Math.floor(u * 3) % 2), true];
+}
+// lanes on the far side of the path from the traveller (before main.js turns them to the side the traffic keeps)
+const PROSTRATE_LANE = 1.55, BON_LANE = 1.45;
+export class KoraPilgrims {
+	constructor(scene, low) {
+		this.group = new THREE.Group();
+		this.group.name = "kora-pilgrims";
+		scene.add(this.group);
+		this.low = low;
+		this.list = null;
+	}
+	// chapters: the route's legs, each null unless it is a day of the kora; point(s, lane): a point on the path
+	update(dt, camera, chapters, point) {
+		if (this.low) return;
+		this.point = point;
+		if (!this.list) {
+			this.list = [];
+			let seed = 9100;
+			for (const c of chapters) if (c) for (const f of [0.3, 0.7]) {
+				const pr = prostrator(seed++);
+				this.group.add(pr.g);
+				this.list.push({ kind: "prostrate", o: pr, s: lerp(c.s0, c.s1, f), c, u: f * 5 });
+				const w = walker(seed++);
+				this.group.add(w.g);
+				this.list.push({ kind: "bon", o: w, s: lerp(c.s0, c.s1, f + 0.12), c });
+			}
+		}
+		const cp = camera.position;
+		for (const p of this.list) {
+			// (a Bonpo walker steps out round a prostrator lying on the verge, and back again)
+			if (p.kind === "bon") {
+				const by = this.list.some((o) => o.kind === "prostrate" && o.c === p.c && p.s > o.s - 0.35 && p.s < o.s + 1.0);
+				p.lane = (p.lane ?? BON_LANE) + ((by ? BON_LANE + 0.6 : BON_LANE) - (p.lane ?? BON_LANE)) * Math.min(1, dt * 4);
+			}
+			const lane = p.kind === "bon" ? p.lane : PROSTRATE_LANE;
+			const a = point(p.s, lane);
+			const near = Math.abs(a.x - cp.x) < 30 && Math.abs(a.z - cp.z) < 30;
+			p.o.g.visible = near;
+			if (!near) continue;
+			let f = p.kind === "bon" ? 8 : 0, ds = 0;
+			if (RM) {
+				// (standing still, palms joined or at rest)
+			} else if (p.kind === "prostrate") {
+				// round the mountain clockwise, with it on the right hand, a body's length at a time
+				p.u += dt;
+				const [fr, stepping] = roundFrame(p.u % ROUND_T);
+				f = fr;
+				if (stepping) ds = (2.2 * M * dt) / STEP_T;
+			} else {
+				// anticlockwise, at a walking pace; round again from the far end of the day's way
+				ds = -0.75 * M * 1.2 * dt;
+				p.o.phase += (-ds / (0.75 * M * 2)) * 8;
+				f = Math.floor(p.o.phase) % 8;
+			}
+			p.s += ds;
+			if (p.s < p.c.s0 + 1) p.s = p.c.s1 - 3;
+			if (p.s > p.c.s1 - 3) p.s = p.c.s0 + 1;
+			const q = point(p.s, lane), r = point(p.s + (p.kind === "bon" ? -0.25 : 0.25), lane);
+			p.o.g.position.set(q.x, q.y + 0.01, q.z);
+			p.o.g.rotation.y = Math.atan2(r.x - q.x, r.z - q.z);
+			p.o.frames.forEach((m, i) => (m.visible = i === f));
+		}
 	}
 }
