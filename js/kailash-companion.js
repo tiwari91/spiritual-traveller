@@ -12,10 +12,47 @@ const M = 0.28;
 const FIG = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
 const RM = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const noRay = () => {};
-// The yakman as a flipbook: eight poses of a stride and one standing, swapped as he walks.
-function walker(seed) {
+// A pilgrim of the kora dressed as Tibetans walk it: a long chuba of dark wool, maroon, brown or charcoal, belted
+// with a bright sash over trousers, felt boots and a fur-trimmed hat; the yakman's dress with the robe dark enough
+// not to be mistaken for skin. With work: a prostrator's long leather apron, chest to knees, and the wooden boards
+// strapped to the palms that slide on the ground ahead.
+const CHUBA = [0x3e1a1c, 0x4a1e20, 0x33241a, 0x2b2826, 0x3a2a22];
+function korapa(R, work) {
+	const o = Object.assign(crowdOpts(R, "tibetan"), { lod: 0, gender: "m", hairStyle: undefined, pyjama: true, bag: false, sleeve: 1, head: "cap" });
+	o.headColor = [0x6a5a3e, 0x2a2420, 0x8a6a3a][Math.floor(R() * 3)];
+	o.capBand = R() < 0.5 ? 0xd8b04a : 0x8a1c1c;
+	o.top = o.bottom = CHUBA[Math.floor(R() * CHUBA.length)];
+	const J = body(o);
+	const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
+	const add = (geo, m, x, y, z, parent, rx = 0) => {
+		const mesh = new THREE.Mesh(geo, m);
+		mesh.position.set(x, y, z);
+		mesh.rotation.x = rx;
+		parent.add(mesh);
+		return mesh;
+	};
+	const robe = mat(o.top), sash = mat(o.sash), boot = mat(0x241a14), trim = mat(0x7a1c1c);
+	// the chuba's skirt, from the belt to below the knee, and the sash wound round over it
+	add(new THREE.CylinderGeometry(0.175, 0.225, 0.52, 12), robe, 0, -0.22, 0.005, J.hips);
+	add(new THREE.TorusGeometry(0.172, 0.022, 5, 14), sash, 0, 0.03, 0.005, J.hips, Math.PI / 2);
+	for (const S of ["L", "R"]) {
+		add(new THREE.CylinderGeometry(0.056, 0.06, 0.2, 9), boot, 0, 0.04, 0, J["ankle" + S]);
+		add(new THREE.CylinderGeometry(0.058, 0.058, 0.025, 9), trim, 0, 0.14, 0, J["ankle" + S]);
+		add(new THREE.SphereGeometry(1, 9, 6), boot, 0, -0.035, 0.07, J["ankle" + S]).scale.set(0.06, 0.05, 0.13);
+	}
+	if (work) {
+		const leather = mat(0x4e3220), wood = mat(0x6b4a2a);
+		add(new THREE.BoxGeometry(0.29, 0.5, 0.016), leather, 0, -0.21, 0.212, J.hips, -0.1);
+		add(new THREE.BoxGeometry(0.25, 0.38, 0.016), leather, 0, 0.24, 0.135, J.torso, 0.04);
+		for (const [S, side] of [["L", -1], ["R", 1]]) add(new THREE.BoxGeometry(0.022, 0.14, 0.09), wood, -side * 0.028, -0.075, 0, J["hand" + S]);
+	}
+	return J;
+}
+// The yakman as a flipbook: eight poses of a stride and one standing, swapped as he walks. (A Bonpo pilgrim, chuba:
+// the same, dressed for the kora.)
+function walker(seed, chuba = false) {
 	const R = rand(seed);
-	const J = body(Object.assign(crowdOpts(R, "tibetan"), { lod: 0, gender: "m" }));
+	const J = chuba ? korapa(R, false) : body(Object.assign(crowdOpts(R, "tibetan"), { lod: 0, gender: "m" }));
 	const g = new THREE.Group();
 	const frames = [];
 	for (let i = 0; i <= 8; i++) {
@@ -105,8 +142,7 @@ export class Companions {
 // none on the low setting, and standing still under reduced motion). main.js calls update each frame.
 const OVERHEAD = { shL: -3.05, shR: -3.05, shLz: -0.2, shRz: 0.2, elL: -0.05, elR: -0.05, shLy: 0, shRy: 0 };
 function prostrator(seed) {
-	const R = rand(seed);
-	const J = body(Object.assign(crowdOpts(R, "tibetan"), { lod: 0 }));
+	const J = korapa(rand(seed), true);
 	const keys = [NAMASTE, { ...kneelDown(0.4), ...NAMASTE_ARMS }, { ...kneelDown(0.8), ...NAMASTE_ARMS }, { ...KNEEL, ...NAMASTE_ARMS }];
 	for (const f of [0.35, 0.7, 1]) keys.push({ ...prostrate(f).pose, ...(f < 0.5 ? NAMASTE_ARMS : OVERHEAD) });
 	for (const ph of [0, Math.PI]) {
@@ -155,7 +191,7 @@ export class KoraPilgrims {
 				const pr = prostrator(seed++);
 				this.group.add(pr.g);
 				this.list.push({ kind: "prostrate", o: pr, s: lerp(c.s0, c.s1, f), c, u: f * 5 });
-				const w = walker(seed++);
+				const w = walker(seed++, true);
 				this.group.add(w.g);
 				this.list.push({ kind: "bon", o: w, s: lerp(c.s0, c.s1, f + 0.12), c });
 			}
