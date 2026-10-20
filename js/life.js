@@ -3,7 +3,7 @@
 // Each model is built once in metres as one vertex-coloured geometry and merged into a chunk's batch.
 import * as THREE from "three";
 import { T, place } from "./batch.js";
-import { crowdFigure } from "./pilgrim.js";
+import { crowdFigure, sitterFigure } from "./pilgrim.js";
 
 const M = 0.28;
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
@@ -430,6 +430,22 @@ export function figure(R, dress) {
 		}
 	}
 	return F[i];
+}
+// Someone sitting on a bench whose front edge is at (x, z), facing yaw; a few figures kept per dress, like figure().
+const SITTERS = {};
+export function addSitter(b, R, x, y, z, yaw, dress = "tibetan") {
+	const F = (SITTERS[dress] ||= []), i = Math.floor(R() * 6);
+	if (F[i] === undefined) {
+		try {
+			let g = sitterFigure(7300 + i * 41, dress);
+			g = g.index ? g.toNonIndexed() : g;
+			for (const k of Object.keys(g.attributes)) if (k !== "position" && k !== "normal" && k !== "color") g.deleteAttribute(k);
+			F[i] = g;
+		} catch (e) {
+			F[i] = null;
+		}
+	}
+	if (F[i]) b.addColored(F[i], place(x, y, z, yaw, 1, 1, 1), 1);
 }
 export function addPerson(b, R, x, y, z, yaw, dress) {
 	const g = figure(R, dress);

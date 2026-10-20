@@ -10,7 +10,7 @@ import { Batch, T, VCOL, place } from "./batch.js";
 import { ROUTE, toWorld } from "./geo.js";
 import { KAILASH, P } from "./kailash-geo.js";
 import { addAnimal, standable } from "./life.js";
-import { Cloth, cave, dhuni, saffronFlag } from "./kailash-scenery.js";
+import { Cloth, cave, dhuni, saffronFlag, teaTent } from "./kailash-scenery.js";
 import { glowTexture, peak, snowRock, terrainDetail } from "./landmarks.js";
 import { clamp, fbm, lerp, rand, smoothstep } from "./util.js";
 
@@ -904,6 +904,9 @@ function dirapuk(ctx) {
 		tibetHouse(b, s[0], y, s[1], w, d, 0.34, Math.atan2(-s[0], -s[1]) + Math.PI, { band: 0x3a5a8a, door: true, flags: false });
 		b.add(T.box, place(s[0], y + 0.34, s[1], Math.atan2(-s[0], -s[1]), w + 0.08, 0.03, d + 0.1), 0x5a6a7a); // the tin roof
 	}
+	// a nomad family's tea tent at the edge of the camp, its door towards the altar (placed by description)
+	const ts = F.spot(F.ring(2.2, 4.4, 80, 77), 0.85, 0.45);
+	if (ts) teaTent(b, ts[0], F.floor(ts[0], ts[1], 0.6), ts[1], Math.atan2(-ts[0], -ts[1]), R, true);
 	// the porters' tents
 	for (let i = 0; i < 2; i++) {
 		const s = F.spot(F.ring(2.0, 4.0, 20, 70 + i), 0.35);
@@ -1030,6 +1033,11 @@ function darchen(ctx) {
 		const a = (108 * Math.PI) / 180;
 		cave.position.set(s.x + Math.sin(a) * 0.7, h.world.height(s.x, s.z) + 0.15, s.z - Math.cos(a) * 0.7);
 		decor.add(cave);
+		// a tea tent down by the path below the gompa, its door to the path (placed by description)
+		const t = clearSpot(...K(100, 12.5), 2.2, (100 * Math.PI) / 180), tb = new Batch();
+		const ty = Math.min(...[[0, 0], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5]].map(([u, v]) => h.world.height(t.x + u, t.z + v)));
+		teaTent(tb, t.x, ty, t.z, (-100 * Math.PI) / 180, rand(73), true);
+		decor.add(tb.build(VCOL));
 	};
 	return { g, peaks: [], crowd, world };
 }

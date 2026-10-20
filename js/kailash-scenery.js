@@ -5,7 +5,7 @@
 // and on the parikrama Tibetan pilgrims and pack yaks on the path. Built in the chunk's batch, in metres (M).
 import * as THREE from "three";
 import { T, beam, haze, patch, place } from "./batch.js";
-import { PLACED, addAnimal as addAnimal0, addPerson as addPerson0, standable } from "./life.js";
+import { PLACED, addAnimal as addAnimal0, addPerson as addPerson0, addSitter, standable } from "./life.js";
 
 // people and animals by the way stand only where a foot can: never on a cliff or a steep scree slope
 let GROUND = null;
@@ -239,6 +239,56 @@ function dhaba(b, x, y, z, yaw, R) {
 	}
 }
 
+// A tea tent on the kora: each season nomad families pitch big ridge tents of white canvas, trimmed and patterned in
+// blue appliqué (bands along the foot and the eaves, an endless knot on the end), at the camps of Dirapuk and
+// Zuthulphuk and along the path, and sell butter tea, sweet tea and instant noodles inside, on carpets and low
+// benches round a stove whose pipe stands through the roof. Out front a bench where pilgrims sit with their tea, a
+// table with thermos flasks, and a pack yak waiting. Faces +z (the door in the gable end); in metres times M.
+// local: built in a stop's own frame (kailash-landmarks.js), where the ground is the stop's to check, not the map's.
+export function teaTent(b, x, y, z, yaw, R, local = false) {
+	const c = Math.cos(yaw), sn = Math.sin(yaw);
+	const at = (u, v) => [x + c * u + sn * v, z - sn * u + c * v];
+	const W = 4.4, D = 6.4, H = 1.7, RH = 1.25, CANVAS = 0xf0ede4, BLUE = 0x24489a;
+	b.add(T.box, place(x, y - 0.2 * M, z, yaw, W * M, (H + 0.2) * M, D * M), CANVAS);
+	b.add(T.gable, place(x, y + H * M, z, yaw, (W + 0.3) * M, RH * M, (D + 0.25) * M), CANVAS);
+	// the blue bands: along the foot of the walls, and under the eaves
+	b.add(T.box, place(x, y - 0.05 * M, z, yaw, (W + 0.04) * M, 0.35 * M, (D + 0.04) * M), BLUE);
+	b.add(T.box, place(x, y + (H - 0.22) * M, z, yaw, (W + 0.05) * M, 0.18 * M, (D + 0.05) * M), BLUE);
+	// the door flap in the front gable, tied back, and the knot over it
+	const [dx, dz] = at(0, (D / 2 + 0.03) * M);
+	b.add(T.box, place(dx, y, dz, yaw, 1.0 * M, 1.6 * M, 0.04 * M), 0x2a221c);
+	b.add(T.box, place(dx, y + 1.85 * M, dz, yaw + Math.PI / 4, 0.42 * M, 0.42 * M, 0.04 * M), BLUE);
+	b.add(T.box, place(dx, y + 1.85 * M, dz + 0.004, yaw + Math.PI / 4, 0.24 * M, 0.24 * M, 0.04 * M), CANVAS);
+	// the stovepipe through the roof near the back, its cap
+	const [px, pz] = at(0.9 * M, -(D / 2 - 1.2) * M);
+	b.add(T.cyl, place(px, y + 1.2 * M, pz, 0, 0.14 * M, (H + RH + 0.5) * M, 0.14 * M), 0x4a4440);
+	b.add(T.box, place(px, y + (H + RH + 1.7) * M, pz, yaw, 0.32 * M, 0.06 * M, 0.32 * M), 0x4a4440);
+	// guy ropes from the ridge's ends to pegs
+	for (const v of [1, -1]) {
+		const [rx, rz] = at(0, v * (D / 2 + 0.1) * M), [gx, gz] = at(0, v * (D / 2 + 1.4) * M);
+		b.add(T.box, beam(_a.set(rx, y + (H + RH) * M, rz), _b.set(gx, y, gz), 0.006, 0.006), 0xb8b0a0);
+	}
+	// out front: a bench along the wall, beside the door, and a low table with thermos flasks
+	const [bx, bz] = at(-1.4 * M, (D / 2 + 0.55) * M);
+	b.add(T.box, place(bx, y, bz, yaw, 1.8 * M, 0.42 * M, 0.42 * M), 0x8a5a2e);
+	b.add(T.box, place(bx, y + 0.42 * M, bz, yaw, 1.85 * M, 0.06 * M, 0.45 * M), 0xa8262a); // the rug on it
+	const [tx, tz] = at(1.5 * M, (D / 2 + 0.8) * M);
+	b.add(T.box, place(tx, y, tz, yaw, 0.8 * M, 0.5 * M, 0.55 * M), 0x9a3a22);
+	for (let k = 0; k < 3; k++) {
+		const [fx, fz] = at((1.3 + k * 0.22) * M, (D / 2 + 0.8) * M);
+		b.add(T.cyl, place(fx, y + 0.5 * M, fz, 0, 0.12 * M, 0.34 * M, 0.12 * M), pick(R, [0xd83a4a, 0x3a7ad8, 0xe8c020, 0xe86aa0]));
+	}
+	// pilgrims at their tea on the bench (facing out from the tent), one standing at the door
+	const n = 1 + Math.floor(R() * 3);
+	for (let k = 0; k < n; k++) {
+		const [sx, sz] = at((-2.0 + k * 0.6) * M, (D / 2 + 0.55 + 0.42) * M);
+		addSitter(b, R, sx, y, sz, yaw);
+	}
+	const [mx, mz] = at(0.3 * M, (D / 2 + 1.0) * M);
+	(local ? addPerson0 : addPerson)(b, R, mx, y, mz, yaw + Math.PI + (R() - 0.5), "tibetan");
+	const [yx, yz] = at(-(W / 2 + 1.6) * M, 1.0 * M);
+	(local ? addAnimal0 : addAnimal)(b, "packyak", R, yx, y, yz, yaw + 1.3);
+}
 // A drokpa's black tent of yak hair, low and wide, smoke-hole along the ridge.
 function tent(b, x, y, z, yaw) {
 	b.add(T.pyramid, place(x, y - 0.02, z, yaw, 1.6 * M * 2, 1.7 * M, 1.1 * M * 2), 0x1e1a16);

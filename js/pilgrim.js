@@ -2020,6 +2020,21 @@ export function crowdFigure(seed, place) {
 	m.receiveShadow = true;
 	return m;
 }
+// A pilgrim sitting on a low bench (its top `seat` m above the ground), a cup of tea in one hand, the other on the
+// knee: for the tea tents of the Kailash kora (kailash-scenery.js). The feet rest at the origin, the seat is
+// behind them (at about z = -0.42 at life size), and the figure faces +z, at the crowd's scale.
+export function sitterFigure(seed, place, seat = 0.42) {
+	const R = rand(Math.imul(seed ^ 0x2545f491, 0x85ebca6b) >>> 0);
+	const opts = Object.assign(crowdOpts(R, place), { lod: 0 });
+	const J = body(opts);
+	const hy = seat + 0.07, dz = Math.sqrt(Math.max(0, 0.46 * 0.46 - (hy - 0.48) ** 2));
+	const th = -Math.atan2(dz, 0.48 - hy) || -Math.PI / 2;
+	pose(J, { hipL: th, hipR: th, kneeL: -th, kneeR: -th, footL: 0, footR: 0, bob: hy - 0.95, shift: -dz, seat, lean: 0.12, nod: 0.12 + (R() - 0.5) * 0.2, look: (R() - 0.5) * 0.8, shL: -0.75, shLz: -0.1, elL: -1.5, shR: -0.35, elR: -0.6 });
+	const merged = mergeFigure(J);
+	const k = 0.28 * (0.9 + R() * 0.14);
+	merged.scale(k, k, k);
+	return merged;
+}
 // Merges a posed body into one geometry: positions, normals and colours (material colour times vertex colour).
 function mergeFigure(J) {
 	J.root.updateMatrixWorld(true);
