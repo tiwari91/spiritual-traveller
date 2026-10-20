@@ -279,6 +279,9 @@ function crowdAt(F, n, seed) {
 		// near the altar but not in the aarti's way, and only on ground a pilgrim could stand on
 		if (Math.abs(x) < 1.15 && z > 0.9 && z < 4.2) continue;
 		if (!F.free(x, z, 0.25) || !F.stands(x, z)) continue;
+		// and never on the way itself, even close in by the stop, where the traveller walks in and out
+		const w = F.toW(x, z);
+		if (wayDist(w.x, w.z) < 0.75) continue;
 		F.take(x, z, 0.25);
 		out.push([x, z, F.ground(x, z)]);
 	}
@@ -963,7 +966,8 @@ function dolmala(ctx) {
 		if (s) snowPatch(b, s[0], F.ground(s[0], s[1]), s[1], 0.5 + R() * 0.4, R);
 	}
 	rocks(b, F, 40, 1.0, 4.4, R, 0x6e665e);
-	const crowd = crowdAt(F, 6, 55);
+	// (a crowd at the top of the pass, as there is most mornings of the season)
+	const crowd = crowdAt(F, 14, 55);
 	finish(b, g);
 	const world = (decor, h) => {
 		// Gauri Kund: an emerald tarn below the pass, on the outer side of the path, frozen white round its edge
